@@ -206,6 +206,30 @@ fn clamp_window_to_min<R: tauri::Runtime>(
     }
 }
 
+/// Suppresses WebView2's native default context menu (Back, Refresh, Save as, …)
+/// on the main window.
+///
+/// Ori Studio's own menus are JavaScript `contextmenu` handlers feeding
+/// self-driven popovers; they never depend on the native menu, so disabling it
+/// cannot starve them — it only stops the browser chrome covering them.
+///
+/// Windows-only: `PlatformWebview::controller` exists solely on that target, and
+/// the declarative window below is created by Tauri before the `setup` hook, so
+/// the call site resolves the already-built `main` webview and flips the
+/// already-created WebView2 settings object.
+#[cfg(target_os = "windows")]
+fn disable_webview2_default_context_menu<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    // `with_webview` runs the closure on the UI thread that owns the STA COM
+    // controller. A failure leaves today's behavior in place, hence `let _`.
+    let _ = window.with_webview(|webview| unsafe {
+        let _ = webview
+            .controller()
+            .CoreWebView2()
+            .and_then(|core| core.Settings())
+            .and_then(|settings| settings.SetAreDefaultContextMenusEnabled(false));
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
@@ -272,7 +296,7 @@ pub fn run() {
                 clamp_window_to_min(window, *size);
             }
         })
-        .setup(|_app| {
+        .setup(|app| {
             // The first launch's document, on the platforms that deliver it as an
             // argument. Queued rather than opened directly: the webview does not
             // exist yet, so the frontend drains this through `take_opened_files`
@@ -281,7 +305,16 @@ pub fn run() {
             {
                 let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 let paths = argv_osf_paths(std::env::args().skip(1), &cwd);
-                queue_opened_files(_app.handle(), paths);
+                queue_opened_files(app.handle(), paths);
+            }
+            // The declarative `main` window already exists here: Tauri builds config
+            // windows before running this hook. Host-layer only — JavaScript
+            // `contextmenu` routing is untouched.
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    disable_webview2_default_context_menu(&window);
+                }
             }
             Ok(())
         })
