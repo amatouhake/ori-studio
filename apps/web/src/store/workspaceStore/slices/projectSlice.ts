@@ -332,6 +332,10 @@ async function refreshAlwaysOnCamvDiagnostics(
 const CLEAR_CP_SELECTION_AFTER_OPERATIONS = new Set<OristudioCpOperationId>([
   'LineSegmentDelete',
   'CreaseMakeAux',
+  // Advance removes + re-appends every line it touches, so kept line ids
+  // would name creases the user never picked — the same shift reason
+  // VertexMove below clears for.
+  'CreaseAdvanceType',
   'CreaseMove',
   'CreaseCopy',
   'CreaseMove4p',

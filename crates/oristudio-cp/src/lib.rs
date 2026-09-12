@@ -2319,13 +2319,67 @@ fn dispatch_command(
         }
         OperationId::OrganizeCircles => operations::circle::organize(&mut document.crease_pattern),
         OperationId::CreaseAdvanceType => {
+            // `line_ids` are one-based POSITIONS, not stable ids, and the kernel
+            // op below removes + re-appends per call — so every pre-resolved index
+            // after the first is stale (this loop once advanced A twice and B never
+            // for ids {1,2,3} while still reporting `Changed 3`). Snapshot the
+            // targeted segments by value up front and re-resolve each one to its
+            // current index before advancing — the same snapshot-by-value shape
+            // `make_aux` uses for the identical reason. Duplicate ids advance
+            // their line once.
             let line_indices = required_line_indices(&command)?;
-            line_indices
+            let mut distinct: Vec<usize> = Vec::with_capacity(line_indices.len());
+            for index in line_indices {
+                if !distinct.contains(&index) {
+                    distinct.push(index);
+                }
+            }
+            let targets: Vec<LineSegment> = distinct
                 .iter()
-                .filter(|index| {
-                    operations::color::advance_line_type(&mut document.crease_pattern, **index)
-                })
-                .count()
+                .filter_map(|index| document.crease_pattern.line_segments.get(*index).cloned())
+                .collect();
+            let mut changed = 0;
+            for target in &targets {
+                let Some(current) = document
+                    .crease_pattern
+                    .line_segments
+                    .iter()
+                    .position(|candidate| candidate == target)
+                else {
+                    continue;
+                };
+                // The kernel op is the single-click cycle shared with the click
+                // tool: `selected` is cycle *state* (`Black0/0 -> Black0/2 ->
+                // Red1/0 -> Blue2/0 -> ...`), so a menu batch over
+                // `CreaseSelect`-stamped lines (`selected == 2`) would no-op on
+                // every mountain/valley. The menu verb is "advance the crease
+                // TYPE" — edge -> mountain -> valley — so steer each folding
+                // line into the arm that advances its colour. The per-line table
+                // itself stays oracle-identical; only what the batch presents to
+                // it changes.
+                match document.crease_pattern.line_segments[current].color {
+                    LineColor::Black0 => {
+                        document.crease_pattern.line_segments[current].selected = 2;
+                    }
+                    LineColor::Red1 | LineColor::Blue2 => {
+                        document.crease_pattern.line_segments[current].selected = 0;
+                    }
+                    _ => {}
+                }
+                operations::color::advance_line_type(&mut document.crease_pattern, current);
+                // The op re-appends, so the advanced line is last. Count it only
+                // when its colour actually moved — the old unconditional-`true`
+                // count reported no-ops (selected M/V, auxiliary lines) as changed.
+                if document
+                    .crease_pattern
+                    .line_segments
+                    .last()
+                    .is_some_and(|advanced| advanced.color != target.color)
+                {
+                    changed += 1;
+                }
+            }
+            changed
         }
         OperationId::CreaseMove => {
             let line_indices = required_line_indices(&command)?;
