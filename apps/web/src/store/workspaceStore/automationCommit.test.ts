@@ -30,12 +30,14 @@ describe('application publication', () => {
   });
   it('refuses a user edit that lands while the replacement is prepared, freeing the unused handle', async () => {
     const before = useWorkspaceStore.getState(); const next = document('agent');
+    next.document.crease_pattern.texts = [{ x: 1, y: 2, text: 'Must not leak after conflict' }];
     const prepared = { state: next, install: vi.fn(), discard: vi.fn(async () => undefined) };
     vi.mocked(prepareOristudioCpReplacement).mockImplementationOnce(async () => {
       useWorkspaceStore.setState({ oristudioCpDocument: document('user edit') }); return prepared;
     });
     await expect(before.commitCpExperiment(next.document, captureCpExperimentBase(before), 'agent')).rejects.toMatchObject({ code: 'conflict' });
     expect(prepared.install).not.toHaveBeenCalled(); expect(prepared.discard).toHaveBeenCalledOnce();
+    expect(useWorkspaceStore.getState().oristudioCpAnnotations).toBe(before.oristudioCpAnnotations);
     expect(useWorkspaceStore.getState().oristudioCpDocument?.document.title).toBe('user edit');
   });
   it('refuses publication during an asynchronous application action and after access revocation', async () => {

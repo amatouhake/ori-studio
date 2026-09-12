@@ -1,3 +1,4 @@
+import { normalizeDocumentTexts } from '../../../cp-workspace/annotations/textInterchange';
 import { bpDocumentSymmetry, type BpDocumentSymmetry } from '../../../lib/bpTreeSymmetry';
 import type { OristudioCpDocumentSnapshot } from '../../../engine/oristudioCpTypes';
 import { AutomationError } from '../../../automation/contracts';
@@ -46,7 +47,8 @@ export const createAutomationSlice: WorkspaceSliceCreator<AutomationSlice> = (se
       if (!matchesCpExperimentBase(get(), base)) throw new AutomationError('conflict', 'The live Edit document changed. Export this experiment or begin a new one from the live document; no user work was replaced.');
     };
     assertBase();
-    const prepared = await prepareOristudioCpReplacement(document);
+    const normalized = normalizeDocumentTexts(document, base.annotations);
+    const prepared = await prepareOristudioCpReplacement(normalized.document);
     try {
       assertBase();
       const s = get();
@@ -63,6 +65,7 @@ export const createAutomationSlice: WorkspaceSliceCreator<AutomationSlice> = (se
       prepared.install();
       const revision = s.oristudioCpRevision + 1;
       set({ oristudioCpDocument: prepared.state, oristudioCpRevision: revision,
+        oristudioCpAnnotations: normalized.annotations,
         oristudioCpOperationDescriptors: prepared.state.operationDescriptors, oristudioCpLineage: markCpLineageEdited(s.oristudioCpLineage),
         oristudioCpSelection: emptyOristudioCpSelection(), oristudioCpActiveDiagnosticId: null,
         oristudioCpCamvResult: null, oristudioCpError: null, error: null,

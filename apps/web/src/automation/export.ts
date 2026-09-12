@@ -1,7 +1,8 @@
+import { flattenDocumentTexts, normalizeDocumentTexts } from '../cp-workspace/annotations/textInterchange';
 import { createNativeCreasePatternProjectFile, createNativeProjectFile, serializeNativeProjectFile } from '../lib/nativeProjectFile';
-import { textCoordinate, emptyOristudioCpSelection, DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS } from '../lib/creasePatternViewport';
+import { emptyOristudioCpSelection, DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS } from '../lib/creasePatternViewport';
 import { importedCpLineage } from '../lib/oristudioCpLineage';
-import { flattenTextAnnotations, isImageAnnotation, isTextAnnotation, isSuppressionRegionAnnotation } from '../cp-workspace/annotations/annotation';
+import { isImageAnnotation, isTextAnnotation, isSuppressionRegionAnnotation } from '../cp-workspace/annotations/annotation';
 import { collectExportLossWarnings, blockingExportLoss, type ExportFormat } from '../lib/supersetFeatures';
 import { defaultBpDocumentSymmetry } from '../lib/bpTreeSymmetry';
 import { folded3dExportHandles } from '../cp-workspace/folded/foldedFigureInterchange';
@@ -27,6 +28,7 @@ export async function exportDesign(data: DesignData, title: string, format: stri
   const policyLosses = data.kind === 'crease_pattern' && ['cp', 'ori', 'fold', 'svg', 'png'].includes(format)
     ? collectExportLossWarnings(format as ExportFormat, {
       lineSegments: data.document.crease_pattern.line_segments,
+      kernelTexts: data.document.crease_pattern.texts,
       images: base?.annotations.filter(isImageAnnotation) ?? [], richText: base?.annotations.filter(isTextAnnotation) ?? [],
       suppressionRegions: base?.annotations.filter(isSuppressionRegionAnnotation) ?? [],
       inlineSimulations: base?.simulations ?? [], foldedFigures: base?.figures ?? [], bpSymmetry: defaultBpDocumentSymmetry(),
@@ -43,7 +45,7 @@ export async function exportDesign(data: DesignData, title: string, format: stri
   }
   if (blockingExportLoss(policyLosses).length) throw new AutomationError('export_loss_blocked', 'This format changes crease semantics. Export FOLD for crease interchange or OSF for the editable project.', { format, losses, alternatives: ['fold', 'osf'] });
   if (losses.length && !allowLoss) throw new AutomationError('export_loss_confirmation_required', 'Review losses and retry with allow_loss=true, or export OSF.', { format, losses, alternatives: ['osf'] });
-  const texts = data.kind === 'crease_pattern' ? [...data.document.crease_pattern.texts.map(t => ({ x: textCoordinate(t.x), y: textCoordinate(t.y), text: t.text })), ...flattenTextAnnotations(base?.annotations ?? [])] : [];
+  const texts = data.kind === 'crease_pattern' ? flattenDocumentTexts(data.document.crease_pattern.texts, base?.annotations ?? []) : [];
   let content: string;
   let mimeType = 'text/plain';
   let encoding = 'utf8';
@@ -65,12 +67,13 @@ export async function exportDesign(data: DesignData, title: string, format: stri
   else if (format === 'osf') {
     mimeType = 'application/vnd.oristudio.project+json';
     if (data.kind === 'crease_pattern') {
+      const normalized = normalizeDocumentTexts(data.document, base?.annotations);
       content = serializeNativeProjectFile(createNativeCreasePatternProjectFile({
         title, filename: 'design.osf', path: null, appVersion: APP_VERSION,
-        document: data.document, source: null, foldProjection: null, foldArtifacts: null, creaseColorMode: 'mvf',
+        document: normalized.document, source: null, foldProjection: null, foldArtifacts: null, creaseColorMode: 'mvf',
         selection: emptyOristudioCpSelection(), viewport: DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS,
         foldedFigures: base?.figures ?? [], activeFoldedFigureId: null, lineage: importedCpLineage(),
-        images: base?.annotations.filter(isImageAnnotation), textAnnotations: base?.annotations.filter(isTextAnnotation),
+        images: base?.annotations.filter(isImageAnnotation), textAnnotations: normalized.annotations.filter(isTextAnnotation),
         suppressionRegions: base?.annotations.filter(isSuppressionRegionAnnotation), inlineSimulations: base?.simulations,
         extensions: base?.extensions,
       }));
