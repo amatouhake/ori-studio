@@ -262,3 +262,62 @@ full-suite verification was repeated with four workers and passed cleanly:
 486 files, 6,052 tests, no unhandled errors. Full workspace Rust/oracle suites
 were not run because no ported engine behavior or Rust source changed; desktop
 and the existing native serialization suites cover the affected boundary.
+
+## Provenance, BP topology and text review (2026-09-12)
+
+The next four findings were confirmed. The earlier interval-coverage fix still
+used geometric proximity to establish identity. A disconnected parallel crease
+only 0.000002 away could borrow a real hinge's measurement. That general claim is
+superseded; neither the older reports nor the independently measured Ginkgo OBJ
+have been deleted or rewritten.
+
+- **Source identity:** MCP now tags every exported source edge before face
+  inference with a fresh identity. Existing split/remap provenance carries those
+  identities; actual redundant-vertex merges union their contributors. Generated
+  triangulation hinges receive empty provenance and removed primitives lose
+  theirs. Inputs are not mutated. Measurement indexes constraints by source ID
+  first; geometric intervals only measure coverage *within proven lineage*.
+  Coincident-source deduplication that retains only one owner leaves the other
+  target incomplete, rather than inventing a many-to-one relationship. Missing
+  or ambiguous lineage yields unknown attainment. Numeric tolerance remains useful
+  for known contributors, but cannot establish identity. Principal endpoint-angle,
+  winding-history and collision limitations remain unchanged.
+- **BP topology:** after each `delete_leaves` operation, before the next operation
+  can reuse an ID, MCP filters native pairs against surviving vertices with the
+  same `filterBpTreeSymmetryPairs` helper used by application mutations. The
+  input snapshot remains unchanged if a batch fails. Export and publication carry
+  the pruned native symmetry state.
+- **ORI text:** export supplies the scratch kernel with imported plain text plus
+  flattened canvas annotations, using the application's coordinate and text
+  helpers. The adapter replaces kernel text transiently, so omitting that list
+  previously erased supported text. The same supplied-text fix applies to full
+  FOLD export. Rich formatting/box information still requires explicit loss
+  acknowledgement; plain text is preserved instead of discarded wholesale.
+- **Quarantine:** selected-frame Y bounds now use only edge-referenced vertices.
+  Unused positive/negative outliers cannot disguise #366/#367, and valid
+  frame-only files still work. The excluded upstream issues remain untouched.
+
+Focused regressions include close parallel creases, split/merged contributors,
+numeric perturbation, missing/ambiguous lineage, input immutability, BP ID reuse,
+plain and flattened text, and unused-coordinate quarantine bypasses. Public HTTP
+probes additionally exercise clone → BP deletion/reuse → OSF/publication, ORI and
+FOLD text through two ORI export/re-import generations, unused-vertex exclusions,
+and the close-parallel case through actual native CP export and CPU simulation.
+
+The full simulator suite reported 265 passing tests, one skipped GPU test and
+three golden-trace failures. The same three failures and exact values reproduce
+from untouched commit `d412c3f0` in a temporary checkout: bird-base (1.434e-18),
+high-valence (7.228e-18), degenerate-zero-area (4.583e-19). These baseline differences
+were not re-blessed or fixed as unrelated work. The preparation changes carry
+metadata only; the origami geometry and solver algorithms are unchanged.
+
+Validation for this pass: web lint, typecheck, full production build (all WASM
+bridges, simulator, landing prerender), desktop check/build and all 23 desktop
+library tests pass. The final metadata-only package adjustment was rebuilt and
+its 31 preparation tests pass. All five public desktop MCP probes pass, including
+the actual close-parallel false-attainment reproduction, BP ID reuse after an
+active clone, both text round trips, and unused-vertex quarantine exclusions.
+The full web suite passes 487 files / 6,059 tests. The simulator suite's three
+identical baseline golden failures above remain the only validation limitation.
+[Curated evidence](evidence/provenance/README.md) preserves the concrete results
+and exact baseline comparison without raw transcripts.

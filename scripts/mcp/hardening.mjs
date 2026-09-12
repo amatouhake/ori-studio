@@ -109,6 +109,45 @@ try {
   assert(Math.max(...ys) - Math.min(...ys) < 1e-4);
   await writeFile(resolve(out, 'dangling-flat.obj'), flatObj.content);
   await mutate('discard_design', addr());
+  // Metadata vertices are not part of the native imported crease geometry.
+  for (const vertices_coords of [[[0, -2], [1, -1], [0, 100]], [[0, 2], [1, 2], [0, -100]]]) {
+    await call('begin_design', { request_id: randomUUID(), source: 'import', kind: 'crease_pattern', format: 'fold',
+      content: JSON.stringify({ file_frames: [{ vertices_coords, edges_vertices: [[0, 1]], edges_assignment: ['M'] }] }) }, 'upstream_import_limit');
+  }
+  draft = await mutate('begin_design', { source: 'import', kind: 'crease_pattern', format: 'fold', content: JSON.stringify({ ...original, file_frames: [{ ...frame, vertices_coords: [...frame.vertices_coords, [0, -999]] }],
+    'oriedita:texts_coords': [[2, 3]], 'oriedita:texts_text': ['root metadata note'] }) });
+  await mutate('discard_design', addr());
+  // Exercise both native ORI and FOLD text through actual MCP import/export.
+  for (const format of ['ori', 'fold']) {
+    const text = 'MCP text round trip — 鳥';
+    const input = format === 'ori' ? { '@version': 'v1.1', lineSegments: [], auxLineSegments: [], circles: [], texts: [{ x: 12, y: 34, text }] }
+      : { ...frame, edges_foldAngle: [0, 0, 0, 0, -180], 'oriedita:texts_coords': [[2, 3]], 'oriedita:texts_text': [text] };
+    draft = await mutate('begin_design', { source: 'import', kind: 'crease_pattern', format, content: JSON.stringify(input) });
+    let expectedTexts;
+    for (let generation = 0; generation < 2; generation++) {
+      const ori = await call('export_design', { ...addr(), format: 'ori' });
+      const texts = JSON.parse(ori.content).texts;
+      assert.equal(texts.length, 1); assert.equal(texts[0].text, text);
+      if (expectedTexts) assert.deepEqual(texts, expectedTexts); expectedTexts = texts;
+      await mutate('discard_design', addr());
+      draft = await mutate('begin_design', { source: 'import', kind: 'crease_pattern', format: 'ori', content: ori.content });
+    }
+    evidence.push({ ori_text_roundtrip: { imported_format: format, texts: expectedTexts, generations: 2 } });
+    await mutate('discard_design', addr());
+  }
+  // Offset is 0.000002 in normalized solver coordinates. Only the long hinge
+  // belongs to bounded faces; proximity must not credit the short disconnected one.
+  const closeCp = ['1 -200 -200 200 -200', '1 200 -200 200 200', '1 200 200 -200 200', '1 -200 200 -200 -200',
+    '2 -200 -200 200 200', '2 -80 -79.9992 -40 -39.9992'].join('\n');
+  draft = await mutate('begin_design', { source: 'import', kind: 'crease_pattern', format: 'cp', content: closeCp });
+  const close = await job(addr(), 0.55);
+  const closeFold = JSON.parse((await call('export_design', { ...addr(), format: 'fold' })).content);
+  await writeFile(resolve(out, 'close-parallel-debug.json'), JSON.stringify({ source: closeFold, result: close.result }, null, 2));
+  assert.equal(closeFold.edges_assignment.filter(a => a === 'M').length, 2);
+  assert.equal(close.result.target_attainment.status, 'unknown');
+  assert(close.result.target_attainment.source_coverage.targets.some(t => t.status === 'omitted'));
+  evidence.push({ close_parallel_provenance: close.result });
+  await mutate('discard_design', addr());
   await writeFile(resolve(out, 'report.json'), JSON.stringify({ success: true, evidence, forced_render_race: 'Covered by public service regression with a controlled async TreeMaker completion, without adding production delay hooks.' }, null, 2));
   console.log('MCP HARDENING PROBE PASSED', out);
 } finally { await client.close(); }

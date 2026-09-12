@@ -32,6 +32,21 @@ try {
     await mutate('commit_design', { ...address, label: 'MCP symmetry publication' });
     await mutate('discard_design', address);
   }
-  await writeFile(resolve(out, 'report.json'), JSON.stringify({ success: true, source: 'normal desktop OSF file-open', symmetry: expected, public_mcp_generations: 2 }, null, 2));
+  const draft = await mutate('begin_design', { source: 'active', kind: 'box_pleat' });
+  const edited = await mutate('edit_box_pleat', { draft_id: draft.draft_id, revision: draft.revision, operations: [
+    { type: 'delete_leaves', ids: [1] }, { type: 'add_leaf', parent: 0, length: 2 },
+  ] });
+  const address = { draft_id: edited.draft_id, revision: edited.revision };
+  assert((await call('inspect_design', address)).project.design.tree.nodes.some(n => n.id === 1), 'Kernel reused the deleted ID');
+  const exported = await call('export_design', { ...address, format: 'osf' });
+  assert.deepEqual(JSON.parse(exported.content).workspace.designs[0].viewState.symmetry.pairs, []);
+  await mutate('commit_design', { ...address, label: 'Unrelated replacement leaf' });
+  const clone = await mutate('begin_design', { source: 'active', kind: 'box_pleat' });
+  const checked = await call('export_design', { draft_id: clone.draft_id, revision: clone.revision, format: 'osf' });
+  assert.deepEqual(JSON.parse(checked.content).workspace.designs[0].viewState.symmetry.pairs, []);
+  await writeFile(resolve(out, 'symmetry-after-id-reuse.osf'), checked.content);
+  await mutate('discard_design', address);
+  await mutate('discard_design', { draft_id: clone.draft_id, revision: clone.revision });
+  await writeFile(resolve(out, 'report.json'), JSON.stringify({ success: true, source: 'normal desktop OSF file-open', symmetry: expected, public_mcp_generations: 2, deleted_id_reused_without_pairing: true }, null, 2));
   console.log('MCP NATIVE STATE PROBE PASSED', out);
 } finally { await client.close(); }

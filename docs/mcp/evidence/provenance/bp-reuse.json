@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "source": "normal desktop OSF file-open",
+  "symmetry": {
+    "enabled": true,
+    "pairs": [
+      {
+        "v1": 1,
+        "v2": 2
+      }
+    ],
+    "fold": "diagonal",
+    "quarterTurn": true,
+    "sidesSwapped": true
+  },
+  "public_mcp_generations": 2,
+  "deleted_id_reused_without_pairing": true
+}

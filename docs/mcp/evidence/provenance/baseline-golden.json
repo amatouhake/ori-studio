@@ -1,0 +1,21 @@
+{
+  "baseline_commit": "d412c3f05278326ea909d1e3a4ada3418dd61514",
+  "identical_on_baseline": true,
+  "failures": [
+    {
+      "fixture": "bird-base",
+      "worst_delta": "1.434e-18 at value 103 (after 1000 steps, vertex 7)",
+      "expected_and_actual": "1.2150379503584762e-18, got -2.189374407474994e-19"
+    },
+    {
+      "fixture": "high-valence",
+      "worst_delta": "7.228e-18 at value 153 (after 1000 steps, vertex 0)",
+      "expected_and_actual": "2.1041491204240122e-17, got 2.826983049373068e-17"
+    },
+    {
+      "fixture": "degenerate-zero-area",
+      "worst_delta": "4.583e-19 at value 45 (after 1000 steps, vertex 3)",
+      "expected_and_actual": "9.41724241081155e-19, got 1.4000441321863207e-18"
+    }
+  ]
+}
