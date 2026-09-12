@@ -6,6 +6,7 @@
 //! back to a lossless `.fold` body. That converts an entire class of
 //! silent-wrongness bug into, at worst, a larger link.
 
+use crate::geometry::FoldDirection;
 use std::collections::BTreeMap;
 
 use crate::checks_spatial::dispatched_camv;
@@ -32,6 +33,10 @@ pub fn creases_match(source: &[LineSegment], decoded: &[LineSegment]) -> bool {
         } else {
             (s.b, s.a)
         };
+        // Every field the codec carries participates: a regression that drops
+        // the hint or custom-colour extensions must fail the self-check, not
+        // match a stripped decoding. (Session state — `active`, `selected` —
+        // is deliberately not carried and stays out of the key.)
         (
             a.x.to_bits(),
             a.y.to_bits(),
@@ -39,6 +44,17 @@ pub fn creases_match(source: &[LineSegment], decoded: &[LineSegment]) -> bool {
             b.y.to_bits(),
             s.color.number(),
             crate::geometry::FoldMagnitude::to_transport(s.fold_magnitude),
+            match s.fold_direction_hint {
+                None => 0u8,
+                Some(FoldDirection::Mountain) => 1,
+                Some(FoldDirection::Valley) => 2,
+            },
+            s.customized,
+            (
+                s.customized_color.red,
+                s.customized_color.green,
+                s.customized_color.blue,
+            ),
         )
     };
     let mut counts: BTreeMap<_, i64> = BTreeMap::new();
