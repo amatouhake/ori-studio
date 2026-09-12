@@ -760,8 +760,35 @@ fn solve_recognized_candidate(
     }
     let topology_changed =
         weak_selected_spans > 0 || dropped_legacy_spans > 0 || moved_vertices > 0;
-    let status = compiler_status(&compiler_report, topology_changed, false);
-    let warnings = compiler_warnings(&compiler_report);
+    // Zero-evidence gate: with no interior selected span, every line in the
+    // export is an evidence-independent locked-border span
+    // (`CandidateCreaseSourceKind::BorderGenerated`, selection policy
+    // `Locked`, boundary role `PaperBoundary` — exactly the spans
+    // `exact_export_summary` counts as `border_edges`). The trivial graph
+    // then solves cleanly, so without this gate a blank input reports
+    // "valid" with phantom paper-rectangle lines. Refuse like the LegacyV2
+    // control does on the identical input, and name the cause in the
+    // warnings so the refusal is distinguishable from a solve failure.
+    let border_only_no_crease_evidence = summary.interior_edges == 0;
+    let status = if border_only_no_crease_evidence {
+        "failed".to_owned()
+    } else {
+        compiler_status(&compiler_report, topology_changed, false)
+    };
+    let mut warnings = compiler_warnings(&compiler_report);
+    if border_only_no_crease_evidence {
+        warnings.push(DecodeWarning {
+            code: "border_only_no_crease_evidence".to_owned(),
+            message: "No interior crease evidence was detected; the output is the paper border only, not a detected crease pattern".to_owned(),
+            severity: "error".to_owned(),
+            edge_indices: Vec::new(),
+            vertex_indices: Vec::new(),
+            details: Some(serde_json::json!({
+                "border_edge_count": summary.border_edges,
+                "interior_edge_count": summary.interior_edges,
+            })),
+        });
+    }
     let repair_actions = compiler_repair_actions(&compiler_report);
     let quality_report = serde_json::json!({
         "decoder_backend": DecoderBackend::LegacyCandidateExactSolveV1.id(),
@@ -2082,6 +2109,66 @@ mod tests {
                 .as_array()
                 .expect("edges")
                 .len()
+        );
+    }
+    /// F-109: zero-crease-evidence input must not decode to status "valid".
+    ///
+    /// A blank (all-negative-logit) model output carries no line support, but
+    /// the unconditional locked-border machinery still exports the paper
+    /// rectangle (border spans only, zero interior). The result must refuse
+    /// (`"failed"`) and name the cause — matching the LegacyV2 control, which
+    /// already fails the identical input — never `"valid"` with phantom lines.
+    #[test]
+    fn exact_solve_refuses_zero_evidence_border_only_output() {
+        // All-negative logits on every head: no line support, no junctions,
+        // no contacts — the synthetic zero-evidence input from the F-109
+        // probe (`blank()` in the audit's cross-backend decode differential).
+        let size = 64usize;
+        let pixels = size * size;
+        let line_logits = vec![-8.0; pixels];
+        let junction_logits = vec![-8.0; pixels];
+        let assignment_logits = vec![-4.0; pixels * 4];
+        let non_crease_logits = vec![-8.0; pixels];
+        let line_style_logits = vec![-4.0; pixels * 4];
+        let boundary_contact_logits = vec![-8.0; pixels];
+        let outputs = DenseOutputs::from_legacy_heads(
+            &line_logits,
+            &junction_logits,
+            &assignment_logits,
+            &non_crease_logits,
+            &line_style_logits,
+            &boundary_contact_logits,
+        );
+        let config = DecodeConfig {
+            image_size: size as u32,
+            threshold: 0.65,
+            carrier_extent_padding_px: size as f32,
+            ..DecodeConfig::default()
+        };
+        let decoded = decode_dense_outputs_with_backend(
+            outputs,
+            config,
+            DecoderBackend::LegacyCandidateExactSolveV1,
+        )
+        .expect("zero-evidence decode succeeds with a refusal status");
+        assert_eq!(
+            decoded.report.interior_edge_count, 0,
+            "blank input must select no interior spans: {:?}",
+            decoded.report
+        );
+        assert_eq!(
+            decoded.report.status, "failed",
+            "border-only output must refuse, not report valid: {:?}",
+            decoded.report
+        );
+        assert!(
+            decoded
+                .report
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "border_only_no_crease_evidence"),
+            "refusal must carry the border-only warning: {:?}",
+            decoded.report
         );
     }
 
