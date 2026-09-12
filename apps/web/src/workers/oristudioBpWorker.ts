@@ -310,16 +310,23 @@ const api = {
     // and only when two flaps share a coordinate.
     jitterSeed = Math.floor(Math.random() * 0x1_0000_0000)
   ): Promise<unknown> {
-    return call(() =>
+    // Captured, not just forwarded: the kernel bakes this seed into the
+    // view-mode initial vector, so echoing it on the request is what makes a
+    // run replayable — capture-replay reads it back off the request and passes
+    // it as `jitterSeed`. Attached rather than enveloped so the request keeps
+    // its shape for every downstream consumer (serde ignores the extra field).
+    const effectiveJitterSeed = jitterSeed;
+    const request = await call(() =>
       bp_optimizer_request(
         handle,
         layout,
         useBasinHopping,
         randomCandidateCount,
         useDimension,
-        jitterSeed
+        effectiveJitterSeed
       )
     );
+    return { ...(request as Record<string, unknown>), jitterSeed: effectiveJitterSeed };
   },
   async checkOptimizerResult(result: unknown): Promise<void> {
     return call(() => bp_check_optimizer_result(result));
