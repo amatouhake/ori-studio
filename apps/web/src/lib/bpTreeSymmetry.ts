@@ -54,7 +54,7 @@ export function bpTreeSymmetryDefaultLoc(sheet: OristudioBpSheet): Point {
   return paperCenter(Math.max(1, sheet.width), Math.max(1, sheet.height));
 }
 
-function vertexExists(tree: OristudioBpTreeView, id: number): boolean {
+function vertexExists(tree: { vertices: readonly { id: number }[] }, id: number): boolean {
   return tree.vertices.some((vertex) => vertex.id === id);
 }
 
@@ -235,7 +235,7 @@ export function removeBpTreeSymmetryPair(
 
 /** Drop pairs that reference a removed vertex (or degenerated to a self-pair). */
 export function filterBpTreeSymmetryPairs(
-  tree: OristudioBpTreeView,
+  tree: { vertices: readonly { id: number }[] },
   pairs: BpTreeSymmetryPair[]
 ): BpTreeSymmetryPair[] {
   return pairs.filter(

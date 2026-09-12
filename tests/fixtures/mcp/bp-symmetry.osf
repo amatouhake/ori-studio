@@ -1,0 +1,51 @@
+{
+  "format": "oristudio.project",
+  "schemaVersion": 8,
+  "minimumReaderSchemaVersion": 1,
+  "createdBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T06:50:38.870Z"
+  },
+  "modifiedBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T06:50:38.870Z"
+  },
+  "workspace": {
+    "id": "workspace",
+    "title": "MCP native symmetry fixture",
+    "activeDocumentId": "agent-design",
+    "designs": [
+      {
+        "id": "agent-design",
+        "title": "MCP native symmetry fixture",
+        "payload": {
+          "kind": "box-pleat",
+          "text": "{\"version\":\"0.7\",\"design\":{\"title\":\"\",\"mode\":\"tree\",\"layout\":{\"sheet\":{\"type\":\"rect\",\"width\":16,\"height\":16},\"flaps\":[{\"id\":1,\"x\":3,\"y\":3,\"width\":0,\"height\":0},{\"id\":2,\"x\":13,\"y\":3,\"width\":0,\"height\":0},{\"id\":3,\"x\":8,\"y\":13,\"width\":0,\"height\":0}],\"stretches\":[]},\"tree\":{\"sheet\":{\"type\":\"rect\",\"width\":20,\"height\":20},\"nodes\":[{\"id\":0,\"x\":10,\"y\":10,\"name\":\"\"},{\"id\":1,\"x\":4,\"y\":4,\"name\":\"\"},{\"id\":2,\"x\":16,\"y\":4,\"name\":\"\"},{\"id\":3,\"x\":10,\"y\":16,\"name\":\"\"}],\"edges\":[{\"n1\":0,\"n2\":1,\"length\":2},{\"n1\":0,\"n2\":2,\"length\":2},{\"n1\":0,\"n2\":3,\"length\":2}]}},\"history\":{\"index\":3,\"savedIndex\":0,\"steps\":[{\"commands\":[{\"type\":1,\"tag\":\"f1\",\"old\":{\"x\":0,\"y\":0},\"new\":{\"x\":3,\"y\":3}}],\"mode\":\"tree\",\"before\":[\"f1\"],\"after\":[\"f1\"]},{\"commands\":[{\"type\":1,\"tag\":\"f2\",\"old\":{\"x\":0,\"y\":0},\"new\":{\"x\":13,\"y\":3}}],\"mode\":\"tree\",\"before\":[\"f2\"],\"after\":[\"f2\"]},{\"commands\":[{\"type\":1,\"tag\":\"f3\",\"old\":{\"x\":0,\"y\":0},\"new\":{\"x\":8,\"y\":13}}],\"mode\":\"tree\",\"before\":[\"f3\"],\"after\":[\"f3\"]}]}}",
+          "format": "bps"
+        },
+        "viewState": {
+          "symmetry": {
+            "enabled": true,
+            "pairs": [
+              {
+                "v1": 1,
+                "v2": 2
+              }
+            ],
+            "fold": "diagonal",
+            "quarterTurn": true,
+            "sidesSwapped": true
+          }
+        },
+        "extensions": {}
+      }
+    ],
+    "creasePattern": null,
+    "unknownDesigns": [],
+    "viewState": {}
+  },
+  "artifacts": {},
+  "extensions": {}
+}

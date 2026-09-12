@@ -1,3 +1,4 @@
+import type { AutomationSlice } from './slices/automationSlice';
 import type { StateCreator } from 'zustand';
 import type {
   ConditionKind,
@@ -571,8 +572,8 @@ export interface HistorySliceActions {
   beginHistoryCheckpoint: () => Promise<TreeHistoryCheckpoint | null>;
   commitHistoryCheckpoint: (checkpoint: TreeHistoryCheckpoint | null, label?: string) => void;
   clearHistory: () => void;
-  undo: () => Promise<void>;
-  redo: () => Promise<void>;
+  undo: (target?: 'crease-pattern') => Promise<void>;
+  redo: (target?: 'crease-pattern') => Promise<void>;
 }
 
 export type HistorySlice = HistorySliceState & HistorySliceActions;
@@ -1423,6 +1424,7 @@ export interface ExploriSlice {
 }
 
 export type WorkspaceState =
+  AutomationSlice &
   ProjectSlice &
   ExploriSlice &
   HistorySlice &

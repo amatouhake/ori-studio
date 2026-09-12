@@ -1,0 +1,646 @@
+{
+  "format": "oristudio.project",
+  "schemaVersion": 8,
+  "minimumReaderSchemaVersion": 1,
+  "createdBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T06:57:55.113Z"
+  },
+  "modifiedBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T06:57:55.113Z"
+  },
+  "workspace": {
+    "id": "workspace",
+    "title": "Ginkgo shell — radial pleated square",
+    "activeDocumentId": "crease-pattern",
+    "designs": [],
+    "creasePattern": {
+      "id": "crease-pattern",
+      "kind": "crease-pattern",
+      "title": "Ginkgo shell — radial pleated square",
+      "source": {
+        "format": "osf",
+        "filename": "design.osf",
+        "path": null
+      },
+      "creasePattern": {
+        "engine": "oristudio-cp",
+        "document": {
+          "title": "Ginkgo shell — radial pleated square",
+          "crease_pattern": {
+            "line_segments": [
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": 200,
+                  "y": 146.41016151377548
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": 200,
+                  "y": 84.52994616207486
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": 199.99999999999997,
+                  "y": 5.684341886080804e-14
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": 200,
+                  "y": -146.41016151377534
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": 107.17967697244906,
+                  "y": -200
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": 0,
+                  "y": -200
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": -107.17967697244902,
+                  "y": -200
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": -200,
+                  "y": -146.41016151377562
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": -200,
+                  "y": -2.8421709430404014e-14
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": -200,
+                  "y": 84.52994616207486
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": -200,
+                  "y": 146.4101615137754
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                },
+                "fold_magnitude": 1800000000
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": 200
+                },
+                "b": {
+                  "x": 0,
+                  "y": 200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": 200,
+                  "y": 200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": -200
+                },
+                "b": {
+                  "x": 107.17967697244906,
+                  "y": -200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": -200
+                },
+                "b": {
+                  "x": -200,
+                  "y": -146.41016151377562
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 200
+                },
+                "b": {
+                  "x": 199.99999999999997,
+                  "y": 146.41016151377548
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 199.99999999999997,
+                  "y": 146.41016151377548
+                },
+                "b": {
+                  "x": 200,
+                  "y": 84.52994616207486
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 84.52994616207486
+                },
+                "b": {
+                  "x": 200,
+                  "y": 5.684341886080804e-14
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 5.684341886080804e-14
+                },
+                "b": {
+                  "x": 200.00000000000003,
+                  "y": -146.41016151377534
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200.00000000000003,
+                  "y": -146.41016151377534
+                },
+                "b": {
+                  "x": 200,
+                  "y": -200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 107.17967697244906,
+                  "y": -200
+                },
+                "b": {
+                  "x": 0,
+                  "y": -199.99999999999997
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": -199.99999999999997
+                },
+                "b": {
+                  "x": -107.17967697244903,
+                  "y": -199.99999999999997
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -107.17967697244903,
+                  "y": -199.99999999999997
+                },
+                "b": {
+                  "x": -200,
+                  "y": -200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": -146.41016151377562
+                },
+                "b": {
+                  "x": -200,
+                  "y": -2.8421709430404014e-14
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": -2.8421709430404014e-14
+                },
+                "b": {
+                  "x": -200,
+                  "y": 84.52994616207486
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": 84.52994616207486
+                },
+                "b": {
+                  "x": -200.00000000000003,
+                  "y": 146.4101615137754
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200.00000000000003,
+                  "y": 146.4101615137754
+                },
+                "b": {
+                  "x": -200,
+                  "y": 200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              }
+            ],
+            "circles": [],
+            "points": [],
+            "aux_line_segments": [],
+            "texts": [],
+            "grid": {
+              "interval_grid_size": 2,
+              "grid_size": 8,
+              "grid_xa": 1,
+              "grid_xb": 0,
+              "grid_xc": 1,
+              "grid_ya": 1,
+              "grid_yb": 0,
+              "grid_yc": 1,
+              "grid_angle": 90,
+              "base_state": "WithinPaper",
+              "vertical_scale_position": 0,
+              "horizontal_scale_position": 0,
+              "draw_diagonal_gridlines": false
+            }
+          },
+          "operation_frame": {
+            "active": false,
+            "points": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 0
+              }
+            ]
+          }
+        },
+        "source": null,
+        "foldProjection": null,
+        "sourceFold": null,
+        "lineage": {
+          "kind": "imported",
+          "manualEditCount": 0,
+          "stale": false
+        },
+        "images": [],
+        "textAnnotations": [],
+        "inlineSimulations": [],
+        "suppressionRegions": []
+      },
+      "viewState": {
+        "creaseColorMode": "mvf",
+        "selection": {
+          "lines": [],
+          "points": [],
+          "circles": [],
+          "texts": [],
+          "faces": []
+        },
+        "viewport": {
+          "gridVisible": true,
+          "snapToGrid": true,
+          "snapToVertices": true,
+          "snapToLines": true,
+          "camvIssuesVisible": true,
+          "foldAngleDisplay": "opacity",
+          "lineStyle": "color",
+          "lineWidth": 1,
+          "pointSize": 1
+        },
+        "camera": null,
+        "foldedFigures": [],
+        "activeFoldedFigureId": null
+      },
+      "extensions": {}
+    },
+    "unknownDesigns": [],
+    "viewState": {}
+  },
+  "artifacts": {},
+  "extensions": {}
+}

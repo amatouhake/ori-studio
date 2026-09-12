@@ -1,3 +1,5 @@
+import { createAutomationSlice } from './slices/automationSlice';
+import { fenceWorkspaceActions } from './operationFence';
 import {
   activeDesignTab,
   selectDesignMethod,
@@ -22,7 +24,8 @@ import type { WorkspaceState } from './types';
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   devtools(
-    (...args) => ({
+    (...args) => fenceWorkspaceActions({
+      ...createAutomationSlice(...args),
       ...createProjectSlice(...args),
       ...createHistorySlice(...args),
       ...createEditingSlice(...args),

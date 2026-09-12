@@ -1059,3 +1059,27 @@ function titleFromFilename(filename: string): string {
 }
 
 export type { OristudioCpDocumentSnapshot, OristudioCpDocumentSummary };
+
+/** Prepare a replacement without touching the active handle. Publication is a
+ * synchronous handoff, so the store can compare its base snapshot and publish
+ * the prepared state in the same turn. Used by semantic document transactions. */
+export async function prepareOristudioCpReplacement(document: OristudioCpDocumentSnapshot) {
+  const api = await getOristudioCpClient();
+  const nextHandle = await api.loadDocument(document);
+  let adopted = false;
+  try {
+    const state = await buildDocumentState(api, nextHandle, currentSource, null);
+    return {
+      state,
+      install() {
+        if (adopted) throw new Error('Prepared document already consumed');
+        adopted = true;
+        const previous = handle;
+        handle = nextHandle;
+        currentSource = state.source;
+        if (previous !== null) void api.freeDocument(previous).catch(() => undefined);
+      },
+      async discard() { if (!adopted) { adopted = true; await api.freeDocument(nextHandle); } },
+    };
+  } catch (error) { await api.freeDocument(nextHandle); throw error; }
+}

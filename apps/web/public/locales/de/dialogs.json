@@ -331,6 +331,22 @@
       "system": "Systemstandard",
       "title": "Sprache"
     },
+    "mcp": {
+      "changing": "Wird geändert…",
+      "config": "MCP-Client-Konfiguration",
+      "description": "Erlaube einem externen MCP-Agenten, in dieser Desktop-Sitzung Origami zu entwerfen, zu analysieren und zu exportieren. Agenten arbeiten in getrennten Experimenten und können rückgängig machbare Änderungen auf deine Bearbeitungsfläche übertragen.",
+      "disable": "Zugriff deaktivieren",
+      "disabled": "Deaktiviert",
+      "enable": "Zugriff aktivieren",
+      "enabled": "Für diese Sitzung aktiviert",
+      "failed": "Der Agentenzugriff konnte nicht geändert werden. Starte Ori Studio neu und versuche es erneut.",
+      "hide": "Client-Konfiguration ausblenden",
+      "scope": "Verbindungen bleiben auf diesem Computer und benötigen das Zugriffstoken. Beim Deaktivieren werden Aufgaben abgebrochen und nicht übertragene Experimente verworfen.",
+      "secret": "Kopiere dies in deinen MCP-Client. Es enthält ein geheimes Token für den Zugriff auf deinen Arbeitsbereich; halte es geheim. Bei erneuter Aktivierung ändert sich die Konfiguration.",
+      "show": "Client-Konfiguration anzeigen",
+      "title": "Zugriff für KI-Agenten",
+      "unavailable": "Der Agentenzugriff ist nicht verfügbar. Starte Ori Studio neu und versuche es erneut."
+    },
     "models": {
       "current": "Aktuell",
       "description": "Die Faltmuster-Erkennung lädt ihr Modell einmalig herunter und behält es auf diesem Gerät. Ein neueres Modell wird hier und im Erkennen-Dialog angeboten; nichts wird heruntergeladen, ohne dass zuvor die Größe angezeigt wird.",

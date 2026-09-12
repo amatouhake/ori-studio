@@ -23,6 +23,8 @@ compatibility with existing tools is a priority - you will always be able to
 export to to a `.ori` file, which will just omit the images.
 
 Try the hosted app at [oristudio.dev](https://oristudio.dev/).
+The desktop app also supports [external AI agents through MCP](docs/mcp/README.md)
+for designing, checking, simulating and exporting origami in isolated experiments.
 Signed Apple Silicon DMGs are published from local notarized builds on
 [GitHub Releases](https://github.com/zacharyfmarion/ori-studio/releases) (other platforms
 coming soon, community help would be appreciated!).

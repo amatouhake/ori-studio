@@ -1,3 +1,4 @@
+import { flattenDocumentTexts } from '../cp-workspace/annotations/textInterchange';
 import type { CpImage } from '../cp-workspace/images/cpImage';
 import type { TextAnnotation } from '../cp-workspace/annotations/textAnnotation';
 import type { CpSuppressionRegion } from '../cp-workspace/annotations/suppressionRegion';
@@ -5,6 +6,7 @@ import type { InlineSimulation } from '../cp-workspace/inlineSimulation/inlineSi
 import type {
   OristudioCpFoldedFigureEntry,
   OristudioCpLineSegment,
+  OristudioCpTextElement,
 } from '../engine/oristudioCpTypes';
 import { isClassicCrease, isFoldingCrease } from './foldAngle';
 import { defaultBpDocumentSymmetry, type BpDocumentSymmetry } from './bpTreeSymmetry';
@@ -48,6 +50,10 @@ export interface SupersetPresence {
    * feature dropped by every non-`.osf` format.
    */
   richText: readonly TextAnnotation[];
+  /** Interchange-only text before import normalization. Live canvases normally
+   * have none. Count together with annotations for formats that drop content;
+   * ORI/FOLD/ORH retain this plain representation without formatting loss. */
+  kernelTexts?: readonly OristudioCpTextElement[];
   /**
    * Inline simulation windows. Placement and the region each was taken from;
    * no Oriedita format has anywhere to put either, so they are dropped whole.
@@ -104,7 +110,7 @@ export type SupersetFeatureId =
 interface SupersetFeature {
   id: SupersetFeatureId;
   /** How many are present (0 ⇒ absent). */
-  count(presence: SupersetPresence): number;
+  count(presence: SupersetPresence, format: ExportFormat): number;
   /** Formats that cannot store this feature. */
   droppedByFormats: readonly ExportFormat[];
   /**
@@ -166,7 +172,9 @@ const SUPERSET_FEATURES: readonly SupersetFeature[] = [
   },
   {
     id: 'richText',
-    count: (presence) => presence.richText.length,
+    count: (presence, format) => ['ori', 'fold', 'orh'].includes(format)
+      ? presence.richText.length
+      : flattenDocumentTexts(presence.kernelTexts ?? [], presence.richText).length,
     droppedByFormats: ALL_LOSSY_FORMATS,
   },
   {
@@ -303,7 +311,7 @@ export function collectExportLossWarnings(
   const warnings: ExportLossWarning[] = [];
   for (const feature of SUPERSET_FEATURES) {
     if (!feature.droppedByFormats.includes(format)) continue;
-    const count = feature.count(presence);
+    const count = feature.count(presence, format);
     if (count > 0) {
       warnings.push({
         id: feature.id,

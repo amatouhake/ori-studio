@@ -1,0 +1,38 @@
+{
+  "success": true,
+  "cases": [
+    {
+      "format": "ori",
+      "imported_text": "Published ori text — 鳥\nSecond line",
+      "direct_cp_losses": [
+        {
+          "id": "richText",
+          "count": 1,
+          "blocking": false
+        }
+      ],
+      "live_annotation_count": 1,
+      "kernel_text_count": 0,
+      "plain_round_trip": true,
+      "native_annotations_preserved": true,
+      "undo_redo": true
+    },
+    {
+      "format": "fold",
+      "imported_text": "Published fold text — 鳥\nSecond line",
+      "direct_cp_losses": [
+        {
+          "id": "richText",
+          "count": 1,
+          "blocking": false
+        }
+      ],
+      "live_annotation_count": 1,
+      "kernel_text_count": 0,
+      "plain_round_trip": true,
+      "native_annotations_preserved": true,
+      "undo_redo": true
+    }
+  ],
+  "ordinary_application_path": "Covered by textPublication.test.ts using real WASM serialization and ordinary exportOri/saveProjectAs/undo/redo actions."
+}

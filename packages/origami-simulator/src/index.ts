@@ -1,3 +1,4 @@
+export { SOURCE_EDGE_PROVENANCE } from './sourceProvenance.js';
 export { prepareFoldModel } from './prepare.js';
 export { createOrigamiSimulator } from './simulator.js';
 export { ReferenceSolver } from './referenceSolver.js';

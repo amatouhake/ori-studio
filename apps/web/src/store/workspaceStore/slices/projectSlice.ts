@@ -101,7 +101,6 @@ import {
   normalizeOrieditaGridSize,
   normalizeOrieditaIntervalGridSize,
   ORIEDITA_GRID_SCALE_DEFAULTS,
-  textCoordinate,
 } from '../../../lib/creasePatternViewport';
 import {
   importedCpLineage,
@@ -122,10 +121,7 @@ import {
   isSuppressionRegionAnnotation,
   isTextAnnotation,
 } from '../../../cp-workspace/annotations/annotation';
-import {
-  createTextAnnotation,
-  textDocFromPlainText,
-} from '../../../cp-workspace/annotations/textAnnotation';
+import { normalizeDocumentTexts } from '../../../cp-workspace/annotations/textInterchange';
 import type { CanvasAnnotation } from '../../../cp-workspace/annotations/annotation';
 import type { InlineSimulation } from '../../../cp-workspace/inlineSimulation/inlineSimulation';
 import { noteInlineSimulationIds } from '../../../cp-workspace/inlineSimulation/inlineSimulationIds';
@@ -1006,25 +1002,12 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
     // boxes (the kernel `texts` vec is only the interchange representation). The
     // kernel copy is then cleared so a later re-snapshot / `.osf` save doesn't
     // double-count them.
-    const importedTextAnnotations = oristudioCpDocument
-      ? oristudioCpDocument.document.crease_pattern.texts.map((element) =>
-          createTextAnnotation({
-            center: { x: textCoordinate(element.x), y: textCoordinate(element.y) },
-            doc: textDocFromPlainText(element.text),
-            plainText: element.text,
-          })
-        )
-      : [];
-    if (oristudioCpDocument && importedTextAnnotations.length > 0) {
-      oristudioCpDocument = {
-        ...oristudioCpDocument,
-        document: {
-          ...oristudioCpDocument.document,
-          crease_pattern: { ...oristudioCpDocument.document.crease_pattern, texts: [] },
-        },
-      };
-      // Keep the live kernel document free of the now-inflated texts so later
-      // snapshots and `.osf` saves don't re-introduce them.
+    const normalizedText = oristudioCpDocument
+      ? normalizeDocumentTexts(oristudioCpDocument.document)
+      : null;
+    const importedTextAnnotations = normalizedText?.annotations ?? [];
+    if (oristudioCpDocument && normalizedText && normalizedText.document !== oristudioCpDocument.document) {
+      oristudioCpDocument = { ...oristudioCpDocument, document: normalizedText.document };
       await clearOristudioCpKernelTexts();
     }
     const artifactRevision = get().foldArtifactRevision + 1;
@@ -1679,6 +1662,7 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
     const warnings = collectExportLossWarnings(format, {
       images: get().oristudioCpAnnotations.filter(isImageAnnotation),
       richText: get().oristudioCpAnnotations.filter(isTextAnnotation),
+      kernelTexts: get().oristudioCpDocument?.document.crease_pattern.texts ?? [],
       suppressionRegions: get().oristudioCpAnnotations.filter(isSuppressionRegionAnnotation),
       inlineSimulations: get().oristudioCpInlineSimulations,
       lineSegments: get().oristudioCpDocument?.document.crease_pattern.line_segments ?? [],

@@ -339,6 +339,22 @@
       "system": "Predeterminado del sistema",
       "title": "Idioma"
     },
+    "mcp": {
+      "changing": "Cambiando…",
+      "config": "Configuración del cliente MCP",
+      "description": "Permite que un agente MCP externo diseñe, analice y exporte origami en esta sesión de escritorio. Los agentes trabajan en experimentos aislados y pueden aplicar cambios que se pueden deshacer al lienzo de edición.",
+      "disable": "Desactivar acceso",
+      "disabled": "Desactivado",
+      "enable": "Activar acceso",
+      "enabled": "Activado para esta sesión",
+      "failed": "No se pudo cambiar el acceso del agente. Reinicia Ori Studio e inténtalo de nuevo.",
+      "hide": "Ocultar configuración del cliente",
+      "scope": "Las conexiones se limitan a este equipo y requieren el token de acceso. Desactivar el acceso cancela las tareas y descarta los experimentos no aplicados.",
+      "secret": "Copia esto en tu cliente MCP. Contiene un token secreto que permite acceder a tu espacio de trabajo; mantenlo privado. La configuración cambia cuando vuelves a activar el acceso.",
+      "show": "Mostrar configuración del cliente",
+      "title": "Acceso de agentes de IA",
+      "unavailable": "El acceso de agentes no está disponible. Reinicia Ori Studio e inténtalo de nuevo."
+    },
     "models": {
       "current": "Actual",
       "description": "El detector de patrones de pliegues descarga su modelo una sola vez y lo conserva en este dispositivo. Si hay un modelo más reciente, se ofrece aquí y en el diálogo Detectar; nada se descarga sin mostrar antes su tamaño.",

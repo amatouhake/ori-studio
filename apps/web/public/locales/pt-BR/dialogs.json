@@ -339,6 +339,22 @@
       "system": "Padrão do sistema",
       "title": "Idioma"
     },
+    "mcp": {
+      "changing": "Alterando…",
+      "config": "Configuração do cliente MCP",
+      "description": "Permita que um agente MCP externo projete, analise e exporte origami nesta sessão de desktop. Os agentes trabalham em experimentos isolados e podem aplicar alterações que podem ser desfeitas à tela de edição.",
+      "disable": "Desativar acesso",
+      "disabled": "Desativado",
+      "enable": "Ativar acesso",
+      "enabled": "Ativado para esta sessão",
+      "failed": "Não foi possível alterar o acesso do agente. Reinicie o Ori Studio e tente novamente.",
+      "hide": "Ocultar configuração do cliente",
+      "scope": "As conexões ficam restritas a este computador e exigem o token de acesso. Desativar o acesso cancela as tarefas e descarta experimentos não aplicados.",
+      "secret": "Copie isto para seu cliente MCP. A configuração contém um token secreto que permite acesso ao seu espaço de trabalho; mantenha-o privado. A configuração muda quando o acesso é ativado novamente.",
+      "show": "Mostrar configuração do cliente",
+      "title": "Acesso de agentes de IA",
+      "unavailable": "O acesso de agentes está indisponível. Reinicie o Ori Studio e tente novamente."
+    },
     "models": {
       "current": "Atual",
       "description": "O detector de padrões de vincos baixa o modelo uma única vez e o mantém neste dispositivo. Um modelo mais novo é oferecido aqui e na janela de detecção; nada é baixado sem que o tamanho apareça antes.",

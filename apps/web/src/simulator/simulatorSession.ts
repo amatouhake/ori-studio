@@ -1,3 +1,5 @@
+import { SOURCE_TARGETS, type SourceFoldTarget } from './sourceFoldTargets';
+import { measureFoldTargets } from './foldTargetAttainment';
 import { transfer } from 'comlink';
 import { PreparedModelCache } from '../lib/preparedModelCache';
 import type { SimulatorExportBackground } from '../lib/simulatorSettings';
@@ -406,8 +408,11 @@ export function foldScaledForSolver(fold: FoldDocument): FoldDocument {
   // introduce rounding for nothing.
   if (!Number.isFinite(span) || span <= 0 || (span > 0.5 && span <= 2)) return fold;
 
+  const sources = fold[SOURCE_TARGETS] as SourceFoldTarget[] | undefined;
+  const scale = (p: number[]) => p.map((x, i) => (x - min[i]!) / span) as [number, number, number];
   return {
     ...fold,
+    ...(sources ? { [SOURCE_TARGETS]: sources.map(source => ({ ...source, a: scale(source.a), b: scale(source.b) })) } : {}),
     vertices_coords: coords.map((coord) => [
       ((coord[0] ?? 0) - min[0]!) / span,
       ((coord[1] ?? 0) - min[1]!) / span,
@@ -1165,6 +1170,13 @@ const api = {
    * thread at all, so an exporter has no other way to see the fold. Triangles are
    * the solver's own (already triangulated) faces.
    */
+  measureFoldTargets() {
+    const active = requireSession();
+    const positions = new Float32Array(active.model.prepared.vertexCount * 3);
+    active.backend.readPositions(positions);
+    return measureFoldTargets(active.model.prepared, positions, active.foldPercent);
+  },
+
   exportGeometry(): SimulatorExportGeometry {
     const active = requireSession();
     const positions = new Float32Array(active.model.prepared.vertexCount * 3);

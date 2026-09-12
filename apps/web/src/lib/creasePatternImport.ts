@@ -628,16 +628,7 @@ function prepareSimulationFold(fold: FoldDocument): { fold: FoldDocument | null;
     return { fold: null, error: 'Simulation requires inferred or imported faces' };
   }
   try {
-    // Triangulate, normalize all face windings, then rebuild the crease params
-    // from the consistently-oriented triangles.
-    const triangulated = prepareFoldModel(fold as SimulatorFoldDocument, {
-      triangulate: true,
-    }).fold as FoldDocument;
-    const oriented = orientFacesConsistently(triangulated);
-    oriented.edges_foldAngle = (oriented.edges_foldAngle ?? []).map((angle) =>
-      typeof angle === 'number' ? angle * SIMULATION_FOLD_ANGLE_SIGN : angle
-    );
-    const model = prepareFoldModel(oriented as SimulatorFoldDocument, { triangulate: false });
+    const model = prepareFoldModel(orientedSimulationInput(fold) as SimulatorFoldDocument, { triangulate: false });
     return { fold: model.fold as FoldDocument, error: null };
   } catch (error) {
     return {
@@ -645,6 +636,25 @@ function prepareSimulationFold(fold: FoldDocument): { fold: FoldDocument | null;
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/** Infer/triangulate/orient a source pattern, leaving the final solver model
+ * construction to its consumer. Workers use this to avoid preparing a model
+ * only to discard it and prepare it again in the simulator session. */
+export function simulationInputFromFold(fold: FoldDocument): FoldDocument {
+  const topology = fold.faces_vertices?.length ? fold : inferTopology(fold, { warnings: [], errors: [] });
+  return orientedSimulationInput(topology);
+}
+
+function orientedSimulationInput(fold: FoldDocument): FoldDocument {
+  if (!fold.faces_vertices?.length) throw new Error('Simulation requires inferred or imported faces');
+  // Triangulate before orienting: the final preparation must build crease
+  // constraints against consistent normals and the application's angle sign.
+  const triangulated = prepareFoldModel(fold as SimulatorFoldDocument, { triangulate: true }).fold as FoldDocument;
+  const oriented = orientFacesConsistently(triangulated);
+  oriented.edges_foldAngle = (oriented.edges_foldAngle ?? []).map(angle =>
+    typeof angle === 'number' ? angle * SIMULATION_FOLD_ANGLE_SIGN : angle);
+  return oriented;
 }
 
 function projectFromFold(fold: FoldDocument, title: string): TreeProject {
