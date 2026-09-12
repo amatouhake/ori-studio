@@ -322,7 +322,7 @@ pub fn import_fold_document(fold: &FoldDocument) -> Result<CreasePatternModel> {
         }
         model.add_line_segment(segment);
     }
-    normalize_imported_fold_lines(&mut model, bounds);
+    normalize_imported_fold_lines(&mut model, bounds)?;
 
     import_circles(fold, &mut model)?;
     import_texts(fold, &mut model)?;
@@ -458,6 +458,7 @@ fn vertex_point(fold: &FoldDocument, index: usize) -> Result<Point> {
 #[derive(Debug, Clone, Copy)]
 struct FoldImportBounds {
     min_x: f64,
+    max_x: f64,
     min_y: f64,
     max_y: f64,
     has_points: bool,
@@ -467,6 +468,7 @@ impl Default for FoldImportBounds {
     fn default() -> Self {
         Self {
             min_x: f64::MAX,
+            max_x: -f64::MAX,
             min_y: f64::MAX,
             max_y: -f64::MAX,
             has_points: false,
@@ -477,15 +479,38 @@ impl Default for FoldImportBounds {
 impl FoldImportBounds {
     fn include(&mut self, point: Point) {
         self.min_x = self.min_x.min(point.x);
+        self.max_x = self.max_x.max(point.x);
         self.min_y = self.min_y.min(point.y);
         self.max_y = self.max_y.max(point.y);
         self.has_points = true;
     }
 }
 
-fn normalize_imported_fold_lines(model: &mut CreasePatternModel, bounds: FoldImportBounds) {
+fn normalize_imported_fold_lines(
+    model: &mut CreasePatternModel,
+    bounds: FoldImportBounds,
+) -> Result<()> {
     if !bounds.has_points {
-        return;
+        return Ok(());
+    }
+
+    // F-002 (#367): a zero x or y extent makes the scale below `400/0 = inf`,
+    // and `inf*0` in `point_rotate_scaled` poisons the model with NaN behind
+    // `Ok`. A crease pattern with no area has no meaningful normalization onto
+    // the sheet, so refuse it with a typed error rather than a nearby result.
+    // (Upstream `FoldLineSet.move` divides the same way with no guard, so there
+    // is no reference behavior to mirror here; the contract is ours to choose,
+    // and `InvalidField` is the importers' established degenerate-input channel.)
+    let x_extent = bounds.max_x - bounds.min_x;
+    let y_extent = bounds.max_y - bounds.min_y;
+    if x_extent <= 0.0 || !x_extent.is_finite() || y_extent <= 0.0 || !y_extent.is_finite() {
+        return Err(IoError::InvalidField {
+            field: "vertices_coords",
+            message: format!(
+                "FOLD pattern is degenerate (x extent {x_extent}, y extent {y_extent}); \
+                 a crease pattern must span a nonzero area to normalize onto the sheet"
+            ),
+        });
     }
 
     let source_a = Point::new(bounds.min_x, bounds.min_y);
@@ -494,12 +519,25 @@ fn normalize_imported_fold_lines(model: &mut CreasePatternModel, bounds: FoldImp
     let target_b = Point::new(-200.0, 200.0);
     let rotation = angle((source_a, source_b, target_a, target_b));
     let scale = target_a.distance(target_b) / source_a.distance(source_b);
+    // Belt-and-braces for the same poison one step later: a subnormal height
+    // passes the extent check above yet still overflows `400/height` to inf
+    // (e.g. the `max_y` denormal init keeps a denormal alive for a y=0 crease).
+    // Finite in, finite out — or `Err`.
+    if !scale.is_finite() {
+        return Err(IoError::InvalidField {
+            field: "vertices_coords",
+            message: format!(
+                "FOLD pattern extent is too small to normalize onto the sheet (scale {scale})"
+            ),
+        });
+    }
     let delta = Point::new(target_a.x - source_a.x, target_a.y - source_a.y);
 
     for segment in &mut model.line_segments {
         segment.a = normalize_imported_fold_point(segment.a, source_a, rotation, scale, delta);
         segment.b = normalize_imported_fold_point(segment.b, source_a, rotation, scale, delta);
     }
+    Ok(())
 }
 
 fn normalize_imported_fold_point(
@@ -791,12 +829,15 @@ mod hint_tests {
     fn losing_the_extension_degrades_a_hint_to_plain_unassigned() {
         let mut model = CreasePatternModel::default();
         model.line_segments.clear();
+        // Diagonal, not horizontal: the vehicle must span a nonzero area, since
+        // F-002 (#367) rejects degenerate zero-extent imports with a typed
+        // error. (The old horizontal single crease reimported as NaN behind
+        // `Ok`; every assertion below passed only because none read coords.)
         model.line_segments.push(
-            LineSegment::new(Point::new(0.0, 0.0), Point::new(100.0, 0.0))
+            LineSegment::new(Point::new(0.0, 0.0), Point::new(100.0, 100.0))
                 .with_line_color(LineColor::Red1)
                 .with_direction_kept(),
         );
-
         let fold = export_fold_document(&model, None);
         assert_eq!(
             fold.assignment_for_edge(0),
@@ -868,6 +909,89 @@ mod hint_tests {
         assert!(
             (negative_h - 400.0).abs() < 1e-6,
             "all-negative-y yspan should be 400, got {negative_h}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod degenerate_import_tests {
+    use super::import_fold_json;
+    use crate::io::IoError;
+
+    fn non_finite_coords(model: &crate::model::CreasePatternModel) -> usize {
+        model
+            .line_segments
+            .iter()
+            .flat_map(|segment| [segment.a, segment.b])
+            .flat_map(|point| [point.x, point.y])
+            .filter(|value| !value.is_finite())
+            .count()
+    }
+
+    /// F-002 (#367): a single horizontal crease has zero height, so the
+    /// normalize scale is `400/0 = inf` and `inf*0` poisons the model with NaN
+    /// behind `Ok`. Degenerate input must be a typed `Err`, never `Ok(NaN)`.
+    #[test]
+    fn zero_height_fold_import_is_rejected_with_a_typed_error() {
+        let input = r#"{
+            "vertices_coords": [[0,0.5],[1,0.5]],
+            "edges_vertices": [[0,1]],
+            "edges_assignment": ["M"],
+            "edges_foldAngle": [-180.0]
+        }"#;
+        let error = import_fold_json(input).expect_err("zero-height FOLD must not import as Ok");
+        assert!(
+            matches!(error, IoError::InvalidField { .. }),
+            "degenerate input wants a typed error, got: {error:?}"
+        );
+    }
+
+    /// Same contract on the other axis: zero width cannot normalize either.
+    #[test]
+    fn zero_width_fold_import_is_rejected_with_a_typed_error() {
+        let input = r#"{
+            "vertices_coords": [[0.5,0],[0.5,1]],
+            "edges_vertices": [[0,1]],
+            "edges_assignment": ["M"],
+            "edges_foldAngle": [-180.0]
+        }"#;
+        let error = import_fold_json(input).expect_err("zero-width FOLD must not import as Ok");
+        assert!(
+            matches!(error, IoError::InvalidField { .. }),
+            "degenerate input wants a typed error, got: {error:?}"
+        );
+    }
+
+    /// Control: a real 2D pattern still imports, and stays finite.
+    #[test]
+    fn nonzero_extent_fold_import_still_succeeds_finite() {
+        let input = r#"{
+            "vertices_coords": [[0,0],[1,0],[1,1],[0,1]],
+            "edges_vertices": [[0,1],[1,2],[2,3],[3,0]],
+            "edges_assignment": ["B","B","B","B"],
+            "edges_foldAngle": [0.0,0.0,0.0,0.0]
+        }"#;
+        let model = import_fold_json(input).expect("non-degenerate FOLD must import");
+        assert_eq!(non_finite_coords(&model), 0, "finite in, finite out");
+    }
+
+    /// The exporter's empty-model phantom (`from_model_for_export` seeds a
+    /// zero-length origin edge when there are no creases) is degenerate input
+    /// on the way back in — not a pattern — so it is refused rather than
+    /// normalized. This is why a crease-less document cannot round-trip
+    /// through FOLD; its texts still round-trip through `.ori`.
+    #[test]
+    fn zero_length_phantom_edge_is_rejected_with_a_typed_error() {
+        let input = r#"{
+            "vertices_coords": [[0,0],[0,0]],
+            "edges_vertices": [[0,1]],
+            "edges_assignment": ["B"],
+            "edges_foldAngle": [0.0]
+        }"#;
+        let error = import_fold_json(input).expect_err("phantom edge must not import as Ok");
+        assert!(
+            matches!(error, IoError::InvalidField { .. }),
+            "degenerate input wants a typed error, got: {error:?}"
         );
     }
 }
