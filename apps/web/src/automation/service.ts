@@ -1,4 +1,5 @@
 import { bpDocumentSymmetry } from '../lib/bpTreeSymmetry';
+import { retainedBytes } from './retainedBytes';
 import { serializeDesign } from '../engines/designHandles';
 import { workspaceOperationsIdle } from '../store/workspaceStore/operationFence';
 import { CONSTRUCTIONS, CONSTRUCTION_INPUTS, CAPABILITIES } from './tools';
@@ -21,7 +22,7 @@ interface Draft {
 }
 interface Job {
   id: string; draftId: string; revision: number; status: 'running' | 'completed' | 'cancelled' | 'failed';
-  controller: AbortController; output?: AnalysisOutput; error?: ToolResult; started: number; completed?: number;
+  controller: AbortController; stop?: (code: string) => void; output?: AnalysisOutput; error?: ToolResult; started: number; completed?: number;
 }
 
 /** Explicit dependencies let transaction tests exercise races without mocking kernels. */
@@ -48,7 +49,10 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
   let historyAuthorization: { token: string; base: CpExperimentBase } | undefined;
   function historyToken() {
     if (!historyAuthorization || !matchesCpExperimentBase(state(), historyAuthorization.base)) {
-      historyAuthorization = { token: crypto.randomUUID(), base: captureCpExperimentBase(state()) };
+      const base = captureCpExperimentBase(state());
+      historyAuthorization = undefined; // Its observed state is already stale.
+      checkResources(base);
+      historyAuthorization = { token: crypto.randomUUID(), base };
     }
     return historyAuthorization.token;
   }
@@ -56,10 +60,11 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
   const state = () => deps.store.getState();
   function checkResources(addition: unknown) {
     const retained = new Set<unknown>();
-    for (const d of drafts.values()) { retained.add(d.data); for (const c of d.checkpoints.values()) retained.add(c.data); }
+    for (const d of drafts.values()) { retained.add(d.base); retained.add(d.data); for (const c of d.checkpoints.values()) retained.add(c.data); }
     for (const j of jobs.values()) if (j.output) retained.add(j.output);
+    if (historyAuthorization) retained.add(historyAuthorization.base);
     retained.add(addition);
-    const bytes = [...retained].reduce<number>((sum, item) => sum + JSON.stringify(item).length, receiptBytes);
+    const bytes = retainedBytes(retained) + receiptBytes * 2;
     if (bytes > LIMITS.sessionBytes) throw new AutomationError('resource_limit', 'MCP session memory limit reached. Export and discard old experiments.');
   }
   const checkSize = (data: DesignData) => {
@@ -87,13 +92,13 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
     result: j.output?.result, error: j.error?.structuredContent });
   function drop(d: Draft) {
     drafts.delete(d.id);
-    for (const [id, j] of jobs) if (j.draftId === d.id) { j.controller.abort(); jobs.delete(id); }
+    for (const [id, j] of jobs) if (j.draftId === d.id) { j.stop?.('job_cancelled'); jobs.delete(id); }
   }
   function sweep() {
     for (const d of drafts.values()) if (!d.busy && deps.now() - d.touched > LIMITS.idleMs) drop(d);
   }
   function add(data: DesignData, title: string, base: CpExperimentBase, preserveCompanions = false) {
-    live(); checkSize(data); sweep();
+    live(); checkSize(data); checkResources({ data, base }); sweep();
     if (drafts.size >= LIMITS.drafts) throw new AutomationError('resource_limit', 'Discard an experiment before creating another');
     const d: Draft = { id: crypto.randomUUID(), title, data, base, preserveCompanions, revision: 0, checkpoints: new Map(), touched: deps.now(), busy: null };
     drafts.set(d.id, d); return d;
@@ -110,16 +115,31 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
     if (jobs.size >= LIMITS.jobs) throw new AutomationError('resource_limit', 'Discard an experiment to release old jobs');
     const j: Job = { id: crypto.randomUUID(), draftId: d.id, revision: d.revision, status: 'running', controller: new AbortController(), started: deps.now() };
     jobs.set(j.id, j); d.busy = j.id;
-    const timer = setTimeout(() => j.controller.abort(), LIMITS.jobMs);
-    void Promise.resolve().then(() => task(j.controller.signal)).then(output => {
+    let rejectStop!: (error: AutomationError) => void;
+    const stopped = new Promise<never>((_, reject) => { rejectStop = reject; });
+    const finish = () => {
+      clearTimeout(timer); j.completed = deps.now();
+      if (d.busy === j.id) { d.busy = null; d.touched = deps.now(); }
+    };
+    j.stop = code => {
+      if (j.status !== 'running') return;
+      const error = new AutomationError(code, code === 'job_timeout' ? 'Job exceeded its deadline; the draft is available for editing.' : 'Job cancelled; the draft is available for editing.');
+      j.status = code === 'job_timeout' ? 'failed' : 'cancelled'; j.error = failure(error);
+      finish(); rejectStop(error); j.controller.abort(error);
+    };
+    const timer = setTimeout(() => j.stop?.('job_timeout'), LIMITS.jobMs);
+    void Promise.race([Promise.resolve().then(() => task(j.controller.signal)), stopped]).then(output => {
+      if (j.status !== 'running') return;
       live(); j.controller.signal.throwIfAborted();
       if (!drafts.has(d.id) || d.revision !== j.revision) throw new AutomationError('stale_revision', 'Experiment changed while analysis ran');
       if (JSON.stringify(output).length > LIMITS.draftBytes) throw new AutomationError('resource_limit', 'Analysis artifact exceeds 32 MiB');
       checkResources(output);
       if (output.data) { checkSize(output.data); d.data = output.data; d.revision += 1; j.revision = d.revision; }
-      j.output = output; j.status = 'completed';
-    }).catch(error => { j.error = failure(error); j.status = j.controller.signal.aborted ? 'cancelled' : 'failed'; })
-      .finally(() => { clearTimeout(timer); j.completed = deps.now(); d.busy = null; d.touched = deps.now(); });
+      j.output = output; j.status = 'completed'; finish();
+    }).catch(error => {
+      if (j.status !== 'running') return;
+      j.error = failure(error); j.status = 'failed'; finish();
+    });
     return result(jobStatus(j));
   }
 
@@ -176,7 +196,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
     }
     if (name === 'job_status') return result(jobStatus(getJob(args.job_id)));
     if (name === 'cancel_job') {
-      const job = getJob(args.job_id); if (job.status === 'running') job.controller.abort();
+      const job = getJob(args.job_id); job.stop?.('job_cancelled');
       return result({ ...jobStatus(job), cancellation_requested: job.controller.signal.aborted });
     }
     const d = getDraft(args);
@@ -213,8 +233,8 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       if (!checkpoint) throw new AutomationError('checkpoint_not_found', 'Unknown checkpoint');
       d.data = checkpoint.data; d.revision += 1; return result(describe(d));
     }
-    if (name === 'analyze_design') return startJob(d, signal => deps.analyze(d.data, String(args.analysis), args, signal));
-    if (name === 'simulate_design') return startJob(d, signal => deps.simulate(d.data, Number(args.fold_amount), Number(args.max_steps), signal));
+    if (name === 'analyze_design') { const data = d.data; return startJob(d, signal => deps.analyze(data, String(args.analysis), args, signal)); }
+    if (name === 'simulate_design') { const data = d.data; return startJob(d, signal => deps.simulate(data, Number(args.fold_amount), Number(args.max_steps), signal)); }
     if (name === 'derive_crease_pattern') {
       writable(d);
       if (d.data.kind === 'crease_pattern') throw new AutomationError('wrong_design_kind', 'Already a crease pattern');
@@ -292,5 +312,5 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
     return promise;
   }
   const expiry = setInterval(sweep, 60_000);
-  return { call, dispose() { clearInterval(expiry); disposed = true; for (const d of drafts.values()) drop(d); receipts.clear(); } };
+  return { call, dispose() { clearInterval(expiry); disposed = true; for (const d of drafts.values()) drop(d); receipts.clear(); historyAuthorization = undefined; } };
 }

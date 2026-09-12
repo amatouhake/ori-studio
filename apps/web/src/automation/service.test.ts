@@ -54,6 +54,17 @@ describe('semantic MCP contracts', () => {
 });
 
 describe('isolated experiment transactions', () => {
+  it.each(['extensions', 'history'] as const)('charges large retained base %s against the session budget', async location => {
+    const { service, state, begin } = setup();
+    // Compact draft, but the baseline pins a large live/history extension.
+    const huge = 'x'.repeat(LIMITS.sessionBytes / 2);
+    if (location === 'extensions') state.oristudioCpDocumentExtensions = { 'test:large': huge };
+    else state.oristudioCpHistoryPast = [{ document: { ...createStarterOristudioCpDocument(), metadata: { 'test:large': huge } }, label: 'large', timestamp: '', annotations: [], foldedFigures: [], activeFoldedFigureId: null, selection: state.oristudioCpSelection }];
+    expect((await begin()).code).toBe('resource_limit');
+    state.oristudioCpDocumentExtensions = {}; state.oristudioCpHistoryPast = [];
+    expect(await begin('small')).toMatchObject({ revision: 0 });
+    service.dispose();
+  });
   it('does not increment the revision for a kernel no-op', async () => {
     const { service, api, begin } = setup(); const d = await begin();
     api.editCp.mockResolvedValueOnce({ data: data() as engines.CpData, reports: [] });
@@ -123,6 +134,34 @@ describe('isolated experiment transactions', () => {
     await vi.waitFor(async () => expect(value(await service.call('job_status', { job_id: j.job_id })).status).toBe('cancelled'));
     expect(value(await service.call('inspect_design', { draft_id: d.draft_id, revision: 0 })).revision).toBe(0);
     service.dispose();
+  });
+  it.each(['timeout', 'cancel'] as const)('makes a non-cooperating job terminal on %s and ignores late completion', async mode => {
+    vi.useFakeTimers();
+    const fixture = setup(); fixture.service.dispose();
+    let complete!: (value: { result: Record<string, unknown>; data: DesignData }) => void;
+    const service = createAutomationService({ engines: fixture.api, store: { getState: () => fixture.state },
+      now: () => Date.now(), analyze: () => new Promise(resolve => { complete = resolve; }) });
+    try {
+      const d = value(await service.call('begin_design', { request_id: 'b', source: 'new', kind: 'crease_pattern' }));
+      const j = value(await service.call('analyze_design', { draft_id: d.draft_id, revision: 0, request_id: 'j', analysis: 'checks' }));
+      if (mode === 'timeout') await vi.advanceTimersByTimeAsync(LIMITS.jobMs + 1);
+      else await service.call('cancel_job', { job_id: j.job_id });
+      const terminal = value(await service.call('job_status', { job_id: j.job_id }));
+      expect(terminal).toMatchObject({ status: mode === 'timeout' ? 'failed' : 'cancelled', error: { code: mode === 'timeout' ? 'job_timeout' : 'job_cancelled' } });
+      expect(value(await service.call('edit_creases', edit(d, 'after')))).toMatchObject({ revision: 1, busy_job: null });
+      const finishFirst = complete;
+      const second = value(await service.call('analyze_design', { draft_id: d.draft_id, revision: 1, request_id: 'j2', analysis: 'checks' }));
+      finishFirst({ result: { late: true }, data: data() });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(value(await service.call('job_status', { job_id: j.job_id }))).toMatchObject({ ...terminal, stale: true });
+      expect(value(await service.call('inspect_design', { draft_id: d.draft_id, revision: 1 }))).toMatchObject({ revision: 1, busy_job: second.job_id });
+      await service.call('cancel_job', { job_id: second.job_id });
+      // This second engine promise NEVER resolves, including across expiry.
+      await vi.advanceTimersByTimeAsync(LIMITS.idleMs + 60001);
+      expect(value(await service.call('job_status', { job_id: second.job_id })).code).toBe('job_not_found');
+      expect(value(await service.call('job_status', { job_id: j.job_id })).code).toBe('job_not_found');
+      expect(value(await service.call('inspect_design', { draft_id: d.draft_id, revision: 1 })).code).toBe('draft_not_found');
+    } finally { service.dispose(); vi.useRealTimers(); }
   });
   it('revocation blocks an in-flight edit from publishing and queued commits from running', async () => {
     const { service, api, begin, state } = setup(); const d = await begin();
