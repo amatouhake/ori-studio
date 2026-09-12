@@ -407,6 +407,14 @@ export interface OristudioBpOptimizerOptions {
   randomCandidateCount: number;
   seed: number | null;
   /**
+   * Entropy for the coincident-flap jitter in view mode. `null` or omitted
+   * keeps upstream's `Math.random()` default at the bridge; an explicit value
+   * replays the run it was captured from. The effective seed is echoed back on
+   * the request and persisted on the run summary, so every run is replayable
+   * whether or not the caller named its seed.
+   */
+  jitterSeed?: number | null;
+  /**
    * Whether to constrain the layout to the tree's mirror symmetry.
    *
    * Separate from the symmetry-authoring mode being on, which is a *drawing*

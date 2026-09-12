@@ -11,10 +11,7 @@ fn coincident_project() -> (Project, Vec<Hierarchy>) {
     project.design.layout.sheet.width = 10.0;
     project.design.layout.sheet.height = 10.0;
     // Freshly authored trees stack every flap at the same default position.
-    project.design.layout.flaps = vec![
-        flap(1, 5.0, 5.0, 2.0, 2.0),
-        flap(2, 5.0, 5.0, 2.0, 2.0),
-    ];
+    project.design.layout.flaps = vec![flap(1, 5.0, 5.0, 2.0, 2.0), flap(2, 5.0, 5.0, 2.0, 2.0)];
     let hierarchies = vec![hierarchy(vec![1, 2])];
     (project, hierarchies)
 }
@@ -32,7 +29,12 @@ fn view_vec(project: &Project, hierarchies: Vec<Hierarchy>, jitter_seed: u32) ->
         jitter_seed,
     )
     .unwrap();
-    request.vec.unwrap().iter().map(|p| format!("{p:?}")).collect()
+    request
+        .vec
+        .unwrap()
+        .iter()
+        .map(|p| format!("{p:?}"))
+        .collect()
 }
 
 #[test]
@@ -58,10 +60,7 @@ fn distinct_flaps_are_seed_invariant() {
     let mut project = Project::sample();
     project.design.layout.sheet.width = 10.0;
     project.design.layout.sheet.height = 10.0;
-    project.design.layout.flaps = vec![
-        flap(1, 2.0, 3.0, 2.0, 2.0),
-        flap(2, 7.0, 8.0, 2.0, 2.0),
-    ];
+    project.design.layout.flaps = vec![flap(1, 2.0, 3.0, 2.0, 2.0), flap(2, 7.0, 8.0, 2.0, 2.0)];
     let hierarchies = vec![hierarchy(vec![1, 2])];
     assert_eq!(
         view_vec(&project, hierarchies.clone(), 12345),
