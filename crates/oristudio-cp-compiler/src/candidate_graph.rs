@@ -271,7 +271,22 @@ impl CandidateCreaseSpan {
         }
     }
 
+    /// Degenerate zero-length spans carry no ink: coincident vertices or a
+    /// zero `t_interval`. Exact equality only, so genuinely short-but-nonzero
+    /// spans still flow through to the capped tiny-edge penalty.
+    pub fn is_zero_length(&self) -> bool {
+        self.vertices[0] == self.vertices[1] || self.t_interval[0] == self.t_interval[1]
+    }
+
     pub fn selection_score(&self, graph: &CandidateGraph) -> f64 {
+        // F-114: reject zero-length spans outright. The capped tiny-edge
+        // penalty (max 0.65) is a cost, not a guard — high line support can
+        // outweigh it and keep a degenerate span in selection. Scoring -inf
+        // keeps it out of every beam path (seed filter, priority order,
+        // state scoring, completion/parity repair) at this single point.
+        if self.is_zero_length() {
+            return f64::NEG_INFINITY;
+        }
         let cost_model = &graph.cost_model;
         let presence_cost = cost_model.probability_cost(self.presence_probability);
         let assignment_cost = self.selection_assignment_cost(graph);

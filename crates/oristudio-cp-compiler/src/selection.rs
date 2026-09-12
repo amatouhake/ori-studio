@@ -6065,6 +6065,68 @@ mod tests {
         assert_eq!(repaired.selected_span_ids, state.selected_span_ids);
     }
 
+    #[test]
+    fn beam_rejects_zero_length_span_despite_high_support() {
+        // F-114: a zero-length span (coincident vertices, zero t_interval)
+        // with high line support must not displace normal spans. Mirrors the
+        // audit's select-zero repro: control {normal, normal} selects both,
+        // while the zero-length decoy (id 1) displaced span 0 and selected
+        // {1} alone.
+        let points = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(0.5, 0.0),
+            Point2::new(1.0, 0.0),
+            Point2::new(0.0, 1.0),
+        ];
+        let normal_a = candidate_span_with_evidence(
+            0,
+            [0, 2],
+            CandidateCreaseSpanKind::AtomicInterval,
+            CandidateCreaseSourceKind::LegacySelected,
+            CandidateSelectionPolicy::StrongOptional,
+            0.94,
+            0.94,
+            AssignmentLabel::Mountain,
+        );
+        let mut zero_length = candidate_span_with_evidence(
+            1,
+            [1, 1],
+            CandidateCreaseSpanKind::AtomicInterval,
+            CandidateCreaseSourceKind::LegacySelected,
+            CandidateSelectionPolicy::StrongOptional,
+            0.99,
+            0.99,
+            AssignmentLabel::Mountain,
+        );
+        zero_length.t_interval = [0.5, 0.5];
+        let normal_b = candidate_span_with_evidence(
+            2,
+            [0, 1],
+            CandidateCreaseSpanKind::AtomicInterval,
+            CandidateCreaseSourceKind::LegacySelected,
+            CandidateSelectionPolicy::StrongOptional,
+            0.90,
+            0.90,
+            AssignmentLabel::Mountain,
+        );
+        let graph =
+            interior_candidate_graph(points, vec![normal_a, zero_length, normal_b], Vec::new());
+        let selection = select_candidate_graph_beam_from_ir(
+            &graph,
+            beam_options(),
+            ExactProbeOptions::default(),
+        );
+        let ids = selected_span_ids(&selection);
+        assert!(
+            !ids.contains(&1),
+            "zero-length span must never be selected, got {ids:?}"
+        );
+        assert!(
+            ids.contains(&0) && ids.contains(&2),
+            "normal spans must survive the zero-length decoy, got {ids:?}"
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn candidate_span_with_evidence(
         id: usize,
