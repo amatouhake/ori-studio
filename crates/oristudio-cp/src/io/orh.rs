@@ -39,6 +39,13 @@ pub fn import_orh_str(input: &str) -> Result<CreasePatternDocument> {
     let num_lines = count_orh_lines(&lines)?;
     document.crease_pattern.line_segments = vec![LineSegment::default(); num_lines + 1];
     document.crease_pattern.circles = vec![Circle::default(); num_lines + 1];
+    // Slots actually declared by a `番号` row in their section. The preallocation
+    // above over-sizes by one (and the circle vec is sized by the segment count),
+    // so unfilled trailing slots are trimmed after the read loop; otherwise every
+    // import carries a phantom segment+circle that export writes back as real and
+    // the next import grows by one again (#368).
+    let mut segment_declared = vec![false; num_lines + 1];
+    let mut circle_declared = vec![false; num_lines + 1];
 
     let mut reading_flag = 0;
     let mut number = 0usize;
@@ -68,6 +75,11 @@ pub fn import_orh_str(input: &str) -> Result<CreasePatternDocument> {
 
         if reading_flag == 1 && *token == "番号" {
             number = parse_one_based_index(tokens.get(1), line_index + 1)?;
+            // Guarded: an out-of-range `番号` still reports the typed range error
+            // from the slot lookup below instead of panicking here.
+            if let Some(slot) = segment_declared.get_mut(number) {
+                *slot = true;
+            }
         }
 
         if reading_flag == 1 {
@@ -128,6 +140,9 @@ pub fn import_orh_str(input: &str) -> Result<CreasePatternDocument> {
 
         if reading_flag == 3 && *token == "番号" {
             number = parse_one_based_index(tokens.get(1), line_index + 1)?;
+            if let Some(slot) = circle_declared.get_mut(number) {
+                *slot = true;
+            }
             if let Some(circle) = document.crease_pattern.circles.get_mut(number) {
                 *circle = circle_template;
             }
@@ -186,6 +201,20 @@ pub fn import_orh_str(input: &str) -> Result<CreasePatternDocument> {
             folded_colors.apply_tag(tag, value, line_index + 1)?;
         }
     }
+    // Drop unfilled trailing slots so parsed counts reconcile with filled entries:
+    // truncating to one past the highest declared `番号` keeps interior holes and
+    // never removes a declared-but-default-valued entry. Empty/garbage input with
+    // no `番号` rows yields empty vecs instead of a 1-seg/1-circle phantom.
+    let segment_len = segment_declared
+        .iter()
+        .rposition(|declared| *declared)
+        .map_or(0, |last| last + 1);
+    document.crease_pattern.line_segments.truncate(segment_len);
+    let circle_len = circle_declared
+        .iter()
+        .rposition(|declared| *declared)
+        .map_or(0, |last| last + 1);
+    document.crease_pattern.circles.truncate(circle_len);
 
     folded_colors.write_metadata(&mut document);
 
