@@ -813,10 +813,34 @@ pub fn decode(body: &[u8]) -> Result<Decoded> {
             }
             TAG_GRID => {
                 let mut c = Cursor::new(payload);
-                model.grid.grid_size = c.uvarint("grid size")? as i32;
+                // Bound: the `i32` range. The encoder writes
+                // `grid_size.max(0) as u64`, so honest payloads are small and
+                // non-negative and never trip this; anything wider silently
+                // wrapped to a negative size via `as i32`.
+                let size = c.uvarint("grid size")?;
+                model.grid.grid_size =
+                    i32::try_from(size).map_err(|_| ShareError::MalformedExtension {
+                        tag: TAG_GRID,
+                        reason: "grid size out of range",
+                    })?;
+                let state = c.uvarint("grid state")?;
+                let state = i32::try_from(state).map_err(|_| ShareError::MalformedExtension {
+                    tag: TAG_GRID,
+                    reason: "grid state out of range",
+                })?;
                 model.grid.base_state =
-                    crate::model::GridState::from_state(c.uvarint("grid state")? as i32)
-                        .unwrap_or_default();
+                    crate::model::GridState::from_state(state).map_err(|_| {
+                        ShareError::MalformedExtension {
+                            tag: TAG_GRID,
+                            reason: "unknown grid state",
+                        }
+                    })?;
+                if !c.is_empty() {
+                    return Err(ShareError::MalformedExtension {
+                        tag: TAG_GRID,
+                        reason: "trailing bytes in grid payload",
+                    });
+                }
             }
             TAG_AUX => {
                 let mut c = Cursor::new(payload);
