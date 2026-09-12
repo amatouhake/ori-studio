@@ -1,0 +1,73 @@
+{
+  "completed_at": "2026-09-12T06:05:06.533876+00:00",
+  "thread_id": "01a0942c-032b-7503-8e3b-2257582c39a1",
+  "exit_code": 0,
+  "mcp_calls": 55,
+  "calls_by_tool": {
+    "workspace": 2,
+    "begin_design": 2,
+    "inspect_design": 6,
+    "preview_construction": 1,
+    "edit_creases": 5,
+    "render_view": 7,
+    "analyze_design": 8,
+    "job_status": 10,
+    "checkpoint_design": 3,
+    "simulate_design": 4,
+    "export_design": 6,
+    "commit_design": 1
+  },
+  "observed_tool_errors": [
+    {
+      "tool": "checkpoint_design",
+      "arguments": {
+        "draft_id": "009c00ce-2f17-42e6-9cf0-0bb537c22a0c",
+        "revision": 3,
+        "label": "Before explicit topology and assignment repair",
+        "request_id": "bird-checkpoint-03"
+      },
+      "error": {
+        "code": "draft_busy",
+        "message": "Wait for or cancel job 66d327de-99d2-42a4-aa69-d9b15f4a36cc"
+      }
+    },
+    {
+      "tool": "analyze_design",
+      "arguments": {
+        "draft_id": "009c00ce-2f17-42e6-9cf0-0bb537c22a0c",
+        "revision": 4,
+        "analysis": "flat_fold",
+        "case_limit": 100,
+        "request_id": "bird-flat-04"
+      },
+      "error": {
+        "code": "invalid_arguments",
+        "message": "data/case_limit must be <= 16"
+      }
+    },
+    {
+      "tool": "simulate_design",
+      "arguments": {
+        "draft_id": "009c00ce-2f17-42e6-9cf0-0bb537c22a0c",
+        "revision": 5,
+        "fold_amount": 85,
+        "max_steps": 20000,
+        "request_id": "bird-sim-percent-probe"
+      },
+      "error": {
+        "code": "invalid_arguments",
+        "message": "data/fold_amount must be <= 1"
+      }
+    }
+  ],
+  "local_command_count": 24,
+  "local_commands_total_characters": 1124790,
+  "usage": {
+    "input_tokens": 2002055,
+    "cached_input_tokens": 1931648,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 13898,
+    "reasoning_output_tokens": 3463
+  },
+  "notes": "Token usage is the CLI-reported cumulative usage across the agent turn, with cached input separated; not a single prompt size."
+}

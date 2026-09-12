@@ -11,6 +11,10 @@ The implementation is on `feat/mcp-agent-integration` in
 No upstream pull request is opened. The user can inspect and exercise this branch
 before choosing whether to propose it upstream.
 
+See [the hardening report](hardening.md) for subsequent correctness fixes and
+independent blind-agent evaluations. The original simulation measurements below
+are historical pipeline evidence only; they do not demonstrate a 55% fold.
+
 ## Autonomous client evidence
 
 Validated on Linux with the real Tauri desktop under Xvfb, using bundled
@@ -31,7 +35,7 @@ credential, waits for an MCP handshake, runs all probes, and stops the app. See
 | Examine returned PNG | Red ink increased from 6,704 to 7,294 pixels; blue decreased from 10,130 to 9,621 |
 | Re-inspect IDs and repair the assignment | 0 diagnostic entries; image measurements restored exactly |
 | Native layer-order solve | `Solved` |
-| Real simulation at fold amount 0.55 | Converged after 2,216 steps, 25 vertices and 32 triangulated faces |
+| Original simulation request 0.55 (superseded) | Reached only 0.55%, owing to a unit bug; convergence proved execution, not a 55% fold |
 | Simulation strain/velocity | Maximum nodal strain `1.0847314e-5`, maximum edge strain `1.9550312e-5`, maximum velocity `9.7202092e-6` |
 | Simulation diagnostics | No errors or warnings |
 | Export | OSF, CP, ORI, FOLD, SVG, PNG and simulated OBJ |
@@ -44,7 +48,8 @@ standard MCP PNG content and can inspect it directly.
 
 ![Repaired Miura crease pattern](evidence/miura-repaired.png)
 
-![Simulation at fold amount 0.55](evidence/miura-simulation.png)
+The original near-flat simulation image is superseded by the corrected target
+validation in [the hardening report](hardening.md).
 
 ![Solved flat folded state](evidence/miura-flat-fold.png)
 

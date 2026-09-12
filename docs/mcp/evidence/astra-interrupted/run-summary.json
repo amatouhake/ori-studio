@@ -1,0 +1,6 @@
+{
+  "thread_id": "01a09462-3d8d-7003-98bd-b90658177638",
+  "completed_mcp_calls": 11,
+  "transport_failures": 8,
+  "outcome": "Interrupted evaluation: desktop process exited with SIGTERM (143) after discovery, before design mutation. Not evidence of design or simulation success. Repeated in a new fresh session against a detached host process."
+}

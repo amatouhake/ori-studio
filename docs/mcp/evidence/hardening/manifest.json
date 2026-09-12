@@ -1,0 +1,27 @@
+[
+  {
+    "file": "hinge-55.obj",
+    "bytes": 178,
+    "sha256": "523f4d1aa34efe27b4742ff3acf251d77dd2b1884beba01bd3048b7f83100caa"
+  },
+  {
+    "file": "hinge-55.png",
+    "bytes": 54297,
+    "sha256": "ccdeefaba4fb8330f13b9fd509b36bd34f12a4da4f479cdf1956f41a448af63e"
+  },
+  {
+    "file": "miura-55.png",
+    "bytes": 108337,
+    "sha256": "1730b8b54eab7095157b3063343344e1d8a54e0ea5ea08f95727db807fa9ab4d"
+  },
+  {
+    "file": "miura-report.json",
+    "bytes": 9355,
+    "sha256": "d0df0ccb241b0ac26a590b86cd750aca5c42dfa8f4f7cc757a6adf423008b986"
+  },
+  {
+    "file": "public-probes.json",
+    "bytes": 4038,
+    "sha256": "de3555b9fbe0577716603b649fe61cda7ae0379719d37f74e9cee2c4d879fde2"
+  }
+]

@@ -1,0 +1,46 @@
+{
+  "thread_id": "01a09465-a1d3-7160-91fe-f2e5557c1c17",
+  "exit_code": 0,
+  "completed_at": "2026-09-12T07:05:05.167165+00:00",
+  "mcp_calls": 38,
+  "calls_by_tool": {
+    "workspace": 2,
+    "begin_design": 2,
+    "inspect_design": 4,
+    "edit_creases": 2,
+    "render_view": 7,
+    "analyze_design": 4,
+    "job_status": 6,
+    "checkpoint_design": 2,
+    "simulate_design": 3,
+    "export_design": 5,
+    "commit_design": 1
+  },
+  "transport_errors": [],
+  "simulations": [
+    {
+      "job_id": "dccdb82f-44a4-484b-b534-90b00014be6c",
+      "requested_fold_amount": 0.65,
+      "effective_fold_percent": 65,
+      "step": 5384,
+      "solver_settled": true,
+      "outcome": "settled_at_target",
+      "max_strain": 3.4865792059764664e-06,
+      "target_status": "attained",
+      "max_residual_degrees": 0.00811736049092815
+    },
+    {
+      "job_id": "ca6251ca-6b23-4810-a959-72ac3328c408",
+      "requested_fold_amount": 0.65,
+      "effective_fold_percent": 65,
+      "step": 8,
+      "solver_settled": false,
+      "outcome": "step_limit_without_target_attainment",
+      "max_strain": 0.041882805645599465,
+      "target_status": "not_attained",
+      "max_residual_degrees": 86.36674872624263
+    }
+  ],
+  "artifact_hashes_verified": 12,
+  "scope": "Fresh gpt-6-astra session; all origami actions through public MCP; no repository/docs/demo reads; no prior run context. Local commands saved returned artifacts and measured exported geometry only."
+}

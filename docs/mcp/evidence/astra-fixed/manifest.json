@@ -1,0 +1,56 @@
+[
+  {
+    "file": "ginkgo-shell.osf",
+    "bytes": 18047,
+    "sha256": "fa477dc7509a69a0de56c19165cd1df306e43187633611656e2bf41948b561bb",
+    "matches_mcp_export": true
+  },
+  {
+    "file": "ginkgo-shell.fold",
+    "bytes": 1410,
+    "sha256": "762819f4d57e372e24c384a7421f0118407e13f5cda9bcd85af78c597525f800",
+    "matches_mcp_export": true
+  },
+  {
+    "file": "ginkgo-shell.obj",
+    "bytes": 628,
+    "sha256": "89441739bba94e782ec2dd8adb5bf3f3f0f1188457b8247c9635b94493da0f27",
+    "matches_mcp_export": true
+  },
+  {
+    "file": "crease-pattern-final.png",
+    "bytes": 79865,
+    "png_dimensions": [
+      1000,
+      1000
+    ],
+    "sha256": "8dbb093c109bd52e27e6a6ba3f3924bec13e1df636650d8e9c975d5608d64734"
+  },
+  {
+    "file": "simulation-065-isometric.png",
+    "bytes": 121091,
+    "png_dimensions": [
+      1000,
+      1000
+    ],
+    "sha256": "1365f05ab058ae62d0c038f71b91a6f72f8c4e74902e5c08e5e8a6ae370bf209"
+  },
+  {
+    "file": "flat-fold.png",
+    "bytes": 42209,
+    "png_dimensions": [
+      1000,
+      1000
+    ],
+    "sha256": "096c769491039f8445524f43c15692c0d69249e0a92c2b493bb392a93d9d77d1"
+  },
+  {
+    "file": "simulation-budget-probe.png",
+    "bytes": 84915,
+    "png_dimensions": [
+      800,
+      800
+    ],
+    "sha256": "b729102129054a8993779c2343ab52a57c9431dbfab29181d3925b8d25a2d61f"
+  }
+]

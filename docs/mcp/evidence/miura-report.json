@@ -45,16 +45,16 @@
     "backend": "reference",
     "converged": true,
     "diagnostics": {
-      "averageEdgeStrain": 0.00000568018414831165,
+      "averageEdgeStrain": 5.68018414831165e-06,
       "errors": [],
-      "maxEdgeStrain": 0.000019550312177929463,
-      "maxNodalStrain": 0.00001084731434223644,
+      "maxEdgeStrain": 1.9550312177929463e-05,
+      "maxNodalStrain": 1.084731434223644e-05,
       "warnings": []
     },
     "face_count": 32,
     "fold_amount": 0.55,
-    "max_strain": 0.00001084731434223644,
-    "max_velocity": 0.00000972020916378824,
+    "max_strain": 1.084731434223644e-05,
+    "max_velocity": 9.72020916378824e-06,
     "scope": "Numerical physical relaxation, not a collision-free or global foldability proof.",
     "step": 2216,
     "vertex_count": 25
@@ -69,5 +69,6 @@
     "miura.svg",
     "miura.png",
     "miura.obj"
-  ]
+  ],
+  "simulation_evidence_status": "SUPERSEDED: pre-fix MCP 0.55 was passed as 0.55 percent, not 55 percent. Execution/convergence only; not evidence of substantial folding."
 }

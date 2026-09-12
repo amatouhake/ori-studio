@@ -165,3 +165,27 @@ No vendored code or kernel algorithm was changed for MCP. The three excluded
 issues are deliberately isolated: all-negative-y FOLD and zero-height FOLD inputs
 are refused with the issue numbers; ORH import is not exposed. CP/ORI interchange
 provides a workaround without silently rewriting upstream import semantics.
+
+## Review hardening
+
+`workspace.live.history_token` binds undo/redo authorization to the full captured
+canvas/history snapshot, including companion objects and both history stacks.
+The CP geometry revision alone is insufficient for this purpose. Authorization
+is consumed before the live history action starts, while identical request-ID
+retries still retrieve the original receipt. Clients must refresh workspace
+before each new undo/redo action.
+
+Render metadata is captured before asynchronous rendering; a job that updates a
+draft during rasterization cannot relabel an earlier image. Such images retain
+their source revision and report stale=true. Simulation views also identify the
+job, camera and target/attainment result.
+
+The MCP fraction-to-percent conversion is explicit at the simulator worker
+boundary. Mesh target residuals are measured independently of the solver clock's
+convergence flag. These endpoint diagnostics have defined degeneracy, angular
+winding and collision limitations; see [hardening](hardening.md).
+
+CP/ORI exports reuse the shared superset-feature policy. Blocking losses return
+structured errors with alternatives; nonblocking omissions require allow_loss.
+Auxiliary conversion preserves the upstream topology-changing behavior and
+requires a fresh inspection before angle assignment or further ID-based edits.

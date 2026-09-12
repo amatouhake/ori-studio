@@ -1,0 +1,18 @@
+Use the connected Ori Studio MCP as a real external origami-design agent.
+
+Starting from a new design, independently choose and create a nontrivial origami design. Discover the available capabilities through MCP itself. Inspect structured diagnostics and rendered visual feedback, use analysis and/or simulation where appropriate, notice and repair problems, and export a satisfactory editable result and useful artifacts.
+
+Do not reproduce the existing Miura demonstration.
+
+When finished, evaluate the MCP interface itself: tool discoverability, schema clarity, missing feedback, unnecessary round trips, semantic ambiguities, failure/recovery behavior, and whether you could genuinely close the design → inspect → repair → verify loop autonomously.
+
+Do not modify the implementation. As part of your independent task, attempt substantial 3D folding (a target of at least 0.5) and evaluate whether the returned physical simulation feedback lets you distinguish numerical settling from reaching your design target. Use the actual rendered geometry and structured results to make that decision; do not assume a completed simulation is a satisfactory result.
+
+Evaluation conditions:
+- You are a fresh external agent. Use the connected ori_studio MCP tools for every origami/application operation. Choose the design yourself; no acceptance sequence is prescribed.
+- Do not inspect the MCP implementation, docs/mcp/, scripts/mcp/, any existing acceptance/demo clients, or prior evaluation/design artifacts. Do not inspect the repository source at all during this run. Do not open a PR, commit, push, install dependencies, or alter application/configuration code.
+- The MCP server is already running and authenticated for this session. No login is needed. Discover schemas through the connected tool catalog. Do not stop merely at a plan: actually attempt the design and follow through to export and evaluation, or explain a concrete irrecoverable blocker with evidence.
+- Your current directory is a new empty evidence workspace. You may use filesystem tools only for your own new notes, mathematical calculations, and saving/decoding content returned by public MCP tools. You may view images returned by MCP. Do not fabricate visual evidence or manually recreate exported artifacts.
+- Your JSONL event stream is being captured at /tmp/ori-astra-dogfood-fixed-retry/agent-transcript.jsonl. You may read your own stream to recover exact MCP-returned image/file content for saving, if helpful. This is transport evidence, not application implementation.
+- Save your exported artifacts in this workspace. Write evaluation.md with the design goal, actual trajectory, diagnostics/images used to make decisions, failures and recoveries, result quality/limitations, and concrete prioritized interface-improvement proposals backed by named calls/results. Distinguish observed defects from uncertainty or your own misunderstanding. Do not claim success from a successful tool call alone.
+- Leave the application/server running. Preserve the final experiment(s). Do not disable access or discard the final design. You may publish your finished design through a public MCP tool if available; the desktop was started with private test app data for this evaluation.

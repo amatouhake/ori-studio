@@ -181,7 +181,7 @@ node scripts/mcp/desktop-demo.mjs
 ```
 
 This uses the binary's bundled production frontend. Without a display it needs
-`xvfb-run`; it also needs Playwright Chromium for image feedback. It runs all three
+`dbus-run-session` and `xvfb-run`; it also needs Playwright Chromium for image feedback. It runs all four
 probes below, then stops the desktop and removes its temporary app data. It keeps
 reports and exported designs. `ORI_DESKTOP_BINARY` can select a different built
 binary. The isolated launcher is Linux-specific; the individual MCP clients also
@@ -213,3 +213,32 @@ tool call from stdin for additional probes (or lists tools when given no name).
 
 See [the implementation report](report.md) for measured results and limitations,
 and [architecture](architecture.md) for the transport and transaction design.
+
+## Reading hardened feedback
+
+Read `workspace.capabilities` for compact operation/condition fields, numeric
+limits, format support and repair/concurrency notes. The complete JSON Schemas
+remain in tools/list; some clients simplify their display.
+
+Quote `workspace.live.history_token` as well as edit revision and load serial
+for each new `workspace_history` action. Companion-object/history changes can
+invalidate authorization even if the geometry revision is unchanged.
+
+`export_loss_blocked` cannot be overridden: choose FOLD for crease semantics or
+OSF for the native project. `export_loss_confirmation_required` lists nonblocking
+omissions; an agent can review those and retry with `allow_loss=true` without a
+human dialog. Converting auxiliary lines requires a separate edit and inspection
+before angle assignment, because the kernel may reorder/subdivide the lines.
+
+Simulation `fold_amount` remains 0..1. Inspect `requested_fold_amount`,
+`effective_fold_percent`, `solver_settled`, `target_attainment` and `outcome`.
+Settling without target attainment is a usable diagnostic, not successful
+folding. Residuals refer to zero-based edges of the prepared simulation mesh and
+are measured modulo 360°, with a 5° tolerance; they do not prove collision-free
+motion. Render responses preserve the source revision and identify stale images.
+
+Run `node scripts/mcp/hardening.mjs` for the public export-loss, auxiliary,
+history-conflict and substantial-hinge regression probe. Forced render/job races
+and history-only changes are covered deterministically at the public service
+boundary by unit tests, without adding test hooks to the running server.
+The [hardening report](hardening.md) distinguishes original and corrected evidence.
