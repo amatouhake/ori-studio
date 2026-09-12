@@ -12,5 +12,5 @@ Canvas text interchange helpers, project import/export, automation publication/e
 ## Checklist
 - [x] Normalize publication atomically and test ordinary export/save plus undo/redo and conflicts.
 - [x] Account for text loss independently of storage representation and test overlap/round trips.
-- [ ] Run focused and full web/desktop validation and public MCP probes.
-- [ ] Update curated evidence and hardening documentation; commit and push without a PR.
+- [x] Run focused and full web/desktop validation and public MCP probes.
+- [x] Update curated evidence and hardening documentation; commit and push without a PR.

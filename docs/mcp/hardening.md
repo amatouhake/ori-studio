@@ -321,3 +321,65 @@ The full web suite passes 487 files / 6,059 tests. The simulator suite's three
 identical baseline golden failures above remain the only validation limitation.
 [Curated evidence](evidence/provenance/README.md) preserves the concrete results
 and exact baseline comparison without raw transcripts.
+
+## Imported text publication and loss policy (2026-09-12)
+
+The preceding ORI text fix covered direct draft exports, but did not cover live
+publication or CP loss warnings for drafts that still held kernel text. Both
+remaining review findings were confirmed and fixed.
+
+`normalizeDocumentTexts` now owns the normal import inflation behavior and is
+shared by project import, MCP publication and native draft export. Publication
+prepares a kernel document with an empty interchange text vector, then installs
+it together with canvas text annotations in the same store/history action.
+Existing annotations and other companions are retained. The original snapshot
+is not mutated; conflict/access checks still run before preparation and before
+installation. Undo restores the prior document and annotations; redo restores
+the published annotations. Ordinary application export can therefore populate
+and clear transient kernel text without erasing the only copy.
+
+The shared `flattenDocumentTexts` projection merges imported text and annotations
+by exact coordinates and content, consuming matches one-to-one. Existing canvas
+annotations win matches, retaining their rich state. Repeated text elements
+within either representation keep their multiplicity; nearby text is not merged.
+This also avoids duplicating text when the same imported draft is published again.
+
+The application's export-loss registry accepts interchange text as well as
+annotations. Formats that omit text (including CP) count the merged logical
+entries once under the existing nonblocking `richText` warning and require
+`allow_loss`. ORI/FOLD/ORH retain imported plain text; existing canvas formatting,
+box and reflow losses still warn as before. The policy distinguishes losing
+plain content from losing the richer canvas state, rather than claiming that
+ORI cannot carry text. Native OSF exports normalize imported text as well.
+
+Regression evidence has two complementary boundaries:
+
+- `textPublication.test.ts` connects the real MCP service, store publication,
+  history and ordinary `exportOri`/`saveProjectAs` actions to the actual WASM CP
+  worker API. Only transport, dialogs and file destination are substituted. Both
+  ORI and FOLD imports retain Unicode/multiline text through an ordinary ORI
+  export/re-import, native save, undo and redo. Tests inspect the actual kernel
+  vector after publication and export, assert canonical native annotations,
+  preserve existing companions, check repeat publication and overlapping copies,
+  and verify CP acknowledgement plus direct ORI round trips.
+- `scripts/mcp/text-publication.mjs` runs against authenticated loopback HTTP MCP
+  and the native desktop CP engine. It checks direct CP loss acknowledgement,
+  ORI round trips, live publication, active cloning, native annotation storage,
+  undo/redo and ORI export after publication. It adds no test-only server tools.
+  Ordinary application file actions are covered by the integration test above,
+  not mislabeled as actions available through the public MCP interface.
+
+See [curated text evidence](evidence/text-publication/README.md). Prior Ginkgo
+and provenance evidence remains intact; this pass changes no simulator or
+ported engine algorithm and does not alter the excluded upstream issues.
+
+Validation for the text pass: all 33 focused tests pass; the full web suite
+passes 489 files / 6,063 tests. Web lint, typecheck, translation checks, full
+production build with all WASM bridges and landing prerender, desktop check/build
+and all 23 desktop library tests pass. All six public desktop MCP probes pass:
+security, native state, hardening, Miura acceptance, design engines and text
+publication. The existing native simulator/provenance and quarantine probes were
+rerun unchanged. Rust workspace/oracle and simulator package suites were not
+rerun because this pass changes no Rust source or simulator code; their earlier
+limitations remain documented above. The curated validation record identifies
+which boundary each text regression exercises.
