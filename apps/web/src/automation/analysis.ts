@@ -1,4 +1,4 @@
-import { SOURCE_TARGETS, requestedFoldTargets } from '../simulator/sourceFoldTargets';
+import { withSourceFoldTargets } from '../simulator/sourceFoldTargets';
 import { invoke } from '@tauri-apps/api/core';
 import { isDesktopRuntime } from '../platform/runtime';
 import type { OristudioCpFoldedFigureSnapshot } from '../engine/oristudioCpTypes';
@@ -107,9 +107,8 @@ export async function analyze(data: DesignData, analysis: string, args: Record<s
 export async function simulate(data: DesignData, amount: number, maxSteps: number, signal: AbortSignal): Promise<AnalysisOutput> {
   const source = await exportFold(data);
   signal.throwIfAborted();
-  const targets = requestedFoldTargets(source);
-  const artifacts = foldArtifactsFromFold(source);
-  const fold = { ...simulationFoldOf(artifacts), [SOURCE_TARGETS]: targets };
+  const artifacts = foldArtifactsFromFold(withSourceFoldTargets(source));
+  const fold = simulationFoldOf(artifacts);
   if (!fold) throw new AutomationError('invalid_geometry', 'No simulation fold could be prepared');
   const worker = new Worker(new URL('../workers/simulatorWorker.ts', import.meta.url), { type: 'module' });
   return isolatedWorker<SimulatorWorkerApi, AnalysisOutput>(worker, signal, async api => {

@@ -1,3 +1,4 @@
+import { SOURCE_EDGE_PROVENANCE } from './sourceProvenance.js';
 import earcut from 'earcut';
 import {
   assignmentFoldAngle,
@@ -102,6 +103,8 @@ function normalizeFold(
   diagnostics: SimulatorDiagnostics
 ): FoldDocument {
   const fold = cloneFold(source);
+  const provenance = source[SOURCE_EDGE_PROVENANCE] as number[][] | undefined;
+  if (provenance) fold[SOURCE_EDGE_PROVENANCE] = provenance.map(ids => [...ids]);
   fold.vertices_coords = fold.vertices_coords.map((coord) => normalizePoint(coord));
   fold.edges_assignment = fold.edges_vertices.map((_, index) =>
     normalizeAssignment(fold.edges_assignment?.[index])
@@ -288,6 +291,16 @@ function mergeEdge(
     : null;
   // The earlier half, so the inherited extension data is deterministic.
   const source = edgeSources[Math.min(halves[0]!, halves[1]!)]!;
+  // Union only actual contributors to this merge, never nearby geometry.
+  const provenance = fold[SOURCE_EDGE_PROVENANCE] as number[][] | undefined;
+  if (provenance) {
+    const contributors = halves.map(index => edgeSources[index]!);
+    const mergedSources = [...new Set(contributors.flatMap(index => provenance[index] ?? []))];
+    // Consumed slots have no surviving owner. Release them so a long merge
+    // chain does not retain every intermediate cumulative list until remapping.
+    for (const index of contributors) provenance[index] = [];
+    provenance[source] = mergedSources;
+  }
 
   for (const index of halves) {
     edges.splice(index, 1);
@@ -432,6 +445,7 @@ function removeDegenerateGeometry(fold: FoldDocument, diagnostics: SimulatorDiag
   let droppedEdges = 0;
   const assignments = fold.edges_assignment;
   const foldAngles = fold.edges_foldAngle;
+  const keptSources: number[] = [];
   const keptEdges: [number, number][] = [];
   const keptAssignment: FoldAssignment[] = [];
   const keptFoldAngle: Array<number | null> = [];
@@ -443,10 +457,13 @@ function removeDegenerateGeometry(fold: FoldDocument, diagnostics: SimulatorDiag
       droppedEdges += 1;
       return;
     }
+    keptSources.push(index);
     keptEdges.push(edge);
     if (assignments) keptAssignment.push(assignments[index] ?? 'U');
     if (foldAngles) keptFoldAngle.push(foldAngles[index] ?? null);
   });
+  const provenance = fold[SOURCE_EDGE_PROVENANCE] as number[][] | undefined;
+  if (provenance) fold[SOURCE_EDGE_PROVENANCE] = keptSources.map(index => provenance[index] ?? []);
   fold.edges_vertices = keptEdges;
   if (assignments) fold.edges_assignment = keptAssignment;
   if (foldAngles) fold.edges_foldAngle = keptFoldAngle;
@@ -788,6 +805,7 @@ function appendEdgeIfMissing(
   if (edgeIndex.has(key)) return;
   edgeIndex.set(key, fold.edges_vertices.length);
   fold.edges_vertices.push([a, b]);
+  (fold[SOURCE_EDGE_PROVENANCE] as number[][] | undefined)?.push([]);
   fold.edges_assignment?.push('F');
   fold.edges_foldAngle?.push(0);
 }

@@ -1,3 +1,4 @@
+import { SOURCE_EDGE_PROVENANCE } from '@treemaker/origami-simulator';
 import type { FoldDocument, PreparedOrigamiModel } from '@treemaker/origami-simulator';
 
 export const SOURCE_TARGETS = 'oristudio:requested_fold_targets';
@@ -28,21 +29,34 @@ export function requestedFoldTargets(source: FoldDocument): SourceFoldTarget[] {
   });
 }
 
+export function withSourceFoldTargets(source: FoldDocument): FoldDocument {
+  return { ...source, [SOURCE_TARGETS]: requestedFoldTargets(source),
+    [SOURCE_EDGE_PROVENANCE]: source.edges_vertices.map((_, index) => [index]) };
+}
+
 /** Derive full interval coverage, not just edge membership: splitting may leave
  * only HALF a requested crease constrained, and merging may replace its angle.
- * Conservative collinearity/angle matching makes such ambiguity incomplete.
+ * Identity is required FIRST. Geometry measures coverage only within proven
+ * lineage; missing/ambiguous lineage must never be inferred from proximity.
  * No attempt to infer winding history from endpoint geometry is made here.
  */
 export function sourceTargetCoverage(model: PreparedOrigamiModel) {
   const sources = model.fold[SOURCE_TARGETS] as SourceFoldTarget[] | undefined;
+  const provenance = model.fold[SOURCE_EDGE_PROVENANCE] as number[][] | undefined;
+  const validProvenance = provenance?.length === model.edgesVertices.length;
   const read = (index: number) => Array.from(model.originalPositions.slice(index * 3, index * 3 + 3));
   const mesh = model.creaseParams.map(c => ({ edge: c.edge, angle: c.targetAngle, a: read(model.edgesVertices[c.edge][0]), b: read(model.edgesVertices[c.edge][1]) }));
+  const constraintsBySource = new Map<number, typeof mesh>();
+  if (validProvenance) for (const crease of mesh) for (const id of provenance?.[crease.edge] ?? []) {
+    const constraints = constraintsBySource.get(id) ?? [];
+    constraints.push(crease); constraintsBySource.set(id, constraints);
+  }
   const targets = sources?.map(source => {
     const delta = source.b.map((x, i) => x - source.a[i]);
     const length2 = delta.reduce((sum, x) => sum + x * x, 0);
     const intervals: { start: number; end: number; edge: number }[] = [];
     if (Number.isFinite(length2) && length2 > 1e-20 && source.target_degrees !== null) {
-      for (const crease of mesh) {
+      for (const crease of constraintsBySource.get(source.source_edge_index) ?? []) {
         // Face orientation preparation changes the sign convention. Magnitude
         // must still match the source target; signed residuals use solver normals.
         if (model.edgesAssignment[crease.edge] !== source.assignment) continue;

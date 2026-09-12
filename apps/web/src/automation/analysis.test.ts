@@ -3,7 +3,7 @@ import { makeBookFoldFixture } from '@treemaker/origami-simulator/testing';
 import { prepareFoldModel } from '@treemaker/origami-simulator';
 import { createSimulatorSession } from '../simulator/simulatorSession';
 import { measureFoldTargets } from '../simulator/foldTargetAttainment';
-import { SOURCE_TARGETS, requestedFoldTargets } from '../simulator/sourceFoldTargets';
+import { SOURCE_TARGETS, requestedFoldTargets, withSourceFoldTargets } from '../simulator/sourceFoldTargets';
 import { simulate } from './analysis';
 import { createStarterOristudioCpDocument } from '../lib/oristudioCpStarterDocument';
 const bridge = vi.hoisted(() => ({ api: undefined as unknown, source: undefined as ReturnType<typeof makeBookFoldFixture> | undefined }));
@@ -51,7 +51,7 @@ describe('MCP simulation target units and physical attainment', () => {
   it('requires the full source segment and unchanged target, and distinguishes generated hinges', () => {
     const source = makeBookFoldFixture();
     const targets = requestedFoldTargets(source);
-    const model = prepareFoldModel({ ...source, [SOURCE_TARGETS]: targets });
+    const model = prepareFoldModel(withSourceFoldTargets(source));
     expect(measureFoldTargets(model, model.positions, 55).source_coverage).toMatchObject({ status: 'complete', targets: [{ status: 'represented_and_measured' }] });
     const original = targets[0];
     model.fold[SOURCE_TARGETS] = [{ ...original, b: original.b.map((x, i) => original.a[i] + 2 * (x - original.a[i])) }];
@@ -63,7 +63,7 @@ describe('MCP simulation target units and physical attainment', () => {
   });
   it('does not call a flat settled mesh target attainment, and reports degeneracy as unknown', () => {
     const source = makeBookFoldFixture();
-    const model = prepareFoldModel({ ...source, [SOURCE_TARGETS]: requestedFoldTargets(source) });
+    const model = prepareFoldModel(withSourceFoldTargets(source));
     expect(measureFoldTargets(model, model.positions, 55)).toMatchObject({ status: 'not_attained', max_residual_degrees: 99 });
     expect(measureFoldTargets(model, new Float32Array(model.positions.length), 55)).toMatchObject({ status: 'unknown', unmeasurable_count: 1 });
   });
