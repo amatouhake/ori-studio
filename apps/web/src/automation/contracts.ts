@@ -1,11 +1,13 @@
+import type { FoldDocument } from '../engine/types';
+import type { BpDocumentSymmetry } from '../lib/bpTreeSymmetry';
 import type { Point } from '../lib/geometry';
 import type { OristudioCpDocumentSnapshot } from '../engine/oristudioCpTypes';
 
 export type DesignKind = 'crease_pattern' | 'treemaker' | 'box_pleat';
 export type DesignData =
-  | { kind: 'crease_pattern'; document: OristudioCpDocumentSnapshot; pins?: readonly Point[] }
+  | { kind: 'crease_pattern'; document: OristudioCpDocumentSnapshot; pins?: readonly Point[]; foldedFormFrames?: FoldDocument[] }
   | { kind: 'treemaker'; text: string }
-  | { kind: 'box_pleat'; text: string };
+  | { kind: 'box_pleat'; text: string; viewState?: { symmetry: BpDocumentSymmetry } };
 
 export interface ToolResult {
   content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: 'image/png' })[];

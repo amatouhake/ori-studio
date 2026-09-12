@@ -5,7 +5,7 @@ import { degreesToFoldMagnitude } from '../lib/foldAngle';
 import type { CpData } from './engines';
 import { captureCpExperimentBase } from '../store/workspaceStore/slices/automationSlice';
 import { useWorkspaceStore } from '../store/workspaceStore/store';
-const serializer = vi.hoisted(() => vi.fn(async () => 'serialized'));
+const serializer = vi.hoisted(() => vi.fn(async () => '{}'));
 vi.mock('./engines', () => ({ withCp: serializer, exportFold: async () => ({ vertices_coords: [] }) }));
 function design(color: 'Red1' | 'None', angle?: number): CpData {
   const document = createStarterOristudioCpDocument('loss test');
@@ -20,7 +20,7 @@ describe('MCP reuses export-loss policy before serialization', () => {
   });
   it('blocks unassigned CP, preserves the ORI option, and permits FOLD/OSF', async () => {
     await expect(exportDesign(design('None'), 'test', 'cp')).rejects.toMatchObject({ code: 'export_loss_blocked' });
-    expect((await exportDesign(design('None'), 'test', 'ori')).content).toBe('serialized');
+    expect((await exportDesign(design('None'), 'test', 'ori')).content).toBe('{}');
     for (const format of ['fold', 'osf']) expect((await exportDesign(design('Red1', 90), 'test', format)).content).toBeTruthy();
   });
   it('requires explicit acknowledgement of nonblocking omissions', async () => {

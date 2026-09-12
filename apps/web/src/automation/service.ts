@@ -1,3 +1,4 @@
+import { bpDocumentSymmetry } from '../lib/bpTreeSymmetry';
 import { serializeDesign } from '../engines/designHandles';
 import { workspaceOperationsIdle } from '../store/workspaceStore/operationFence';
 import { CONSTRUCTIONS, CONSTRUCTION_INPUTS, CAPABILITIES } from './tools';
@@ -11,7 +12,7 @@ import { analyze, simulate, type AnalysisOutput } from './analysis';
 import * as engines from './engines';
 import { validateTool } from './tools';
 import { png, renderSvg } from './render';
-import { exportDesign } from './export';
+import { captureFoldedForms, exportDesign } from './export';
 
 interface Draft {
   id: string; title: string; revision: number; data: DesignData; base: CpExperimentBase;
@@ -156,12 +157,15 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
         if (kind === 'crease_pattern') {
           if (!base.document) throw new AutomationError('document_unavailable', 'No Edit canvas is loaded');
           data = { kind, document: structuredClone(base.document.document), pins: structuredClone(base.pins) };
+          checkResources({ data, base });
+          await captureFoldedForms(data, base);
+          if (!matchesCpExperimentBase(state(), base)) throw new AutomationError('conflict', 'The active workspace changed while native folded forms were captured. Retry begin_design.');
         } else {
           const tab = state().designTabs.find(t => t.id === state().activeDesignId);
           if (!tab || tab.kind !== (kind === 'treemaker' ? 'treemaker' : 'box-pleat')) throw new AutomationError('wrong_design_kind', 'The active design tab does not match the requested kind');
           const text = await serializeDesign(tab.id, tab.kind);
           if (text === null) throw new AutomationError('document_unavailable', 'The active design cannot be serialized');
-          data = { kind, text };
+          data = kind === 'box_pleat' && tab.kind === 'box-pleat' ? { kind, text, viewState: { symmetry: bpDocumentSymmetry(tab.boxPleat.symmetry) } } : { kind, text };
         }
       } else if (args.source === 'import') {
         if (!args.content || !args.format) throw new AutomationError('invalid_arguments', 'Import requires format and content');
@@ -238,7 +242,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
         d.base = captureCpExperimentBase(state());
         return result({ ...describe(d), committed: true, live_revision: revision, undo_label: args.label });
       }
-      const id = state().publishDesignExperiment(d.data.kind === 'treemaker' ? 'treemaker' : 'box-pleat', d.data.text, d.title);
+      const id = state().publishDesignExperiment(d.data.kind === 'treemaker' ? 'treemaker' : 'box-pleat', d.data.text, d.title, d.data.kind === 'box_pleat' ? d.data.viewState : undefined);
       return result({ ...describe(d), committed: true, design_id: id });
     }
     if (name === 'discard_design') { drop(d); return result({ discarded: true, draft_id: d.id }); }

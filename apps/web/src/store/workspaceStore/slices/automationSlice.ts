@@ -1,3 +1,4 @@
+import { bpDocumentSymmetry, type BpDocumentSymmetry } from '../../../lib/bpTreeSymmetry';
 import type { OristudioCpDocumentSnapshot } from '../../../engine/oristudioCpTypes';
 import { AutomationError } from '../../../automation/contracts';
 import { prepareOristudioCpReplacement } from '../oristudioCpRuntime';
@@ -34,7 +35,7 @@ export function matchesCpExperimentBase(s: WorkspaceState, base: CpExperimentBas
 }
 export interface AutomationSlice {
   commitCpExperiment: (document: OristudioCpDocumentSnapshot, base: CpExperimentBase, label: string, allowed?: () => boolean) => Promise<number>;
-  publishDesignExperiment: (kind: 'treemaker' | 'box-pleat', text: string, title: string) => string;
+  publishDesignExperiment: (kind: 'treemaker' | 'box-pleat', text: string, title: string, viewState?: { symmetry: BpDocumentSymmetry }) => string;
 }
 
 export const createAutomationSlice: WorkspaceSliceCreator<AutomationSlice> = (set, get) => ({
@@ -72,8 +73,9 @@ export const createAutomationSlice: WorkspaceSliceCreator<AutomationSlice> = (se
       return revision;
     } finally { await prepared.discard(); }
   },
-  publishDesignExperiment: (kind, text, title) => {
+  publishDesignExperiment: (kind, text, title, viewState) => {
     const tab = createDesignTab(get().designTabs, { kind, title, pendingHydration: true });
+    if (tab.kind === 'box-pleat' && viewState) tab.boxPleat.symmetry = { ...tab.boxPleat.symmetry, ...bpDocumentSymmetry(viewState.symmetry) };
     adoptDesign(tab.id, text);
     set({ designTabs: [...get().designTabs, tab], activeDesignId: tab.id, dirty: true, projectEstablished: true });
     // Publication is synchronous; hydration can follow without blocking its

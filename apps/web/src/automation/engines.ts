@@ -38,8 +38,16 @@ export async function newDesign(kind: DesignKind, title: string): Promise<Design
 
 /** Refuse the two known FOLD import hazards, without changing upstream import semantics. */
 export function guardFoldImport(text: string): void {
-  const fold = JSON.parse(text) as { vertices_coords?: number[][] };
-  const points = fold.vertices_coords;
+  type Frame = { vertices_coords?: number[][]; edges_vertices?: number[][]; faces_vertices?: number[][]; frame_classes?: string[]; file_frames?: Frame[] };
+  const fold = JSON.parse(text) as Frame;
+  // Match io/fold.rs geometry_frame: usable root first, otherwise highest
+  // scoring embedded frame, earliest on ties. Do not substitute the web
+  // preview's inheritance/selection policy for loadFoldFile's native policy.
+  const usable = (frame: Frame) => frame.vertices_coords?.length && frame.edges_vertices?.length;
+  const score = (frame: Frame) => frame.frame_classes?.includes('creasePattern') ? 100 + (frame.faces_vertices?.length ? 10 : 0)
+    : frame.frame_classes?.includes('foldedForm') ? -100 : frame.faces_vertices?.length ? 10 : 0;
+  const selected = usable(fold) ? fold : fold.file_frames?.filter(usable).sort((a, b) => score(b) - score(a))[0];
+  const points = selected?.vertices_coords;
   if (!points?.length || points.some(p => p.length < 2 || !p.every(Number.isFinite))) throw new AutomationError('invalid_geometry', 'FOLD needs finite vertices_coords');
   let minY = Infinity, maxY = -Infinity;
   for (const p of points) { minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]); }
@@ -171,7 +179,7 @@ export async function editBp(data: Extract<DesignData, { kind: 'box_pleat' }>, o
         default: throw new AutomationError('unsupported_operation', String(op.type));
       }
     }
-    return { data: { kind: 'box_pleat' as const, text: await api.exportSessionBps(h) }, reports: [] };
+    return { data: { ...data, text: await api.exportSessionBps(h) }, reports: [] };
   } finally { await api.freeProject(h); }
 }
 
