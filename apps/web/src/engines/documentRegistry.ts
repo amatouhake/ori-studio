@@ -93,6 +93,14 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    */
   const pins = new Map<string, number>();
   const isPinned = (documentId: string) => (pins.get(documentId) ?? 0) > 0;
+  /**
+   * Parks currently serializing, by document id.
+   *
+   * Keyed by id and held *outside* the hot entry on purpose, like `pins`: the
+   * entry is already gone while a park is in flight, so there is nowhere else
+   * to record that the parked text is about to be replaced.
+   */
+  const parksInFlight = new Map<string, Promise<void>>();
   const listeners = new Set<(event: DocumentRegistryEvent) => void>();
   let clock = 0;
 
@@ -136,7 +144,13 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     reason: 'evicted' | 'released' = 'released'
   ): Promise<void> {
     const entry = hot.get(documentId);
-    if (!entry) return;
+    if (!entry) {
+      // A park is already serializing this document: waiting for it is what
+      // makes `await park()` mean the text is safely parked, instead of
+      // resolving while the earlier park is still mid-window.
+      await parksInFlight.get(documentId);
+      return;
+    }
     // Engine work is in flight. Serializing would capture a torn intermediate
     // state, and freeing would pull the handle out from under it. The caller
     // switching tabs mid-optimize simply keeps this document hot until it ends.
@@ -144,15 +158,28 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // Removed before the awaits: a second `park` racing this one must not
     // serialize and free the same handle twice.
     hot.delete(documentId);
+    // Marked before the awaits, alongside the removal: an `acquire` landing in
+    // the serialize/free window must wait for this park and hydrate from the
+    // text it stores — not mint a blank handle from nothing parked yet, or a
+    // stale one from the text being replaced. Set synchronously here, so there
+    // is no gap between the removal above and the marker for anyone to slip through.
+    const work = (async () => {
+      try {
+        parked.set(documentId, await entry.document.kind.codec.serialize(entry.handle));
+      } catch (error) {
+        // Serialization failed, so the last known text is all there is. Keeping it
+        // loses the edits since, but dropping the entry entirely would lose the
+        // document — and the handle still has to be freed either way.
+        console.error(`[ori-studio] failed to serialize document ${documentId}`, error);
+      }
+      await entry.document.kind.codec.free(entry.handle);
+    })();
+    parksInFlight.set(documentId, work);
     try {
-      parked.set(documentId, await entry.document.kind.codec.serialize(entry.handle));
-    } catch (error) {
-      // Serialization failed, so the last known text is all there is. Keeping it
-      // loses the edits since, but dropping the entry entirely would lose the
-      // document — and the handle still has to be freed either way.
-      console.error(`[ori-studio] failed to serialize document ${documentId}`, error);
+      await work;
+    } finally {
+      if (parksInFlight.get(documentId) === work) parksInFlight.delete(documentId);
     }
-    await entry.document.kind.codec.free(entry.handle);
     emit({ type: 'parked', documentId, reason, recoverable: parked.has(documentId) });
   }
 
@@ -167,6 +194,16 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     if (existing) {
       existing.touched = clock += 1;
       return existing.handle;
+    }
+    // A park is serializing this document: its hot entry is already gone but
+    // its fresh text is not parked yet. Waiting and re-reading hydrates from
+    // that text; proceeding would mint a blank handle — or a stale one from
+    // the text being replaced — that `serialize()`'s hot-first rule then
+    // prefers over the fresh text until the next park makes it permanent.
+    const parking = parksInFlight.get(document.id);
+    if (parking) {
+      await parking;
+      return acquire(document);
     }
 
     const text = parked.get(document.id);
@@ -212,6 +249,11 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
 
   /** Serialized text for a document, parking it first if it is hot. */
   async function serialize(document: RegisteredDocument): Promise<string> {
+    // A park in flight means the hot entry is gone but its replacement text is
+    // not parked yet: answering now would return the stale text being replaced
+    // — or throw when nothing was ever parked — while the fresh text lands a
+    // moment later. Wait for it instead.
+    await parksInFlight.get(document.id);
     const entry = hot.get(document.id);
     if (entry) return entry.document.kind.codec.serialize(entry.handle);
     const text = parked.get(document.id);
