@@ -778,6 +778,14 @@ pub fn decode(body: &[u8]) -> Result<Decoded> {
     if flags & FLAG_RAW != 0 {
         let len = cur.count("raw length", 8)?;
         let bytes = cur.take(len, "raw body")?;
+        if !cur.is_empty() {
+            // Framing first: bytes past the declared body are not a longer
+            // document, whatever they parse as.
+            return Err(ShareError::MalformedExtension {
+                tag: 0,
+                reason: "trailing bytes after raw body",
+            });
+        }
         let text = std::str::from_utf8(bytes).map_err(|_| ShareError::BadUtf8 { tag: 0 })?;
         let model = crate::io::fold::import_fold_json(text)
             .map_err(|_| ShareError::NotRepresentable("raw .fold body failed to parse"))?;
@@ -889,6 +897,15 @@ pub fn decode(body: &[u8]) -> Result<Decoded> {
             }
             _ => out.skipped_extensions += 1,
         }
+    }
+    if !cur.is_empty() {
+        // Extension bytes without an extension count are not data: an appended
+        // TLV with an unbumped count used to decode as `Ok { skipped: 0 }`,
+        // giving two byte strings the same document.
+        return Err(ShareError::MalformedExtension {
+            tag: 0,
+            reason: "trailing bytes after extension section",
+        });
     }
 
     out.model = model;
