@@ -33,6 +33,11 @@ and #368 (empty ORH) are excluded; guard affected automation inputs.
 - [x] Implement structured analysis, cancellable jobs, simulation and images
 - [x] Implement desktop transport, authentication and enable/disable controls
 - [x] Demonstrate autonomous MCP repair loop and exports on running desktop
-- [ ] Run web and desktop validation and record results/limitations
-- [ ] Make logical commits, push dedicated branch to amatouhake's existing fork,
-      and hand off for inspection (no PR, per user instruction)
+- [x] Run web and desktop validation and record results/limitations
+- [x] Preserve logical commits, architecture docs, acceptance clients and a fork
+      handoff on `feat/mcp-agent-integration` (no PR, per user instruction)
+
+The delivery report is [docs/mcp/report.md](../docs/mcp/report.md); connection and
+reproduction instructions are in [docs/mcp/README.md](../docs/mcp/README.md).
+Publication targets the existing `amatouhake/ori-studio` fork. No upstream issue
+or PR is created by this workflow.

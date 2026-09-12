@@ -44,6 +44,12 @@ distinguishes them.
 
 ## What we never collect
 
+Desktop MCP follows the same contract. `agent tool completed` records only the
+tool-name enum and `success`/`error`; `agent access changed` records only
+`enabled`/`disabled`. Neither event includes arguments, experiment IDs, tokens,
+geometry, file/image content, titles or diagnostic messages. Both are no-ops
+when analytics is disabled. See [MCP architecture](mcp/architecture.md).
+
 This is the hard line. None of the following is ever sent, by any event or by
 autocapture:
 
