@@ -1001,6 +1001,20 @@ fn project_session_updates_one_layout_sheet_dimension_at_a_time() {
 }
 
 #[test]
+fn project_session_rejects_fractional_layout_sheet_dimensions() {
+    let mut session = BpProjectSession::new(sample_project()).unwrap();
+    let err = session
+        .update_layout_sheet(GridType::Rectangular, Some(20.5), Some(20.0))
+        .expect_err("fractional sheet width must be rejected, not persisted");
+    assert!(
+        format!("{err:?}").contains("integer"),
+        "unexpected error (want the integrality refusal): {err:?}"
+    );
+    assert_eq!(session.project().design.layout.sheet.width, 8.0);
+    assert_eq!(session.project().design.layout.sheet.height, 8.0);
+}
+
+#[test]
 fn project_graphics_snapshot_exports_node_graphics_and_invalid_junctions() {
     let mut project = sample_project();
     project.design.layout.flaps = vec![

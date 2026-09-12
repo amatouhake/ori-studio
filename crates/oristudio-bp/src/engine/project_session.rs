@@ -909,13 +909,13 @@ impl BpProjectSession {
                     unreachable!("grid type checked above")
                 };
                 if let Some(width) = width
-                    && let Some(resize) = grid.set_width_checked(width, &anchors)
+                    && let Some(resize) = grid.set_width_checked(width, &anchors)?
                 {
                     shift = combine_shift(shift, resize.shift);
                 }
                 let shifted = shifted_points(&anchors, shift);
                 if let Some(height) = height
-                    && let Some(resize) = grid.set_height_checked(height, &shifted)
+                    && let Some(resize) = grid.set_height_checked(height, &shifted)?
                 {
                     shift = combine_shift(shift, resize.shift);
                 }
@@ -927,7 +927,7 @@ impl BpProjectSession {
                 };
                 // A diagonal sheet is square, so either field drives its size.
                 if let Some(size) = width.or(height)
-                    && let Some(resize) = grid.set_size_checked(size, &anchors)
+                    && let Some(resize) = grid.set_size_checked(size, &anchors)?
                 {
                     shift = combine_shift(shift, resize.shift);
                 }
