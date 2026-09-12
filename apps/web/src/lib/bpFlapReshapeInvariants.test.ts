@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   BP_FLAP_HANDLE_SIGNS,
   BP_FLAP_RESIZE_HANDLES,
@@ -97,14 +97,16 @@ function solve(
 }
 
 /** Every (shape, handle, delta) the sweep covers, with its solved footprint. */
-function* sweep(): Generator<{
+interface SweepCase {
   sheetName: string;
   source: OristudioBpFlap;
   handle: BpFlapResizeHandle;
   dx: number;
   dy: number;
   result: BpFlapFootprint;
-}> {
+}
+
+function* sweep(): Generator<SweepCase> {
   for (const [sheetName, sheet, at] of SHEETS) {
     for (const [w, h, r] of SHAPES) {
       const source = flap(w, h, r, at);
@@ -133,16 +135,30 @@ function describeCase(c: {
 }
 
 describe('resize solve invariants', () => {
+  // These checks only read the same deterministic sweep. Solve each input once
+  // per file, retaining every case and each invariant's named failure message.
+  let cases: readonly SweepCase[];
+  beforeAll(() => {
+    cases = [...sweep()];
+    for (const c of cases) {
+      Object.freeze(c.source.anchor);
+      Object.freeze(c.source);
+      Object.freeze(c.result.anchor);
+      Object.freeze(c.result);
+      Object.freeze(c);
+    }
+    Object.freeze(cases);
+  });
   it('sweeps a meaningful number of cases', () => {
     // Guards every test below from passing because the sweep produced nothing.
-    expect([...sweep()].length).toBeGreaterThan(1500);
+    expect(cases.length).toBeGreaterThan(1500);
   });
 
   it('never produces a fractional field', () => {
     // The sharpest one. A fractional flap coordinate makes the junction overlap
     // fractional, and BP's gadget generation then hard-errors for the WHOLE
     // design — every crease and conflict vanishes, with no toast and no log.
-    for (const c of sweep()) {
+    for (const c of cases) {
       const fields = [
         c.result.anchor.x,
         c.result.anchor.y,
@@ -157,7 +173,7 @@ describe('resize solve invariants', () => {
   });
 
   it('never produces a negative box or an out-of-range radius', () => {
-    for (const c of sweep()) {
+    for (const c of cases) {
       expect(c.result.width, describeCase(c)).toBeGreaterThanOrEqual(0);
       expect(c.result.height, describeCase(c)).toBeGreaterThanOrEqual(0);
       expect(c.result.radius, describeCase(c)).toBeGreaterThanOrEqual(RADIUS.min);
@@ -167,7 +183,7 @@ describe('resize solve invariants', () => {
 
   it('never moves an edge the handle is not dragging', () => {
     // The one that makes a resize feel like a resize rather than a shove.
-    for (const c of sweep()) {
+    for (const c of cases) {
       const before = bpFlapOuterBox(c.source);
       const after = bpFlapOuterBox(c.result);
       const s = BP_FLAP_HANDLE_SIGNS[c.handle];
@@ -189,7 +205,7 @@ describe('resize solve invariants', () => {
     // refused, so the handle stops at the limit instead of freezing. What must
     // never happen is landing *beyond* what was asked, or moving against the
     // drag.
-    for (const c of sweep()) {
+    for (const c of cases) {
       const before = bpFlapOuterBox(c.source);
       const after = bpFlapOuterBox(c.result);
       const s = BP_FLAP_HANDLE_SIGNS[c.handle];
@@ -245,7 +261,7 @@ describe('resize solve invariants', () => {
     // bounds. `r = floor(min(W,H)/2)` leaves `min(w,h)` at 0 or 1 — 1 only when
     // parity forbids a circle — so a square box of even side comes out a circle
     // and nothing weaker survives a drag.
-    for (const c of sweep()) {
+    for (const c of cases) {
       const slack = Math.min(c.result.width, c.result.height);
       expect(
         slack,
@@ -310,7 +326,7 @@ describe('resize solve invariants', () => {
 
   it('never shrinks the radius on a drag that only grows the box', () => {
     // Growing a flap must not make it shorter in the folded model.
-    for (const c of sweep()) {
+    for (const c of cases) {
       if (c.dx < 0 || c.dy < 0) continue;
       expect(c.result.radius, describeCase(c)).toBeGreaterThanOrEqual(c.source.radius);
     }
@@ -347,7 +363,7 @@ describe('resize solve invariants', () => {
   it('returns to the start when the drag is undone', () => {
     // Within a gesture every step solves from the same start, so this is what
     // makes an overshoot recoverable.
-    for (const c of sweep()) {
+    for (const c of cases) {
       const back = solve(c.source, c.handle, 0, 0);
       expect(back, describeCase(c)).toBeNull();
     }

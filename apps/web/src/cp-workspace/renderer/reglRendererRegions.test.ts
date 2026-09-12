@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCpSuppressionRegion } from '../annotations/suppressionRegion';
 import type { RegionDrawProps } from './programs/regionProgram';

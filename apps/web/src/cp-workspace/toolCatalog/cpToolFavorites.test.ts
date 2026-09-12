@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { STORAGE_KEYS, storageKey } from '../../lib/storage';
 import { cpActionById } from '../../lib/oristudioCpActions';

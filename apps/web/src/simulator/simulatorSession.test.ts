@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
   createSimulatorSession,
@@ -69,7 +70,7 @@ function maxAbsDelta(a: Float32Array, b: Float32Array): number {
   return max;
 }
 
-// These tests run in jsdom with no WebGL2, so the session always takes the CPU
+// These worker-session tests run in Node with no WebGL2, so the session always takes the CPU
 // path and returns positions. (The GPU render path, where positions are null, is
 // exercised by bench:gpu-parity in a real browser.)
 function positionsOf(payload: { positions: ArrayBuffer | null }): ArrayBuffer {
@@ -125,33 +126,6 @@ describe('simulator session', () => {
     expect(folded.maxStrain).toBeGreaterThan(0);
     session.dispose();
   });
-
-  it('exports the current folded geometry', async () => {
-    const session = createSimulatorSession();
-    const info = session.load(miura(8, 8), {});
-    session.setFoldPercent(70);
-    await frame(session.settle(4000, {}));
-
-    const geometry = session.exportGeometry();
-    const positions = new Float32Array(geometry.positions);
-    const triangles = new Uint32Array(geometry.triangles);
-
-    expect(geometry.vertexCount).toBe(info.vertexCount);
-    expect(positions.length).toBe(info.vertexCount * 3);
-    expect(triangles.length).toBe(info.faceCount * 3);
-    expect(geometry.foldPercent).toBe(70);
-    expect([...positions].every((value) => Number.isFinite(value))).toBe(true);
-    // Every index must address a real vertex, or an exported mesh is corrupt.
-    expect(Math.max(...triangles)).toBeLessThan(info.vertexCount);
-    // A folded model must have left the flat plane.
-    const maxY = Math.max(...[...positions].filter((_, i) => i % 3 === 1).map(Math.abs));
-    expect(maxY).toBeGreaterThan(0);
-
-    session.dispose();
-    // Up to 4,000 CPU solver steps on a 289-vertex model: seconds of real work,
-    // against a 5s default that it was already close to. Given an explicit
-    // budget so a loaded machine cannot turn it into a phantom failure.
-  }, 30_000);
 
   it('keeps ticks bounded by the frame budget', async () => {
     const session = createSimulatorSession();
@@ -389,11 +363,29 @@ const DEFAULT_EXPORT_SETTINGS: RenderSettings = {
 };
 
 describe('exporting the current view as SVG', () => {
-  it('draws the folded model, not the flat sheet', async () => {
+  it('exports the current folded geometry as mesh and SVG, then resets to flat', async () => {
     const session = createSimulatorSession();
-    session.load(miura(8, 8), {});
+    const info = session.load(miura(8, 8), {});
     session.setFoldPercent(70);
     await frame(session.settle(4000, {}));
+
+    // Mesh and SVG export consume the identical settled fixture. One full
+    // solve covers both formats; all topology, finiteness and reset checks stay.
+    const geometry = session.exportGeometry();
+    const positions = new Float32Array(geometry.positions);
+    const triangles = new Uint32Array(geometry.triangles);
+
+    expect(geometry.vertexCount).toBe(info.vertexCount);
+    expect(positions.length).toBe(info.vertexCount * 3);
+    expect(triangles.length).toBe(info.faceCount * 3);
+    expect(geometry.foldPercent).toBe(70);
+    expect([...positions].every((value) => Number.isFinite(value))).toBe(true);
+    // Every index must address a real vertex, or an exported mesh is corrupt.
+    expect(Math.max(...triangles)).toBeLessThan(info.vertexCount);
+    // A folded model must have left the flat plane.
+    const maxY = Math.max(...[...positions].filter((_, i) => i % 3 === 1).map(Math.abs));
+    expect(maxY).toBeGreaterThan(0);
+
 
     const page = session.exportSvg();
     expect(page).not.toBeNull();
