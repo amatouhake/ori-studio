@@ -132,6 +132,18 @@ jobs:
       - name: Unit test repo scripts
         run: npm run test:scripts
 
+      # The wasm bridges ship to the browser, but until now nothing ran their
+      # `wasm_bindgen_test` suites in CI — 39 tests across the four bridges —
+      # while every workflow installed wasm-pack for the build only. These run
+      # headless under Node, reusing the pinned wasm-pack install and the
+      # wasm32 target from the steps above; no new toolchain.
+      - name: Unit test wasm bridges (wasm-pack)
+        run: |
+          wasm-pack test --node crates/oristudio-bp-wasm
+          wasm-pack test --node crates/oristudio-cp-wasm
+          wasm-pack test --node crates/oristudio-cp-detect-wasm
+          wasm-pack test --node crates/treemaker-wasm
+
       # WebKit is the only engine the app ships to that nothing here ran: vitest
       # runs in jsdom and the one screenshot lane runs Chromium, so a Safari- or
       # iPadOS-only regression reached users before it reached CI. These four
@@ -341,3 +353,16 @@ jobs:
           ORACLE_REQUIRED: FLATFOLDER_ORACLE
           FLATFOLDER_ORACLE: tools/flat-folder-oracle/oracle.mjs
         run: RUSTC_WORKSPACE_WRAPPER="${GITHUB_WORKSPACE}/.github/clippy-driver-wrapper.sh" cargo test -p oracle-tests --test flat_folder_oracle --test oracle_env_guard
+
+      # The BP Studio oracle is a Node script wrapping the vendored JS, so it
+      # needs no build. The external-corpus suite is deliberately not run here:
+      # it needs private .bps/.bpz/.tmd5 files via BP_STUDIO_CORPUS, and the
+      # deterministic batch below already covers the oracle round-trip. The
+      # batch reads no env var — it resolves the vendored oracle by repo path
+      # and asserts hundreds of cases — so there is no variable for
+      # ORACLE_REQUIRED to declare and no silent skip to guard against. The
+      # name filter selects only that batch; --include-ignored is required
+      # because the oracle tests are #[ignore]-gated (the workspace test step
+      # above runs without it, so this is the only place they execute).
+      - name: BP Studio oracle parity
+        run: RUSTC_WORKSPACE_WRAPPER="${GITHUB_WORKSPACE}/.github/clippy-driver-wrapper.sh" cargo test -p oristudio-bp --test optimizer_oracle optimizer_batch -- --include-ignored
