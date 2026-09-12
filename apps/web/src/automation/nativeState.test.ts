@@ -10,7 +10,7 @@ import type { CpData } from './engines';
 import type { ToolResult } from './contracts';
 
 vi.mock('../engines/designHandles', async original => ({ ...await original<typeof import('../engines/designHandles')>(), serializeDesign: async () => '{"version":"0.7","design":{}}' }));
-const kernel = vi.hoisted(() => ({ exportFoldFile: vi.fn(), exportFold: vi.fn(() => { throw new Error('Geometry-only export must not run'); }) }));
+const kernel = vi.hoisted(() => ({ exportOri: vi.fn(), exportFoldFile: vi.fn(), exportFold: vi.fn(() => { throw new Error('Geometry-only export must not run'); }) }));
 vi.mock('./engines', async original => ({ ...await original<typeof import('./engines')>(), withCp: async (_data: unknown, work: (api: unknown, handle: number) => unknown) => work(kernel, 17) }));
 afterEach(() => useWorkspaceStore.setState(useWorkspaceStore.getInitialState()));
 const value = (r: ToolResult) => r.structuredContent!;
@@ -65,6 +65,20 @@ describe('native MCP clones use workspace serialization', () => {
     await expect(exportDesign(data, 'companions', 'fold', base)).rejects.toMatchObject({ code: 'export_loss_confirmation_required', details: { losses: [
       { id: 'foldedFigures2d', count: 1 }, { id: 'nativeExtensions', count: 1 }, { id: 'unrestoredNativeFrames', count: 1 },
     ] } });
+  });
+
+  it('exports imported plain text and flattened annotations, reporting rich-text loss', async () => {
+    const { createTextAnnotation, textDocFromPlainText } = await import('../cp-workspace/annotations/textAnnotation');
+    const data: CpData = { kind: 'crease_pattern', document: createStarterOristudioCpDocument('text') };
+    data.document.crease_pattern.texts = [{ x: { 0: 3 }, y: 4, text: 'imported note' }];
+    const base = captureCpExperimentBase(useWorkspaceStore.getInitialState());
+    base.annotations = [createTextAnnotation({ id: 'note', center: { x: 10, y: 20 }, doc: textDocFromPlainText('canvas note') })];
+    kernel.exportOri.mockImplementation(async (_h, texts) => JSON.stringify({ texts }));
+    await expect(exportDesign(data, 'text', 'ori', base)).rejects.toMatchObject({ code: 'export_loss_confirmation_required' });
+    const exported = await exportDesign(data, 'text', 'ori', base, undefined, true);
+    expect(JSON.parse(exported.content as string).texts).toEqual([{ x: 3, y: 4, text: 'imported note' }, { x: 10, y: 20, text: 'canvas note' }]);
+    expect(exported.losses).toEqual([{ id: 'richText', count: 1, blocking: false }]);
+    expect(data.document.crease_pattern.texts[0].text).toBe('imported note');
   });
 
   it('reports detached native folded forms as a structured loss', async () => {

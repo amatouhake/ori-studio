@@ -1,5 +1,5 @@
 import { createNativeCreasePatternProjectFile, createNativeProjectFile, serializeNativeProjectFile } from '../lib/nativeProjectFile';
-import { emptyOristudioCpSelection, DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS } from '../lib/creasePatternViewport';
+import { textCoordinate, emptyOristudioCpSelection, DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS } from '../lib/creasePatternViewport';
 import { importedCpLineage } from '../lib/oristudioCpLineage';
 import { flattenTextAnnotations, isImageAnnotation, isTextAnnotation, isSuppressionRegionAnnotation } from '../cp-workspace/annotations/annotation';
 import { collectExportLossWarnings, blockingExportLoss, type ExportFormat } from '../lib/supersetFeatures';
@@ -43,6 +43,7 @@ export async function exportDesign(data: DesignData, title: string, format: stri
   }
   if (blockingExportLoss(policyLosses).length) throw new AutomationError('export_loss_blocked', 'This format changes crease semantics. Export FOLD for crease interchange or OSF for the editable project.', { format, losses, alternatives: ['fold', 'osf'] });
   if (losses.length && !allowLoss) throw new AutomationError('export_loss_confirmation_required', 'Review losses and retry with allow_loss=true, or export OSF.', { format, losses, alternatives: ['osf'] });
+  const texts = data.kind === 'crease_pattern' ? [...data.document.crease_pattern.texts.map(t => ({ x: textCoordinate(t.x), y: textCoordinate(t.y), text: t.text })), ...flattenTextAnnotations(base?.annotations ?? [])] : [];
   let content: string;
   let mimeType = 'text/plain';
   let encoding = 'utf8';
@@ -55,7 +56,7 @@ export async function exportDesign(data: DesignData, title: string, format: stri
     mimeType = format === 'png' ? 'image/png' : 'image/svg+xml'; encoding = format === 'png' ? 'base64' : 'utf8';
   } else if (format === 'fold') {
     if (data.kind === 'crease_pattern') {
-      const file = JSON.parse(await withCp(data, (api, h) => api.exportFoldFile(h, flattenTextAnnotations(base?.annotations ?? []), []))) as FoldDocument;
+      const file = JSON.parse(await withCp(data, (api, h) => api.exportFoldFile(h, texts, []))) as FoldDocument;
       if (data.foldedFormFrames) file.file_frames = [...(file.file_frames ?? []), ...data.foldedFormFrames];
       content = JSON.stringify(file);
     } else content = JSON.stringify(await exportFold(data));
@@ -79,7 +80,7 @@ export async function exportDesign(data: DesignData, title: string, format: stri
         appVersion: APP_VERSION, designs: [{ id: 'agent-design', title, kind, text: data.text, format: kind === 'treemaker' ? 'tmd5' : 'bps', viewState: data.kind === 'box_pleat' ? data.viewState : undefined }], activeDesignId: 'agent-design' }));
     }
   } else if (data.kind === 'crease_pattern' && (format === 'cp' || format === 'ori')) {
-    content = await withCp(data, (api, h) => format === 'cp' ? api.exportCp(h) : api.exportOri(h));
+    content = await withCp(data, (api, h) => format === 'cp' ? api.exportCp(h) : api.exportOri(h, texts));
     if (format === 'ori') mimeType = 'application/json';
   } else if ((format === 'tmd5' && data.kind === 'treemaker') || (format === 'bps' && data.kind === 'box_pleat')) content = data.text;
   else throw new AutomationError('invalid_format', `Cannot export ${data.kind} as ${format}`);
