@@ -452,7 +452,19 @@ fn vertex_point(fold: &FoldDocument, index: usize) -> Result<Point> {
             message: format!("vertex {index} has fewer than two coordinates"),
         });
     }
-    Ok(Point::new(coords[0], coords[1]))
+    // NaN slips through `FoldImportBounds`: `f64::min/max` ignore NaN, so a
+    // NaN vertex yields finite extents, passes every later gate, and
+    // normalizes to `Ok(NaN)`. Honest files are always finite (and the share
+    // encode path already refuses non-finite output), so refuse non-finite
+    // vertices here, at the single choke point every edge endpoint crosses.
+    let (x, y) = (coords[0], coords[1]);
+    if !x.is_finite() || !y.is_finite() {
+        return Err(IoError::InvalidField {
+            field: "vertices_coords",
+            message: format!("vertex {index} has a non-finite coordinate"),
+        });
+    }
+    Ok(Point::new(x, y))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -515,6 +527,21 @@ fn normalize_imported_fold_lines(
     // degenerate-input channel.)
     let x_extent = bounds.max_x - bounds.min_x;
     let y_extent = bounds.max_y - bounds.min_y;
+    // Non-finite extents first: finite inputs can still overflow the
+    // subtraction (e.g. x in [-1e308, 1e308] gives x extent inf), and an inf
+    // extent takes the one-live-axis path with a finite scale yet computes
+    // `400 * 1e308 = inf` per coordinate — `Ok(inf)` behind a passing scale
+    // gate. NaN bounds and inf inputs land here too, leaving the zero/positive
+    // logic below to finite values only.
+    if !x_extent.is_finite() || !y_extent.is_finite() {
+        return Err(IoError::InvalidField {
+            field: "vertices_coords",
+            message: format!(
+                "FOLD pattern has a non-finite extent (x extent {x_extent}, \
+                 y extent {y_extent}); cannot normalize onto the sheet"
+            ),
+        });
+    }
     let x_dead = extent_is_dead(x_extent);
     let y_dead = extent_is_dead(y_extent);
     if x_dead && y_dead {
@@ -1048,6 +1075,60 @@ mod degenerate_import_tests {
             non_finite_coords(&decoded.model),
             0,
             "finite in, finite out"
+        );
+    }
+
+    /// Re-review hole: finite inputs can still overflow the extent
+    /// subtraction — x in [-1e308, 1e308] gives x extent inf while y stays
+    /// live, so the one-live-axis path ran with a finite scale yet computed
+    /// `400 * 1e308 = inf` per coordinate. Non-finite extents are refused up
+    /// front: never `Ok(inf)`.
+    #[test]
+    fn infinite_extent_from_finite_inputs_is_rejected_with_a_typed_error() {
+        let input = r#"{
+            "vertices_coords": [[-1e308,0],[1e308,1]],
+            "edges_vertices": [[0,1]],
+            "edges_assignment": ["M"],
+            "edges_foldAngle": [-180.0]
+        }"#;
+        let error = import_fold_json(input).expect_err("inf extent must not import as Ok");
+        assert!(
+            matches!(error, IoError::InvalidField { .. }),
+            "degenerate input wants a typed error, got: {error:?}"
+        );
+    }
+
+    /// Sibling path: NaN vertices slip through `FoldImportBounds` because
+    /// `f64::min/max` ignore NaN, yielding finite extents around the poison.
+    /// (Built programmatically — JSON has no NaN literal.)
+    #[test]
+    fn nan_vertex_is_rejected_with_a_typed_error() {
+        use super::import_fold_document;
+
+        let fold = treemaker_fold::FoldDocument::new(
+            vec![vec![0.0, 0.0], vec![f64::NAN, 1.0]],
+            vec![[0, 1]],
+        );
+        let error = import_fold_document(&fold).expect_err("NaN vertex must not import as Ok");
+        assert!(
+            matches!(error, IoError::InvalidField { .. }),
+            "degenerate input wants a typed error, got: {error:?}"
+        );
+    }
+
+    /// Same gate for infinite coordinates.
+    #[test]
+    fn infinite_vertex_is_rejected_with_a_typed_error() {
+        use super::import_fold_document;
+
+        let fold = treemaker_fold::FoldDocument::new(
+            vec![vec![0.0, 0.0], vec![f64::INFINITY, 1.0]],
+            vec![[0, 1]],
+        );
+        let error = import_fold_document(&fold).expect_err("inf vertex must not import as Ok");
+        assert!(
+            matches!(error, IoError::InvalidField { .. }),
+            "degenerate input wants a typed error, got: {error:?}"
         );
     }
 }
