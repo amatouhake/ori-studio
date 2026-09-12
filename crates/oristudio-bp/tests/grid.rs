@@ -53,15 +53,25 @@ fn rectangular_grid_matches_upstream_geometry_payloads() {
 fn rectangular_resize_reports_anchor_shifts_and_rejections() {
     let anchors = [Point { x: 2.0, y: 1.0 }, Point { x: 7.0, y: 3.0 }];
     let mut grid = RectangularGrid::new(10.0, 10.0);
-    let resize = grid.set_width_checked(8.0, &anchors).unwrap();
+    let resize = grid
+        .set_width_checked(8.0, &anchors)
+        .expect("integer resize applies")
+        .unwrap();
     assert_eq!(resize.shift, None);
     assert!(resize.flush_history);
 
-    let resize = grid.set_width_checked(6.0, &anchors).unwrap();
+    let resize = grid
+        .set_width_checked(6.0, &anchors)
+        .expect("integer resize applies")
+        .unwrap();
     assert_eq!(resize.shift, Some(Point { x: -1.0, y: 0.0 }));
     assert!(!resize.flush_history);
 
-    assert!(grid.set_width_checked(4.0, &anchors).is_none());
+    assert!(
+        grid.set_width_checked(4.0, &anchors)
+            .expect("in-range decline is not an error")
+            .is_none()
+    );
 }
 
 #[test]
@@ -103,7 +113,10 @@ fn diagonal_grid_matches_upstream_geometry_payloads() {
 fn diagonal_resize_and_initial_fit_follow_anchor_rules() {
     let anchors = [Point { x: 1.0, y: 4.0 }, Point { x: 7.0, y: 4.0 }];
     let mut grid = DiagonalGrid::new(8.0, 8.0);
-    let resize = grid.set_size_checked(6.0, &anchors).unwrap();
+    let resize = grid
+        .set_size_checked(6.0, &anchors)
+        .expect("integer resize applies")
+        .unwrap();
     assert_eq!(resize.shift, Some(Point { x: -1.0, y: -1.0 }));
     assert!(!resize.flush_history);
 
@@ -295,4 +308,18 @@ fn sheet_transform_helpers_match_upstream_matrices() {
             height: 66.0,
         }
     );
+}
+
+#[test]
+fn checked_setters_reject_fractional_dimensions() {
+    let anchors = [Point { x: 1.0, y: 1.0 }];
+    let mut rect = RectangularGrid::new(10.0, 10.0);
+    assert!(rect.set_width_checked(20.5, &anchors).is_err());
+    assert!(rect.set_height_checked(20.5, &anchors).is_err());
+    assert_eq!(rect.width(), 10.0);
+    assert_eq!(rect.height(), 10.0);
+
+    let mut diag = DiagonalGrid::new(8.0, 8.0);
+    assert!(diag.set_size_checked(7.5, &anchors).is_err());
+    assert_eq!(diag.size(), 8.0);
 }

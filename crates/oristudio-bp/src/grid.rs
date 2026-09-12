@@ -239,10 +239,19 @@ impl RectangularGrid {
         }
     }
 
-    pub fn set_width_checked(&mut self, width: f64, anchors: &[Point]) -> Option<GridResize> {
+    pub fn set_width_checked(
+        &mut self,
+        width: f64,
+        anchors: &[Point],
+    ) -> BpResult<Option<GridResize>> {
+        if width.fract() != 0.0 {
+            return Err(BpError::InvalidInput(format!(
+                "BP layout sheet width must be an integer: {width}"
+            )));
+        }
         let old_value = self.width;
         if !(MIN_RECT_SIZE as f64..=MAX_SHEET_SIZE as f64).contains(&width) || old_value == width {
-            return None;
+            return Ok(None);
         }
         self.test_width = width;
         let mut shift = None;
@@ -251,7 +260,7 @@ impl RectangularGrid {
             let (min, max) = x_span(anchors);
             if max - min > width {
                 self.test_width = old_value;
-                return None;
+                return Ok(None);
             }
             if max > width {
                 shift = Some(Point {
@@ -262,7 +271,7 @@ impl RectangularGrid {
             }
         }
         self.width = width;
-        Some(GridResize {
+        Ok(Some(GridResize {
             old: Dimension {
                 width: old_value,
                 height: self.height,
@@ -270,14 +279,23 @@ impl RectangularGrid {
             new: self.dimension(),
             shift,
             flush_history,
-        })
+        }))
     }
 
-    pub fn set_height_checked(&mut self, height: f64, anchors: &[Point]) -> Option<GridResize> {
+    pub fn set_height_checked(
+        &mut self,
+        height: f64,
+        anchors: &[Point],
+    ) -> BpResult<Option<GridResize>> {
+        if height.fract() != 0.0 {
+            return Err(BpError::InvalidInput(format!(
+                "BP layout sheet height must be an integer: {height}"
+            )));
+        }
         let old_value = self.height;
         if !(MIN_RECT_SIZE as f64..=MAX_SHEET_SIZE as f64).contains(&height) || old_value == height
         {
-            return None;
+            return Ok(None);
         }
         self.test_height = height;
         let mut shift = None;
@@ -286,7 +304,7 @@ impl RectangularGrid {
             let (min, max) = y_span(anchors);
             if max - min > height {
                 self.test_height = old_value;
-                return None;
+                return Ok(None);
             }
             if max > height {
                 shift = Some(Point {
@@ -297,7 +315,7 @@ impl RectangularGrid {
             }
         }
         self.height = height;
-        Some(GridResize {
+        Ok(Some(GridResize {
             old: Dimension {
                 width: self.width,
                 height: old_value,
@@ -305,9 +323,8 @@ impl RectangularGrid {
             new: self.dimension(),
             shift,
             flush_history,
-        })
+        }))
     }
-
     pub fn fix_dimension(dimension: &mut Dimension) {
         if dimension.height < MIN_RECT_SIZE as f64 {
             dimension.height = MIN_RECT_SIZE as f64;
@@ -512,9 +529,18 @@ impl DiagonalGrid {
         })
     }
 
-    pub fn set_size_checked(&mut self, size: f64, anchors: &[Point]) -> Option<GridResize> {
+    pub fn set_size_checked(
+        &mut self,
+        size: f64,
+        anchors: &[Point],
+    ) -> BpResult<Option<GridResize>> {
+        if size.fract() != 0.0 {
+            return Err(BpError::InvalidInput(format!(
+                "BP diagonal sheet size must be an integer: {size}"
+            )));
+        }
         if !(MIN_DIAG_SIZE as f64..=MAX_SHEET_SIZE as f64).contains(&size) {
-            return None;
+            return Ok(None);
         }
         let old_value = self.size;
         self.test_size = size;
@@ -532,13 +558,13 @@ impl DiagonalGrid {
             if !self.try_shift(range, anchors) {
                 self.test_size = self.size;
                 self.test_shift = None;
-                return None;
+                return Ok(None);
             }
         }
 
         let shift = self.apply_offset();
         self.size = size;
-        Some(GridResize {
+        Ok(Some(GridResize {
             old: Dimension {
                 width: old_value,
                 height: old_value,
@@ -546,9 +572,8 @@ impl DiagonalGrid {
             new: self.dimension(),
             shift,
             flush_history: shift.is_none(),
-        })
+        }))
     }
-
     pub fn fix_dimension(dimension: &mut Dimension) {
         if dimension.height < MIN_DIAG_SIZE as f64 {
             dimension.height = MIN_DIAG_SIZE as f64;
