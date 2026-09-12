@@ -1,3 +1,4 @@
+import { filterBpTreeSymmetryPairs } from '../lib/bpTreeSymmetry';
 import { connectEngine } from '../engines/engineHost';
 import type { OristudioCpLineSegment, OristudioCpLineColor, OristudioCpCommandPayload } from '../engine/oristudioCpTypes';
 import type { TreeEdit, FoldDocument } from '../engine/types';
@@ -146,6 +147,7 @@ export async function editTree(data: Extract<DesignData, { kind: 'treemaker' }>,
 }
 
 export async function editBp(data: Extract<DesignData, { kind: 'box_pleat' }>, operations: Operation[]) {
+  let viewState = data.viewState;
   const api = await connectEngine('oristudio-bp'); let h = await api.loadProject(data.text);
   try {
     for (const op of operations) {
@@ -166,7 +168,15 @@ export async function editBp(data: Extract<DesignData, { kind: 'box_pleat' }>, o
           break;
         }
         case 'add_leaf': await api.addTreeLeaf(h, Number(op.parent), Number(op.length)); break;
-        case 'delete_leaves': await api.deleteTreeLeaves(h, op.ids as number[]); break;
+        case 'delete_leaves': {
+          await api.deleteTreeLeaves(h, op.ids as number[]);
+          if (viewState) {
+            const project = await api.snapshot(h) as OristudioBpRawProject;
+            const tree = { vertices: project.design.tree.nodes };
+            viewState = { symmetry: { ...viewState.symmetry, pairs: filterBpTreeSymmetryPairs(tree, viewState.symmetry.pairs) } };
+          }
+          break;
+        }
         case 'move_node': await api.moveTreeVertex(h, id, x, y); break;
         case 'edge_length': await api.updateTreeEdgeLength(h, Number(op.node1), Number(op.node2), Number(op.length)); break;
         case 'move_flap': await api.moveLayoutFlap(h, id, x, y); break;
@@ -179,7 +189,7 @@ export async function editBp(data: Extract<DesignData, { kind: 'box_pleat' }>, o
         default: throw new AutomationError('unsupported_operation', String(op.type));
       }
     }
-    return { data: { ...data, text: await api.exportSessionBps(h) }, reports: [] };
+    return { data: { ...data, viewState, text: await api.exportSessionBps(h) }, reports: [] };
   } finally { await api.freeProject(h); }
 }
 

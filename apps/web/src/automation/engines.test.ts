@@ -20,3 +20,20 @@ describe('auxiliary recoloring invalidates transient IDs', () => {
     expect(api.executeCommand.mock.calls[0][1]).toBe('CreaseSetLineColor');
   });
 });
+
+describe('BP topology symmetry invariants', () => {
+  it('prunes a deleted pair before the next operation can reuse its ID', async () => {
+    const { editBp } = await import('./engines');
+    const { defaultBpDocumentSymmetry } = await import('../lib/bpTreeSymmetry');
+    let nodes = [0, 1, 2, 3].map(id => ({ id }));
+    Object.assign(api, { loadProject: async () => 1, freeProject: async () => undefined,
+      deleteTreeLeaves: async () => { nodes = nodes.filter(n => n.id !== 1); },
+      addTreeLeaf: async () => { nodes.push({ id: 1 }); }, exportSessionBps: async () => JSON.stringify(nodes) });
+    api.snapshot.mockImplementation(async () => ({ design: { tree: { nodes } } }));
+    const data = { kind: 'box_pleat' as const, text: 'fixture', viewState: { symmetry: { ...defaultBpDocumentSymmetry(), enabled: true, pairs: [{ v1: 1, v2: 2 }] } } };
+    const next = await editBp(data, [{ type: 'delete_leaves', ids: [1] }, { type: 'add_leaf', parent: 0, length: 2 }]);
+    expect(JSON.parse(next.data.text)).toContainEqual({ id: 1 });
+    expect(next.data.viewState?.symmetry.pairs).toEqual([]);
+    expect(data.viewState.symmetry.pairs).toEqual([{ v1: 1, v2: 2 }]);
+  });
+});
