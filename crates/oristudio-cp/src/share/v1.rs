@@ -862,8 +862,23 @@ pub fn decode(body: &[u8]) -> Result<Decoded> {
                     let x = c.svarint("circle x")? as f64 * q;
                     let y = c.svarint("circle y")? as f64 * q;
                     let r = c.svarint("circle r")? as f64 * q;
+                    // Decoder-side check only: `Circle::new` stays total for
+                    // the geometric constructors elsewhere, and honest wire
+                    // radii are non-negative (quantum and raw units both are).
+                    if r < 0.0 {
+                        return Err(ShareError::MalformedExtension {
+                            tag: TAG_CIRCLES,
+                            reason: "negative circle radius",
+                        });
+                    }
                     let colour = colour_from_code(c.u8("circle colour")?)?;
                     model.circles.push(Circle::new(x, y, r, colour));
+                }
+                if !c.is_empty() {
+                    return Err(ShareError::MalformedExtension {
+                        tag: TAG_CIRCLES,
+                        reason: "trailing bytes in circle payload",
+                    });
                 }
             }
             TAG_TEXTS => {
@@ -879,6 +894,12 @@ pub fn decode(body: &[u8]) -> Result<Decoded> {
                         .map_err(|_| ShareError::BadUtf8 { tag })?
                         .to_string();
                     model.texts.push(TextElement::new(x, y, text));
+                }
+                if !c.is_empty() {
+                    return Err(ShareError::MalformedExtension {
+                        tag: TAG_TEXTS,
+                        reason: "trailing bytes in text payload",
+                    });
                 }
             }
             TAG_FOLD_MAGNITUDE => decode_fold_magnitudes(payload, &mut model)?,
