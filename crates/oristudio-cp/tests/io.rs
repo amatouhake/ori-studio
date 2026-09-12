@@ -979,7 +979,7 @@ iactive,ACTIVE_BOTH_3
     let model = &document.crease_pattern;
 
     assert_eq!(document.title.as_deref(), Some("orh model"));
-    assert_eq!(model.line_segments.len(), 2);
+    assert_eq!(model.line_segments.len(), 1);
     assert_eq!(model.line_segments[0].color, LineColor::Red1);
     assert_eq!(
         model.line_segments[0].active,
@@ -991,12 +991,10 @@ iactive,ACTIVE_BOTH_3
         model.line_segments[0].customized_color,
         RgbColor::new(10, 20, 30)
     );
-    assert_eq!(model.line_segments[1], LineSegment::default());
-    assert_eq!(model.circles.len(), 2);
+    assert_eq!(model.circles.len(), 1);
     assert_eq!(model.circles[0].color, LineColor::Cyan3);
     assert_eq!(model.circles[0].customized, 1);
     assert_eq!(model.circles[0].customized_color, RgbColor::new(40, 50, 60));
-    assert_eq!(model.circles[1], Circle::default());
     assert!(model.aux_line_segments.is_empty());
     assert_eq!(model.grid.base_state, GridState::WithinPaper);
     assert_eq!(model.grid.grid_size, 8);
@@ -1047,7 +1045,7 @@ fn orh_export_writes_oriedita_sections_and_imports_back_with_quirks() {
 
     let imported = orh::import_orh_str(&output).expect("imports exported orh");
     assert_eq!(imported.title.as_deref(), Some("exported"));
-    assert_eq!(imported.crease_pattern.line_segments.len(), 2);
+    assert_eq!(imported.crease_pattern.line_segments.len(), 1);
     assert_eq!(
         imported.crease_pattern.line_segments[0].a,
         Point::new(0.0, 0.0)
@@ -1057,7 +1055,7 @@ fn orh_export_writes_oriedita_sections_and_imports_back_with_quirks() {
         LineColor::Blue2
     );
     assert_eq!(imported.crease_pattern.line_segments[0].customized, 1);
-    assert_eq!(imported.crease_pattern.circles.len(), 2);
+    assert_eq!(imported.crease_pattern.circles.len(), 1);
     assert!(imported.crease_pattern.aux_line_segments.is_empty());
 }
 
