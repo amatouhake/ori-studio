@@ -163,11 +163,11 @@ describe('undo in one design', () => {
     // The tree round-trips through `.tmd5` on every undo, so an undo that read
     // the wrong stack would load the wrong design into the live handle — the
     // corruption a shared stack caused, rather than merely a wrong label.
-    twoEditedDesigns();
+    const { crane } = twoEditedDesigns();
 
     await store().undo();
 
-    expect(engineMocks.loadTreeFromText).toHaveBeenCalledWith(expect.anything(), 'crane before');
+    expect(engineMocks.loadTreeFromText).toHaveBeenCalledWith(expect.anything(), 'crane before', crane);
   });
 
   it('has nothing to undo in a design that has not been edited', async () => {

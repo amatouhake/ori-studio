@@ -243,7 +243,7 @@ export const createHistorySlice: WorkspaceSliceCreator<HistorySlice> = (set, get
     // it. See `mapDesignTab`.
     const designId = get().activeDesignId;
     try {
-      const { api, treeHandle } = await ensureTreeHandle();
+      const { api, treeHandle } = await ensureTreeHandle(designId);
       return { text: await api.saveTmd5(treeHandle), designId };
     } catch {
       return null;
@@ -394,10 +394,10 @@ export const createHistorySlice: WorkspaceSliceCreator<HistorySlice> = (set, get
       set({
       historyBusy: true, error: null });
       try {
-        const { api, treeHandle } = await ensureTreeHandle();
+        const { api, treeHandle } = await ensureTreeHandle(designId);
         const current = await api.saveTmd5(treeHandle);
         const engine = await getEngine();
-        const snapshot = await loadTreeFromText(engine, previous.text);
+        const snapshot = await loadTreeFromText(engine, previous.text, designId);
         set({
           // The restored history rides *inside* the install rather than beside
           // it: both write `designTabs`, so a sibling spread would simply be
@@ -550,10 +550,10 @@ export const createHistorySlice: WorkspaceSliceCreator<HistorySlice> = (set, get
       set({
       historyBusy: true, error: null });
       try {
-        const { api, treeHandle } = await ensureTreeHandle();
+        const { api, treeHandle } = await ensureTreeHandle(designId);
         const current = await api.saveTmd5(treeHandle);
         const engine = await getEngine();
-        const snapshot = await loadTreeFromText(engine, next.text);
+        const snapshot = await loadTreeFromText(engine, next.text, designId);
         set({
           // See the note in `undoTree`: the history must be installed with the
           // tree, not spread next to it.
