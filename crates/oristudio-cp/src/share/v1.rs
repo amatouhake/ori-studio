@@ -931,13 +931,30 @@ fn encode_fold_direction_hints(block: &Block, segments: &[LineSegment]) -> Optio
 fn decode_fold_direction_hints(payload: &[u8], model: &mut CreasePatternModel) -> Result<()> {
     let mut c = Cursor::new(payload);
     let count = c.count("fold direction hints", 1)?;
+    // The encoder always writes one code per crease with codes 0-2 (see
+    // `encode_fold_direction_hints`): a short array is not a partial update
+    // and a long one has nowhere to go, so either is corrupt, not sparse.
+    if count != model.line_segments.len() {
+        return Err(ShareError::MalformedExtension {
+            tag: TAG_FOLD_DIRECTION_HINT,
+            reason: "hint count does not match crease count",
+        });
+    }
     let packed = c.take(count.div_ceil(4), "fold direction hints")?;
     for index in 0..count {
         let code = (packed[index / 4] >> ((index % 4) * 2)) & 0b11;
         let hint = match code {
+            0 => None,
             1 => Some(FoldDirection::Mountain),
             2 => Some(FoldDirection::Valley),
-            _ => None,
+            // Code 3 is reserved: decoding it as "no hint" would let a forged
+            // array turn hints off while looking innocent.
+            _ => {
+                return Err(ShareError::MalformedExtension {
+                    tag: TAG_FOLD_DIRECTION_HINT,
+                    reason: "unknown fold direction code",
+                });
+            }
         };
         if let Some(segment) = model.line_segments.get_mut(index) {
             // The invariant travels with the value: a hint is meaningful only on
@@ -948,6 +965,12 @@ fn decode_fold_direction_hints(payload: &[u8], model: &mut CreasePatternModel) -
             }
             segment.fold_direction_hint = hint;
         }
+    }
+    if !c.is_empty() {
+        return Err(ShareError::MalformedExtension {
+            tag: TAG_FOLD_DIRECTION_HINT,
+            reason: "trailing bytes in hint payload",
+        });
     }
     Ok(())
 }
