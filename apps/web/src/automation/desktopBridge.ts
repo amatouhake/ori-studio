@@ -22,6 +22,13 @@ export async function initializeDesktopMcp(): Promise<() => void> {
     service = createAutomationService();
   });
   try { await invoke('mcp_ready', { tools: TOOLS, generation }); }
-  catch (error) { unlisten(); stopDisabled(); service.dispose(); throw error; }
+  catch (error) {
+    // A startup auto-enable failure (e.g. an environment-held ORI_MCP_PORT) must not
+    // destroy the bridge: native stored this generation's tools before attempting the
+    // bind, so keeping the listeners and a live service lets Settings -> Enable access
+    // recover without restarting the app. The error still propagates for reporting.
+    console.error('[mcp] startup auto-enable failed; bridge retained for manual enable', error);
+    throw error;
+  }
   return () => { unlisten(); stopDisabled(); service.dispose(); };
 }
