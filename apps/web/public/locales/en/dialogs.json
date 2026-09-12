@@ -331,6 +331,22 @@
       "system": "System default",
       "title": "Language"
     },
+    "mcp": {
+      "changing": "Changing…",
+      "config": "MCP client configuration",
+      "description": "Let an external MCP agent design, analyze and export origami in this desktop session. Agents work in isolated experiments and can commit undoable changes to your Edit canvas.",
+      "disable": "Disable access",
+      "disabled": "Disabled",
+      "enable": "Enable access",
+      "enabled": "Enabled for this session",
+      "failed": "Agent access could not be changed. Restart Ori Studio and try again.",
+      "hide": "Hide client configuration",
+      "scope": "Connections stay on this computer and require the access token. Disabling access cancels jobs and discards uncommitted experiments.",
+      "secret": "Copy this into your MCP client. It contains a secret token granting access to your workspace; keep it private. The configuration changes when access is enabled again.",
+      "show": "Show client configuration",
+      "title": "AI agent access",
+      "unavailable": "Agent access is unavailable. Restart Ori Studio and try again."
+    },
     "models": {
       "current": "Current",
       "description": "The crease-pattern detector downloads its model once and keeps it on this device. A newer model is offered here and in the Detect dialog; nothing downloads without its size shown first.",

@@ -1,3 +1,4 @@
+import { isDesktopRuntime } from './platform/runtime';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
@@ -101,3 +102,14 @@ createRoot(document.getElementById('root')!).render(
 // only thing it buys on this visit is a cache for the next one. Production web
 // builds only — see `pwa/register.ts`.
 registerServiceWorker();
+
+// Desktop owns MCP networking; the shared renderer owns semantic operations.
+if (isDesktopRuntime()) {
+  let stop: (() => void) | undefined;
+  let disposed = false;
+  import.meta.hot?.dispose(() => { disposed = true; stop?.(); });
+  void import('./automation/desktopBridge').then(m => m.initializeDesktopMcp()).then(cleanup => {
+    if (disposed) cleanup(); else stop = cleanup;
+  })
+    .catch(error => reportError(error, { surface: 'mcp:startup' }));
+}

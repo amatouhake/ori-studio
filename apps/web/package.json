@@ -48,6 +48,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@treemaker/origami-simulator": "0.1.0",
+    "ajv": "^8.20.0",
     "class-variance-authority": "^0.7.1",
     "comlink": "^4.4.2",
     "dockview": "^4.13.1",
@@ -68,6 +69,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@sentry/vite-plugin": "^5.4.0",
     "@types/earcut": "^3.0.0",
     "@types/node": "^24.10.1",

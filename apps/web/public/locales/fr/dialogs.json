@@ -339,6 +339,22 @@
       "system": "Par défaut du système",
       "title": "Langue"
     },
+    "mcp": {
+      "changing": "Modification…",
+      "config": "Configuration du client MCP",
+      "description": "Autorisez un agent MCP externe à concevoir, analyser et exporter des origamis pendant cette session de bureau. Les agents travaillent dans des essais isolés et peuvent appliquer des modifications annulables au canevas d’édition.",
+      "disable": "Désactiver l’accès",
+      "disabled": "Désactivé",
+      "enable": "Activer l’accès",
+      "enabled": "Activé pour cette session",
+      "failed": "Impossible de modifier l’accès des agents. Redémarrez Ori Studio et réessayez.",
+      "hide": "Masquer la configuration du client",
+      "scope": "Les connexions restent sur cet ordinateur et nécessitent le jeton d’accès. Désactiver l’accès annule les tâches et abandonne les essais non appliqués.",
+      "secret": "Copiez ceci dans votre client MCP. La configuration contient un jeton secret donnant accès à votre espace de travail ; gardez-le confidentiel. La configuration change lorsque l’accès est réactivé.",
+      "show": "Afficher la configuration du client",
+      "title": "Accès des agents IA",
+      "unavailable": "L’accès des agents est indisponible. Redémarrez Ori Studio et réessayez."
+    },
     "models": {
       "current": "Actuel",
       "description": "Le détecteur de patrons de plis télécharge son modèle une seule fois et le conserve sur cet appareil. Un modèle plus récent est proposé ici et dans la boîte de dialogue de détection ; rien n’est téléchargé sans que sa taille soit affichée au préalable.",

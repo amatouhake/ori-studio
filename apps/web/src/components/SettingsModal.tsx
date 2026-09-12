@@ -1,3 +1,4 @@
+import { McpSection } from './settings/McpSection';
 import {
   createContext,
   useContext,
@@ -242,6 +243,7 @@ function GeneralTab() {
       </section>
       <UpdatesSection />
       <ModelsSection />
+      <McpSection />
       <section className="settings-section">
         <h3 className="settings-section__title">
           {t('dialogs:settings.general.privacy', 'Privacy')}

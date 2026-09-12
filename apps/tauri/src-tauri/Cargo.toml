@@ -14,6 +14,11 @@ workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+rmcp = { version = "1", features = ["server", "transport-streamable-http-server"] }
+axum = "0.8"
+tokio = { version = "1", features = ["net", "sync", "time", "rt-multi-thread", "macros"] }
+tokio-util = "0.7"
+uuid = { version = "1", features = ["v4"] }
 # Native desktop runs the fold with rayon-parallel condition generation.
 oristudio-cp = { workspace = true, features = ["parallel"] }
 # Native CP detection: the decoder, the exact solver, and the FOLD reader the
