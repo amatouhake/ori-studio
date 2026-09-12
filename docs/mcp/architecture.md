@@ -94,7 +94,9 @@ tab-close UI. Draft rollback remains available for all design kinds.
 
 Jobs return immediately and carry the analyzed revision. Successful TreeMaker
 optimization/build publishes back only into its unchanged draft. Failed or
-cancelled jobs cannot publish late results. Status and cancellation bypass the
+cancelled jobs cannot publish late results. Deadline/cancel races settle even if
+the engine never responds, release the draft busy lock, and cannot be revived by
+a late completion. Timeout is failed/job_timeout; cancel is cancelled/job_cancelled. Status and cancellation bypass the
 serialized ordinary-request queue. Artifacts are tied to their original revision.
 
 TreeMaker optimization and simulation use dedicated workers. Termination does
@@ -112,8 +114,11 @@ results from publishing but cannot forcibly interrupt arbitrary native code.
 The renderer service expires idle drafts and bounds drafts (8), checkpoints per
 draft (8), jobs (32), semantic operations per batch (128), CP lines (20,000),
 ordinary queued requests (16), mutation receipts (256), input (8 MiB), draft/job
-serialization (32 MiB), responses (16 MiB), and retained serialized state/receipt
-admission (64 MiB). These serialization budgets are not an OS heap quota; engine
+serialization (32 MiB), responses (16 MiB), and retained JS state/receipt
+admission (64 MiB). Retained accounting includes bases, history authorization,
+shared object graphs, UTF-16 strings and typed-array backing buffers. Native
+handle IDs are borrowed; active-clone folded forms are captured as frame data.
+These estimates are not an OS heap quota; engine
 transient memory and a finishing response have additional overhead. Old work
 should be exported and discarded. Receipt IDs are never silently evicted and
 re-executed. Drafts expire after 30 minutes idle, jobs after 120 seconds, ordinary

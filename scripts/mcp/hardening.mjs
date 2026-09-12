@@ -71,6 +71,44 @@ try {
   const live = (await call('workspace')).live;
   await mutate('workspace_history', { history_token: live.history_token, live_revision: live.edit_revision, load_serial: live.load_serial, direction: 'undo' });
   await mutate('discard_design', addr());
+  const frame = { frame_title: 'embedded CP', frame_classes: ['creasePattern'], vertices_coords: [[0, 0], [10, 0], [10, 10], [0, 10]],
+    edges_vertices: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]], edges_assignment: ['B', 'B', 'B', 'B', 'M'], edges_foldAngle: [0, 0, 0, 0, -90] };
+  const externalFrame = { frame_title: 'foreign folded form', frame_classes: ['foldedForm'], vertices_coords: [[0, 0, 0], [1, 0, 1]], edges_vertices: [[0, 1]], 'test:embedded': { preserved: true } };
+  const original = { file_spec: 1.2, file_title: 'Frame-only round trip', file_author: 'MCP fixture', 'test:metadata': { retained: true }, file_frames: [externalFrame, frame] };
+  let content = JSON.stringify(original);
+  for (let i = 0; i < 2; i++) {
+    draft = await mutate('begin_design', { source: 'import', kind: 'crease_pattern', format: 'fold', content });
+    assert((await call('inspect_design', addr())).total_lines >= 5);
+    const file = await call('export_design', { ...addr(), format: 'fold' });
+    const parsed = JSON.parse(file.content);
+    assert.equal(parsed.file_author, original.file_author); assert.equal(parsed.file_title, original.file_title);
+    assert.deepEqual(parsed['test:metadata'], original['test:metadata']);
+    assert.deepEqual(parsed.file_frames, original.file_frames);
+    assert(parsed.edges_foldAngle.some(angle => Math.abs(angle) === 90));
+    content = file.content;
+    await writeFile(resolve(out, `frame-roundtrip-${i}.fold`), content);
+    await mutate('discard_design', addr());
+  }
+  evidence.push({ full_fold_roundtrip: { generations: 2, frame_only_import: true, metadata_and_embedded_frames_preserved: true } });
+  for (const ys of [[-2, -1, -1, -2], [1, 1, 1, 1]]) {
+    const hazardous = { ...original, file_frames: [{ ...frame, vertices_coords: frame.vertices_coords.map((p, i) => [p[0], ys[i]]) }] };
+    await call('begin_design', { request_id: randomUUID(), source: 'import', kind: 'crease_pattern', format: 'fold', content: JSON.stringify(hazardous) }, 'upstream_import_limit');
+  }
+  draft = await mutate('begin_design', { source: 'new', kind: 'crease_pattern', title: 'Dangling mountain coverage' });
+  draft = await mutate('edit_creases', { ...addr(), operations: [{ type: 'add_creases', creases: [{ a: { x: -80, y: -70 }, b: { x: -40, y: -30 }, assignment: 'mountain' }] }] });
+  const dangling = await job(addr(), 0.55);
+  await writeFile(resolve(out, 'dangling-debug.json'), JSON.stringify({ fold: JSON.parse((await call('export_design', { ...addr(), format: 'fold' })).content), result: dangling.result }, null, 2));
+  assert.equal(dangling.result.solver_settled, true);
+  assert.equal(dangling.result.target_attainment.status, 'unknown');
+  assert.equal(dangling.result.target_attainment.source_coverage.status, 'incomplete');
+  assert(dangling.result.target_attainment.source_coverage.targets.some(t => t.status === 'omitted'));
+  assert.notEqual(dangling.result.outcome, 'settled_at_target');
+  evidence.push({ dangling_source_target: dangling.result });
+  const flatObj = await call('export_design', { ...addr(), format: 'obj', job_id: dangling.job_id });
+  const ys = flatObj.content.split('\n').filter(l => l.startsWith('v ')).map(l => Number(l.split(/\s+/)[2]));
+  assert(Math.max(...ys) - Math.min(...ys) < 1e-4);
+  await writeFile(resolve(out, 'dangling-flat.obj'), flatObj.content);
+  await mutate('discard_design', addr());
   await writeFile(resolve(out, 'report.json'), JSON.stringify({ success: true, evidence, forced_render_race: 'Covered by public service regression with a controlled async TreeMaker completion, without adding production delay hooks.' }, null, 2));
   console.log('MCP HARDENING PROBE PASSED', out);
 } finally { await client.close(); }

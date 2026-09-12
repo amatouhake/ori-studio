@@ -158,9 +158,8 @@ Remaining second-run findings are recorded, not silently fixed during evaluation
   contract ambiguity; a strict cap or explicit effective-budget metadata is a
   follow-up. It did not masquerade as target attainment.
 - Mesh targets use prepared-mesh orientation, which can invert signs relative to
-  input CP/FOLD after normalization; edge IDs are not CP IDs. Source mapping,
-  generated-hinge labels, normalization/axis metadata and export job provenance
-  would make repairs easier. The agent could verify unsigned angles independently.
+  input CP/FOLD after normalization; edge IDs are not CP IDs. The source-coverage pass below adds source mapping and hinge labels;
+  normalization/axis metadata and export job provenance remain opportunities. The agent could verify unsigned angles independently.
 - Compact discovery survived the CLI and was useful, but the CLI still displayed
   unknown tree union variants. Its request to publish full server schemas is
   **not** a confirmed server defect: raw tools/list already contains them.
@@ -173,3 +172,93 @@ Neither simulation nor a solved flat layer order establishes collision-free
 motion or fabrication with finite paper thickness. The original Miura request
 0.55 reached 0.55%, not 55%; its original convergence and strain measurements are
 superseded for any claim of substantial folding.
+
+## Source coverage and native-state review (2026-09-12)
+
+All six subsequent independent review findings were confirmed. The earlier
+attainment algorithm was incomplete: it measured only surviving solver hinges.
+A dangling requested mountain could disappear during preparation while generated
+flat hinges settled at zero. **The Ginkgo evidence remains valid**: that agent
+independently measured the specific exported OBJ, including substantial 3D height
+and fold angles. Its successful physical result does not validate the old general
+attainment algorithm. The original run summaries and artifacts remain unchanged.
+
+The new fixes are:
+
+1. Capture source edge targets before face inference and simulator preparation.
+   Keep their segments in simulator coordinates through scaling, then derive
+   coverage against the prepared constraint geometry. Interval unions require
+   the entire source segment, including split/merged cases, with matching
+   assignment and target magnitude. Changed, omitted, partial or unmeasurable
+   targets make attainment `unknown` with incomplete coverage. Reports expose
+   source FOLD edge indices, prepared constraint indices, coverage fractions and
+   generated/unrequested hinges. Signed residuals still follow prepared normals;
+   principal endpoint angles cannot prove winding history, continuous motion,
+   collision freedom or finite-thickness feasibility. Conservative geometric
+   matching can report unknown when preparation approximates a curved crease.
+2. CP FOLD export now uses `exportFoldFile`, the same full serializer as the
+   normal file service, including flattened text and source metadata/frames.
+   Active clones capture supported native 3D frames while their live handles are
+   valid and retain frame data for later export. Detached forms and other losses
+   use the existing structured export policy. FOLD also reports omitted 2D
+   figures, native extensions and unrestored generated native frames explicitly. Native frame regeneration follows
+   the application's serializer policy, rather than preserving stale generated
+   frames as if they described the current design.
+3. FOLD import guards select the same geometry as native `loadFoldFile`: usable
+   root first, otherwise the best embedded frame (creasePattern class, faces,
+   earliest tie). Frame-only files work; all-negative-y and zero-height selected
+   geometry still return the #366/#367 exclusion. The preview importer's distinct
+   inheritance rules are not substituted for the native importer's policy.
+4. BP active clones retain the existing native `viewState.symmetry` representation.
+   OSF export and new-tab publication preserve enabled state, explicit pairs and
+   fold orientation. BPS export reports its symmetry loss and requires consent.
+5. Deadline and cancellation settle jobs independently of engine promises.
+   Timeout is terminal `failed` / `job_timeout`; cancellation is terminal
+   `cancelled` / `job_cancelled`. Both release the draft immediately. Late results
+   cannot update data, release a later job's lock or revive status. Idle expiry
+   works even if the engine never resolves. Engine interruption remains best
+   effort where native code does not cooperate.
+6. Admission accounting traverses retained draft bases and history authorization
+   as well as drafts, checkpoints, outputs and receipts. It charges UTF-16 strings,
+   object overhead and backing buffers, counting shared object graphs once. This
+   is a conservative JS ownership estimate, not JSON serialization of native
+   handles and not an OS heap quota. Borrowed handle IDs do not claim ownership
+   of native resources; engine/transient allocations remain outside this budget.
+   Large retained history or extension snapshots can no longer evade admission.
+
+Focused tests cover all six, including a real CPU dangling-mountain fixture,
+partial source coverage, BP public service clone/export/publication, native frame
+capture, a non-resolving task's deadline/cancel/late completion/expiry, and large
+retained bases. The HTTP launcher now opens a native BP symmetry fixture through
+normal desktop file-open before `native-state.mjs` verifies two MCP generations.
+The hardening HTTP probe adds frame-only FOLD import, two full export/import
+round trips, selected-frame hazard exclusions, and the flat dangling-mountain
+false-success reproduction. Non-cooperating jobs and supported live native 3D
+handles are controlled service regressions, without production fault-injection
+hooks or new host-execution tools.
+
+### Validation for the source-coverage pass
+
+- Focused automation/simulator/publication tests pass, including the non-resolving
+  job preserving a subsequent job's lock and expiring while unresolved.
+- Web lint, typecheck, production build (all WASM bridges, simulator and landing
+  prerender), desktop check/build and all 23 desktop library tests pass.
+- Existing native full-FOLD and 3D-interchange suites pass (13 tests), including
+  embedded frames, foreign forms and supported native folded-form serialization.
+- The rebuilt desktop passes all five deterministic HTTP probes: security,
+  native-state, hardening, Miura acceptance and design engines. The hinge attains
+  its 55% target with complete source coverage and 0.00368° maximum residual.
+  The omitted interior mountain settles flat with incomplete coverage / unknown
+  attainment. Both full-FOLD round trips and both BP generations pass.
+- [Curated regenerated evidence](evidence/source-coverage/README.md) contains
+  reports, editable files, meshes and one representative image. Raw transcripts,
+  redundant dumps and credentials remain excluded.
+
+The first full-suite attempt overlapped the final test addition and saw a stale
+module in that new test; the focused rerun passed. The next full run passed all
+6,052 tests but caught a delayed virtualizer callback after diagnostic-HUD test
+environment teardown (`window is not defined`). No unrelated UI code was changed;
+full-suite verification was repeated with four workers and passed cleanly:
+486 files, 6,052 tests, no unhandled errors. Full workspace Rust/oracle suites
+were not run because no ported engine behavior or Rust source changed; desktop
+and the existing native serialization suites cover the affected boundary.

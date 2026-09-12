@@ -28,7 +28,7 @@ const env = { ...clientEnv, ORI_MCP_PORT: String(port),
 const log = await open(resolve(artifacts, 'desktop.log'), 'w');
 // A private D-Bus session also isolates Tauri's single-instance registration
 // from an already running developer desktop (including WSLg sessions).
-const desktop = spawn('dbus-run-session', ['--', 'xvfb-run', '-a', binary],
+const desktop = spawn('dbus-run-session', ['--', 'xvfb-run', '-a', binary, resolve(root, 'tests/fixtures/mcp/bp-symmetry.osf')],
   { cwd: root, env, detached: true, stdio: ['ignore', log.fd, log.fd] });
 let launchError; desktop.on('error', error => { launchError = error; });
 const stop = () => { if (desktop.pid) { try { process.kill(-desktop.pid, 'SIGTERM'); } catch { /* Already stopped. */ } } };
@@ -52,7 +52,7 @@ try {
     if (oldToken === undefined) delete process.env.ORI_MCP_TOKEN; else process.env.ORI_MCP_TOKEN = oldToken;
   }
   if (!ready) throw new Error('Desktop MCP did not become ready; see artifacts/mcp-desktop-demo/desktop.log');
-  for (const script of ['security.mjs', 'hardening.mjs', 'acceptance.mjs', 'design-engines.mjs']) {
+  for (const script of ['security.mjs', 'native-state.mjs', 'hardening.mjs', 'acceptance.mjs', 'design-engines.mjs']) {
     await new Promise((done, reject) => {
       const child = spawn(process.execPath, [resolve(root, 'scripts/mcp', script)], { cwd: root, env: clientEnv, stdio: 'inherit' });
       child.on('error', reject); child.on('exit', code => code === 0 ? done() : reject(new Error(`${script} failed (${code})`)));
