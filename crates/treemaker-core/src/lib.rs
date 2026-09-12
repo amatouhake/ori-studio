@@ -103,6 +103,18 @@ impl TreeError {
 /// Crate-local result type.
 pub type Result<T> = std::result::Result<T, TreeError>;
 
+/// Initial `Vec` capacity cap for counts read from untrusted documents.
+/// Capacity is a performance hint only — pushes grow the buffer naturally —
+/// so capping the *initial* reservation changes nothing observable, while a
+/// forged `num_*` count can no longer turn a tiny file into a gigabyte
+/// reservation before the first real read fails.
+const MAX_PREALLOC_LEN: usize = 1024;
+
+/// Cap an untrusted stream count to an initial allocation size.
+fn capped_capacity(n: usize) -> usize {
+    n.min(MAX_PREALLOC_LEN)
+}
+
 /// Two-dimensional point in paper coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Point {
@@ -2372,9 +2384,9 @@ impl Tree {
         let num_paths = reader.read_usize("path count")?;
         let _num_polys = reader.read_usize("poly count")?;
 
-        let mut nodes = Vec::with_capacity(num_nodes);
-        let mut edges = Vec::with_capacity(num_edges);
-        let mut paths = Vec::with_capacity(num_paths);
+        let mut nodes = Vec::with_capacity(capped_capacity(num_nodes));
+        let mut edges = Vec::with_capacity(capped_capacity(num_edges));
+        let mut paths = Vec::with_capacity(capped_capacity(num_paths));
         let mut conditions = Vec::new();
 
         for _ in 0..num_nodes {
@@ -2386,6 +2398,15 @@ impl Tree {
         for _ in 0..num_paths {
             paths.push(reader.read_path_v3(&mut conditions)?);
         }
+
+        // `collect()` on a range preallocates the full length up front; cap
+        // the initial reservation and let the extends grow it naturally.
+        let mut owned_nodes = Vec::with_capacity(capped_capacity(num_nodes));
+        owned_nodes.extend(1..=num_nodes);
+        let mut owned_edges = Vec::with_capacity(capped_capacity(num_edges));
+        owned_edges.extend(1..=num_edges);
+        let mut owned_paths = Vec::with_capacity(capped_capacity(num_paths));
+        owned_paths.extend(1..=num_paths);
 
         Ok(Self {
             source_version,
@@ -2410,9 +2431,9 @@ impl Tree {
             creases: Vec::new(),
             facets: Vec::new(),
             conditions,
-            owned_nodes: (1..=num_nodes).collect(),
-            owned_edges: (1..=num_edges).collect(),
-            owned_paths: (1..=num_paths).collect(),
+            owned_nodes,
+            owned_edges,
+            owned_paths,
             owned_polys: Vec::new(),
         })
     }
@@ -2432,12 +2453,12 @@ impl Tree {
         let num_creases = reader.read_usize("crease count")?;
         let num_conditions = reader.read_usize("condition count")?;
 
-        let mut nodes = Vec::with_capacity(num_nodes);
-        let mut edges = Vec::with_capacity(num_edges);
-        let mut paths = Vec::with_capacity(num_paths);
-        let mut polys = Vec::with_capacity(num_polys);
-        let mut vertices = Vec::with_capacity(num_vertices);
-        let mut creases = Vec::with_capacity(num_creases);
+        let mut nodes = Vec::with_capacity(capped_capacity(num_nodes));
+        let mut edges = Vec::with_capacity(capped_capacity(num_edges));
+        let mut paths = Vec::with_capacity(capped_capacity(num_paths));
+        let mut polys = Vec::with_capacity(capped_capacity(num_polys));
+        let mut vertices = Vec::with_capacity(capped_capacity(num_vertices));
+        let mut creases = Vec::with_capacity(capped_capacity(num_creases));
 
         for _ in 0..num_nodes {
             nodes.push(reader.read_node_v4()?);
@@ -2458,7 +2479,7 @@ impl Tree {
             creases.push(reader.read_crease_v4(index)?);
         }
 
-        let mut conditions = Vec::with_capacity(num_conditions);
+        let mut conditions = Vec::with_capacity(capped_capacity(num_conditions));
         for i in 0..num_conditions {
             conditions.push(reader.read_condition_v4(i + 1)?);
         }
@@ -2523,13 +2544,13 @@ impl Tree {
         let num_facets = reader.read_usize("facet count")?;
         let num_conditions = reader.read_usize("condition count")?;
 
-        let mut nodes = Vec::with_capacity(num_nodes);
-        let mut edges = Vec::with_capacity(num_edges);
-        let mut paths = Vec::with_capacity(num_paths);
-        let mut polys = Vec::with_capacity(num_polys);
-        let mut vertices = Vec::with_capacity(num_vertices);
-        let mut creases = Vec::with_capacity(num_creases);
-        let mut facets = Vec::with_capacity(num_facets);
+        let mut nodes = Vec::with_capacity(capped_capacity(num_nodes));
+        let mut edges = Vec::with_capacity(capped_capacity(num_edges));
+        let mut paths = Vec::with_capacity(capped_capacity(num_paths));
+        let mut polys = Vec::with_capacity(capped_capacity(num_polys));
+        let mut vertices = Vec::with_capacity(capped_capacity(num_vertices));
+        let mut creases = Vec::with_capacity(capped_capacity(num_creases));
+        let mut facets = Vec::with_capacity(capped_capacity(num_facets));
 
         for _ in 0..num_nodes {
             nodes.push(reader.read_node_v5()?);
@@ -2553,7 +2574,7 @@ impl Tree {
             facets.push(reader.read_facet_v5(num_edges)?);
         }
 
-        let mut conditions = Vec::with_capacity(num_conditions);
+        let mut conditions = Vec::with_capacity(capped_capacity(num_conditions));
         for _ in 0..num_conditions {
             conditions.push(reader.read_condition_v5()?);
         }
@@ -4592,9 +4613,7 @@ impl Tree {
         ) {
             (Some(front), Some(back)) => (front, back),
             _ => {
-                return Err(TreeError::InvalidOperation(
-                    "polygon path has no nodes",
-                ));
+                return Err(TreeError::InvalidOperation("polygon path has no nodes"));
             }
         };
         let poly_id = self.create_poly(owner);
@@ -8228,7 +8247,7 @@ impl<'a> Reader<'a> {
 
     fn read_index_array(&mut self, label: &'static str) -> Result<Vec<usize>> {
         let n = self.read_usize(label)?;
-        let mut values = Vec::with_capacity(n);
+        let mut values = Vec::with_capacity(capped_capacity(n));
         for _ in 0..n {
             values.push(self.read_usize(label)?);
         }
@@ -8249,7 +8268,7 @@ impl<'a> Reader<'a> {
 
     fn read_point_array(&mut self, label: &'static str) -> Result<Vec<Point>> {
         let n = self.read_usize(label)?;
-        let mut points = Vec::with_capacity(n);
+        let mut points = Vec::with_capacity(capped_capacity(n));
         for _ in 0..n {
             points.push(self.read_point(label)?);
         }
@@ -8722,7 +8741,7 @@ impl<'a> Reader<'a> {
         }
         let n = self.read_usize("condition line count")?;
         validate_condition_rest_len(&tag, n)?;
-        let mut raw_lines = Vec::with_capacity(n);
+        let mut raw_lines = Vec::with_capacity(capped_capacity(n));
         for _ in 0..n {
             raw_lines.push(self.read_raw_line("condition field")?);
         }
@@ -8743,7 +8762,7 @@ impl<'a> Reader<'a> {
         let is_feasible = self.read_bool("condition feasibility")?;
         let n = self.read_usize("condition line count")?;
         validate_condition_rest_len(&tag, n)?;
-        let mut raw_lines = Vec::with_capacity(n);
+        let mut raw_lines = Vec::with_capacity(capped_capacity(n));
         for _ in 0..n {
             raw_lines.push(self.read_raw_line("condition field")?);
         }

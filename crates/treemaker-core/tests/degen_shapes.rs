@@ -66,10 +66,7 @@ fn truncate_poly_ring_paths(text: &str, poly_pos: usize, clear_owned: bool) -> S
         rn >= 3,
         "base poly must be an honest nn>=3 ring, found {rn} nodes"
     );
-    assert_eq!(
-        rp, rn,
-        "honest-built rings correspond, found {rn}v{rp}"
-    );
+    assert_eq!(rp, rn, "honest-built rings correspond, found {rn}v{rp}");
     c = rpc_at + 1 + rp;
     for _ in 0..3 {
         let n: usize = lines[c].trim().parse().expect("poly array count");
@@ -246,4 +243,117 @@ fn f031_empty_polygon_path_makes_poly_build_err_never_panic() {
         ),
         Err(_) => panic!("build panicked on an empty polygon path (F-031)"),
     }
+}
+
+// ---- Security hardening: forged counts must not drive huge preallocs ----
+
+use std::time::{Duration, Instant};
+
+/// A tiny v5 document whose header claims a billion nodes. Pre-hardening,
+/// `Vec::with_capacity(1e9)` for `Node` requests on the order of 100GB and
+/// aborts before the first real read; now the reservation is capped and the
+/// missing body fails fast with a typed parse error.
+#[test]
+fn forged_huge_node_count_is_rejected_without_huge_allocation() {
+    let text = [
+        "tree",
+        "5.0",
+        "1.0",
+        "1.0",
+        "0.1",
+        "false",
+        "0.0",
+        "0.0",
+        "0.0",
+        "false",
+        "false",
+        "false",
+        "false",
+        "false",
+        "false",
+        "false",
+        "1000000000",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+    ]
+    .join("\n")
+        + "\n";
+    let start = Instant::now();
+    let result = Tree::from_tmd_str(&text);
+    let elapsed = start.elapsed();
+    assert!(
+        result.is_err(),
+        "forged node count must be rejected, never admitted"
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "rejection must be fast (no giant reservation), took {elapsed:?}"
+    );
+}
+
+/// Same shape one level down: a single valid node header whose `edges` array
+/// claims a billion entries. Exercises the capped `read_index_array` path.
+#[test]
+fn forged_huge_index_array_is_rejected_without_huge_allocation() {
+    // v5 node layout: tag, index, label, loc (2), depth, elevation, 7 bools,
+    // then the edges array.
+    let text = [
+        "tree",
+        "5.0",
+        "1.0",
+        "1.0",
+        "0.1",
+        "false",
+        "0.0",
+        "0.0",
+        "0.0",
+        "false",
+        "false",
+        "false",
+        "false",
+        "false",
+        "false",
+        "false",
+        "1",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "node",
+        "1",
+        "A",
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0",
+        "false",
+        "false",
+        "false",
+        "false",
+        "false",
+        "false",
+        "false",
+        "1000000000",
+    ]
+    .join("\n")
+        + "\n";
+    let start = Instant::now();
+    let result = Tree::from_tmd_str(&text);
+    let elapsed = start.elapsed();
+    assert!(
+        result.is_err(),
+        "forged index array count must be rejected, never admitted"
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "rejection must be fast (no giant reservation), took {elapsed:?}"
+    );
 }
