@@ -239,9 +239,9 @@ fn fold_file_document_import_export_preserves_frames_while_updating_root_cp() {
       "file_author": "folder",
       "frame_title": "crease pattern",
       "frame_classes": ["creasePattern"],
-      "vertices_coords": [[0, 0], [1, 0], [0, 1]],
-      "edges_vertices": [[0, 1], [1, 2]],
-      "edges_assignment": ["M", "M"],
+      "vertices_coords": [[0, 0], [1, 0]],
+      "edges_vertices": [[0, 1]],
+      "edges_assignment": ["M"],
       "rootCustom": {"kept": true},
       "file_frames": [{
         "frame_title": "folded result",
@@ -404,7 +404,7 @@ fn fold_import_keeps_line_colors_when_assignments_are_absent() {
 fn fold_import_defaults_missing_oriedita_grid_style_to_hidden_like_oriedita() {
     let input = r#"{
       "file_spec": 1.1,
-      "vertices_coords": [[0, 0], [10, 10]],
+      "vertices_coords": [[0, 0], [10, 0]],
       "edges_vertices": [[0, 1]],
       "edges_assignment": ["B"]
     }"#;
@@ -1181,7 +1181,7 @@ fn fold_import_normalises_explicit_180_to_classic() {
 #[test]
 fn fold_import_takes_magnitude_only_when_the_sign_contradicts_the_assignment() {
     let input = r#"{
-        "vertices_coords": [[0,0],[100,100]],
+        "vertices_coords": [[0,0],[100,0]],
         "edges_vertices": [[0,1]],
         "edges_assignment": ["M"],
         "edges_foldAngle": [90.0]
