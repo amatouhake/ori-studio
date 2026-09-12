@@ -167,9 +167,14 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       return result({ live_revision: state().oristudioCpRevision, direction: args.direction, completed: true });
     }
     if (name === 'begin_design') {
+      const assertCloneIdle = () => {
+        if (args.source === 'active' && !workspaceOperationsIdle()) throw new AutomationError('workspace_busy', 'Wait for the current application action to finish, then retry begin_design');
+      };
+      assertCloneIdle();
       // Establish the same blank Edit document the app provisions. No existing
       // document is replaced and this makes the first CP commit undoable too.
       if (!state().oristudioCpDocument) await state().ensureEditCreasePattern();
+      assertCloneIdle();
       const base = captureCpExperimentBase(state());
       const kind = args.kind as DesignKind; const title = String(args.title ?? 'Agent design');
       let data: DesignData;
@@ -183,9 +188,18 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
         } else {
           const tab = state().designTabs.find(t => t.id === state().activeDesignId);
           if (!tab || tab.kind !== (kind === 'treemaker' ? 'treemaker' : 'box-pleat')) throw new AutomationError('wrong_design_kind', 'The active design tab does not match the requested kind');
-          const text = await serializeDesign(tab.id, tab.kind);
+          const tabId = tab.id;
+          const tabKind = tab.kind;
+          const symmetry = tab.kind === 'box-pleat' ? structuredClone(bpDocumentSymmetry(tab.boxPleat.symmetry)) : undefined;
+          const text = await serializeDesign(tabId, tabKind);
+          assertCloneIdle();
+          const current = state().designTabs.find(t => t.id === tabId);
+          if (state().activeDesignId !== tabId || current !== tab || current.kind !== tabKind ||
+            (current.kind === 'box-pleat' && JSON.stringify(bpDocumentSymmetry(current.boxPleat.symmetry)) !== JSON.stringify(symmetry))) {
+            throw new AutomationError('conflict', 'The active design changed while it was serialized. Retry begin_design.');
+          }
           if (text === null) throw new AutomationError('document_unavailable', 'The active design cannot be serialized');
-          data = kind === 'box_pleat' && tab.kind === 'box-pleat' ? { kind, text, viewState: { symmetry: bpDocumentSymmetry(tab.boxPleat.symmetry) } } : { kind, text };
+          data = kind === 'box_pleat' && tab.kind === 'box-pleat' ? { kind, text, viewState: { symmetry: symmetry! } } : { kind, text };
         }
       } else if (args.source === 'import') {
         if (!args.content || !args.format) throw new AutomationError('invalid_arguments', 'Import requires format and content');
