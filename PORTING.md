@@ -200,6 +200,21 @@ are unchanged:
   `out_of_plane_vertices_are_refused_rather_than_projected`,
   `an_explicit_zero_z_still_imports` and the two `foldedExport.test.ts` cases.
 
+- **The ORH importer trims the trailing default slot.** `io::orh::import_orh_str`
+  preallocates both lists at `num_lines + 1` and then drops every trailing slot
+  no `番号` row declared, so parsed counts reconcile with filled entries.
+  Oriedita's importer keeps the spare slot: a 1-seg/1-circle file reports 2/2
+  there and 1/1 here, and empty/garbage input with no `番号` rows imports as
+  empty here instead of as a 1-seg/1-circle phantom. The trim is what makes
+  import→export→import count-stable — without it the exporter writes each
+  phantom back as a real row and every cycle grows by one. Filed upstream as
+  issue #368; until Oriedita trims the same slot this is an intentional,
+  additive divergence (nothing parsed is altered, only the unfilled tail is
+  dropped). Pinned by `orh_import_diverges_from_oriedita_trailing_default` in
+  `crates/oristudio-cp/tests/oriedita_io_oracle.rs`, which asserts the corrected
+  Rust counts against the live oracle and confines the delta to the trailing
+  default row of each list, plus the `orh_roundtrip` count-stability tests.
+
 - **Bounded lengthen extensions.** `operations::transform::lengthen_crease`
   refuses an extension longer than the diagonal of the box already containing
   every crease (`MAX_LENGTHEN_EXTENSION_DIAGONALS`). Upstream has no such limit:

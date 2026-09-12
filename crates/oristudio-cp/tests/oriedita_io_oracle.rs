@@ -6,8 +6,26 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use treemaker_fold::FoldDocument;
 
+fn summary_rows<'a>(summary: &'a str, prefix: &str) -> Vec<&'a str> {
+    summary
+        .lines()
+        .filter(|line| line.starts_with(prefix))
+        .collect()
+}
+
+/// The one place the ORH importer deliberately parts company with Oriedita.
+///
+/// Oriedita's importer sizes its segment and circle lists at `num_lines + 1`
+/// and never trims the spare slot, so every import carries a trailing default
+/// segment and circle. Our exporter writes those phantoms back as real rows and
+/// the next import grows by one again, so `import_orh_str` drops unfilled
+/// trailing slots instead (#368, filed upstream to change the same behavior).
+/// Until Oriedita trims the same slot the two importers disagree by exactly
+/// that trailing default — pinned here against the live oracle, following the
+/// `fold_topology_diverges_from_oriedita_only_for_disconnected_patterns`
+/// precedent. See PORTING.md.
 #[test]
-fn orh_import_matches_oriedita_io_oracle() {
+fn orh_import_diverges_from_oriedita_trailing_default() {
     let Some(oracle) = io_oracle() else {
         eprintln!("skipping Oriedita IO oracle test: ORIEDITA_IO_ORACLE is not set");
         return;
@@ -54,7 +72,61 @@ iactive,ACTIVE_BOTH_3
     let rust_summary = document_summary(&document, Some(&document.crease_pattern.grid));
 
     let _ = std::fs::remove_file(path);
-    assert_eq!(rust_summary, oracle_summary);
+    // Corrected Rust counts (#368): exactly what the file declares.
+    assert_eq!(document.crease_pattern.line_segments.len(), 1);
+    assert_eq!(document.crease_pattern.circles.len(), 1);
+
+    // Oriedita keeps the trailing default slot on both lists, so it reports 2/2.
+    assert!(
+        oracle_summary.contains("lines|2\n"),
+        "expected Oriedita to keep its trailing segment slot, got:\n{oracle_summary}"
+    );
+    assert!(
+        oracle_summary.contains("circles|2\n"),
+        "expected Oriedita to keep its trailing circle slot, got:\n{oracle_summary}"
+    );
+
+    // That slot is the whole delta: every real row matches, and the oracle's
+    // extra trailing row in each list renders as the default entry.
+    let rust_lines = summary_rows(&rust_summary, "line|");
+    let oracle_lines = summary_rows(&oracle_summary, "line|");
+    assert_eq!(rust_lines.len(), 1);
+    assert_eq!(oracle_lines.len(), 2);
+    assert_eq!(oracle_lines[0], rust_lines[0]);
+    let mut phantom_line = String::new();
+    push_segment(&mut phantom_line, "line", &LineSegment::default());
+    assert_eq!(oracle_lines[1], phantom_line.trim_end());
+
+    let rust_circles = summary_rows(&rust_summary, "circle|");
+    let oracle_circles = summary_rows(&oracle_summary, "circle|");
+    assert_eq!(rust_circles.len(), 1);
+    assert_eq!(oracle_circles.len(), 2);
+    assert_eq!(oracle_circles[0], rust_circles[0]);
+    let phantom = Circle::default();
+    assert_eq!(
+        oracle_circles[1],
+        format!(
+            "circle|{}|{}|{}|{}|{}|{}|{}|{}",
+            java_double_string(phantom.x),
+            java_double_string(phantom.y),
+            java_double_string(phantom.r),
+            phantom.color.number(),
+            phantom.customized,
+            phantom.customized_color.red,
+            phantom.customized_color.green,
+            phantom.customized_color.blue
+        )
+    );
+
+    // Everything outside the two lists still matches, so the divergence really
+    // is confined to the trailing slot: same title, same aux, same grid.
+    for prefix in ["title|", "aux|", "auxline|", "grid|"] {
+        assert_eq!(
+            summary_rows(&rust_summary, prefix),
+            summary_rows(&oracle_summary, prefix),
+            "non-list sections still match"
+        );
+    }
 }
 
 #[test]
