@@ -76,6 +76,59 @@ pub fn write(format_version: u8, body: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Inflate exactly `expected` bytes, rejecting trailing input.
+///
+/// `decompress_to_vec_with_limit` stops at the end of the deflate stream and
+/// silently ignores anything after it, so without this the `Stored` path below
+/// rejects trailing bytes (`LengthMismatch`) while `DeflateRaw` accepts them.
+/// Two byte strings decoding to the same document is a hidden-data channel in
+/// a URL fragment, so trailing compressed bytes report the same framing error
+/// `Stored` does. The encoder always emits exact payloads (see `write`), so
+/// honest links are unaffected.
+fn inflate_exact(payload: &[u8], expected: usize) -> Result<Vec<u8>> {
+    if expected == 0 {
+        // An empty deflate stream still carries its final-block marker, so any
+        // input at all here is framing garbage rather than a body.
+        return if payload.is_empty() {
+            Ok(Vec::new())
+        } else {
+            Err(ShareError::LengthMismatch {
+                declared: 0,
+                actual: payload.len(),
+            })
+        };
+    }
+    let mut out = vec![0u8; expected];
+    let mut decomp = miniz_oxide::inflate::core::DecompressorOxide::default();
+    let (status, consumed, produced) = miniz_oxide::inflate::core::decompress(
+        &mut decomp,
+        payload,
+        &mut out,
+        0,
+        miniz_oxide::inflate::core::inflate_flags::TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF,
+    );
+    match status {
+        miniz_oxide::inflate::TINFLStatus::Done => {
+            if consumed != payload.len() || produced != expected {
+                // `actual` counts the decompressed bytes plus any compressed
+                // bytes left over after the stream end, mirroring how `Stored`
+                // reports a body longer than declared. The branch is entered on
+                // either condition, so a short stream with coincidental padding
+                // still errors.
+                return Err(ShareError::LengthMismatch {
+                    declared: expected,
+                    actual: produced + payload.len() - consumed,
+                });
+            }
+            Ok(out)
+        }
+        // Oversize output included: `decompress_to_vec_with_limit` used to map
+        // every non-`Done` outcome here, and only the trailing-input case is
+        // being tightened.
+        _ => Err(ShareError::Decompress),
+    }
+}
+
 /// Parse and fully validate a frame, returning the header and the decompressed
 /// body. Every reject happens before the body is materialised.
 pub fn read(bytes: &[u8], supported_versions: &[u8]) -> Result<(FrameHeader, Vec<u8>)> {
@@ -123,10 +176,9 @@ pub fn read(bytes: &[u8], supported_versions: &[u8]) -> Result<(FrameHeader, Vec
 
     let body = match compressor {
         Compressor::Stored => payload.to_vec(),
-        Compressor::DeflateRaw => {
-            miniz_oxide::inflate::decompress_to_vec_with_limit(payload, raw_body_len)
-                .map_err(|_| ShareError::Decompress)?
-        }
+        // Exact: a stream that ends before the payload does leaves trailing
+        // bytes, which `Stored` would reject below.
+        Compressor::DeflateRaw => inflate_exact(payload, raw_body_len)?,
     };
 
     if body.len() != raw_body_len {
