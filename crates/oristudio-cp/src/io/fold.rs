@@ -486,6 +486,14 @@ impl FoldImportBounds {
     }
 }
 
+/// An axis extent that cannot base a finite uniform scale: zero (or below),
+/// non-finite, or subnormal — `400 / subnormal` overflows to `inf` for every
+/// subnormal, which is how a y=0 crease (kept denormal by the `max_y` init)
+/// and the exporter origin phantom reach the old NaN path.
+fn extent_is_dead(extent: f64) -> bool {
+    extent <= 0.0 || !extent.is_finite() || extent < f64::MIN_POSITIVE
+}
+
 fn normalize_imported_fold_lines(
     model: &mut CreasePatternModel,
     bounds: FoldImportBounds,
@@ -494,21 +502,28 @@ fn normalize_imported_fold_lines(
         return Ok(());
     }
 
-    // F-002 (#367): a zero x or y extent makes the scale below `400/0 = inf`,
-    // and `inf*0` in `point_rotate_scaled` poisons the model with NaN behind
-    // `Ok`. A crease pattern with no area has no meaningful normalization onto
-    // the sheet, so refuse it with a typed error rather than a nearby result.
-    // (Upstream `FoldLineSet.move` divides the same way with no guard, so there
-    // is no reference behavior to mirror here; the contract is ours to choose,
-    // and `InvalidField` is the importers' established degenerate-input channel.)
+    // F-002 (#367): dividing by a dead axis extent makes the scale below
+    // `400/0 = inf`, and `inf*0` in `point_rotate_scaled` poisons the model
+    // with NaN behind `Ok` — so the import must never divide by one. But a
+    // single horizontal/vertical crease is a legitimate document (FOLD
+    // export->import and the share RAW fallback both round-trip it), so only
+    // a pattern dead on *both* axes — a point, including the exporter's
+    // origin phantom — is refused with a typed error rather than a nearby
+    // result. (Upstream `FoldLineSet.move` divides the same way with no
+    // guard, so there is no reference behavior to mirror here; the contract
+    // is ours to choose, and `InvalidField` is the importers' established
+    // degenerate-input channel.)
     let x_extent = bounds.max_x - bounds.min_x;
     let y_extent = bounds.max_y - bounds.min_y;
-    if x_extent <= 0.0 || !x_extent.is_finite() || y_extent <= 0.0 || !y_extent.is_finite() {
+    let x_dead = extent_is_dead(x_extent);
+    let y_dead = extent_is_dead(y_extent);
+    if x_dead && y_dead {
         return Err(IoError::InvalidField {
             field: "vertices_coords",
             message: format!(
                 "FOLD pattern is degenerate (x extent {x_extent}, y extent {y_extent}); \
-                 a crease pattern must span a nonzero area to normalize onto the sheet"
+                 a crease pattern must span a nonzero extent on at least one axis \
+                 to normalize onto the sheet"
             ),
         });
     }
@@ -517,12 +532,24 @@ fn normalize_imported_fold_lines(
     let source_b = Point::new(bounds.min_x, bounds.max_y);
     let target_a = Point::new(-200.0, -200.0);
     let target_b = Point::new(-200.0, 200.0);
-    let rotation = angle((source_a, source_b, target_a, target_b));
-    let scale = target_a.distance(target_b) / source_a.distance(source_b);
-    // Belt-and-braces for the same poison one step later: a subnormal height
-    // passes the extent check above yet still overflows `400/height` to inf
-    // (e.g. the `max_y` denormal init keeps a denormal alive for a y=0 crease).
-    // Finite in, finite out — or `Err`.
+    // Both axes live: the long-standing uniform height-keyed mapping, pinned
+    // by `fold_import_normalizes_uniformly_on_height_for_a_non_square_paper`.
+    // Exactly one axis dead: the source pair above degenerates for a dead
+    // height (`angle()` answers its zero-length sentinel), so rotate by 0 and
+    // scale uniformly from the live extent instead. Dead-axis offsets are 0,
+    // so `0 * scale` stays 0 and every dead-axis value lands on -200 per the
+    // existing min-corner rule, while the live axis spans the full 400.
+    let (rotation, scale) = if x_dead || y_dead {
+        let live_extent = if x_dead { y_extent } else { x_extent };
+        (0.0, target_a.distance(target_b) / live_extent)
+    } else {
+        let rotation = angle((source_a, source_b, target_a, target_b));
+        let scale = target_a.distance(target_b) / source_a.distance(source_b);
+        (rotation, scale)
+    };
+    // A live-but-microscopic extent still overflows `400 / extent` to inf, so
+    // the finiteness bar sits on the scale itself: finite in, finite out —
+    // or `Err`. Never `Ok` with NaN/inf coordinates.
     if !scale.is_finite() {
         return Err(IoError::InvalidField {
             field: "vertices_coords",
@@ -829,12 +856,8 @@ mod hint_tests {
     fn losing_the_extension_degrades_a_hint_to_plain_unassigned() {
         let mut model = CreasePatternModel::default();
         model.line_segments.clear();
-        // Diagonal, not horizontal: the vehicle must span a nonzero area, since
-        // F-002 (#367) rejects degenerate zero-extent imports with a typed
-        // error. (The old horizontal single crease reimported as NaN behind
-        // `Ok`; every assertion below passed only because none read coords.)
         model.line_segments.push(
-            LineSegment::new(Point::new(0.0, 0.0), Point::new(100.0, 100.0))
+            LineSegment::new(Point::new(0.0, 0.0), Point::new(100.0, 0.0))
                 .with_line_color(LineColor::Red1)
                 .with_direction_kept(),
         );
@@ -916,6 +939,7 @@ mod hint_tests {
 #[cfg(test)]
 mod degenerate_import_tests {
     use super::import_fold_json;
+    use crate::geometry::Point;
     use crate::io::IoError;
 
     fn non_finite_coords(model: &crate::model::CreasePatternModel) -> usize {
@@ -928,38 +952,70 @@ mod degenerate_import_tests {
             .count()
     }
 
-    /// F-002 (#367): a single horizontal crease has zero height, so the
-    /// normalize scale is `400/0 = inf` and `inf*0` poisons the model with NaN
-    /// behind `Ok`. Degenerate input must be a typed `Err`, never `Ok(NaN)`.
+    /// F-002 (#367), revised contract: a single horizontal crease has zero
+    /// height, so the old height-keyed scale was `400/0 = inf` and `inf*0`
+    /// poisoned the model with NaN behind `Ok`. A single-axis crease is a
+    /// legitimate document — FOLD export->import and the share RAW fallback
+    /// both round-trip it — so it imports `Ok`, scaled uniformly from the
+    /// live axis: the live axis spans the full 400, and the dead axis lands
+    /// on -200 per the existing min-corner rule. Never `Ok` with NaN/inf.
     #[test]
-    fn zero_height_fold_import_is_rejected_with_a_typed_error() {
-        let input = r#"{
-            "vertices_coords": [[0,0.5],[1,0.5]],
-            "edges_vertices": [[0,1]],
-            "edges_assignment": ["M"],
-            "edges_foldAngle": [-180.0]
-        }"#;
-        let error = import_fold_json(input).expect_err("zero-height FOLD must not import as Ok");
-        assert!(
-            matches!(error, IoError::InvalidField { .. }),
-            "degenerate input wants a typed error, got: {error:?}"
-        );
+    fn zero_height_fold_import_succeeds_finite_with_full_live_span() {
+        for y in [0.5, 5.5, 0.0] {
+            let input = format!(
+                r#"{{
+                    "vertices_coords": [[0,{y}],[1,{y}]],
+                    "edges_vertices": [[0,1]],
+                    "edges_assignment": ["M"],
+                    "edges_foldAngle": [-180.0]
+                }}"#
+            );
+            let model = import_fold_json(&input).expect("single crease must import");
+            assert_eq!(
+                non_finite_coords(&model),
+                0,
+                "finite in, finite out (y={y})"
+            );
+            assert_eq!(
+                model.line_segments.len(),
+                1,
+                "one crease in, one out (y={y})"
+            );
+            // Whatever the translation, the live axis spans the full 400 and
+            // the dead axis follows the min corner to -200.
+            let segment = &model.line_segments[0];
+            assert_eq!(segment.a, Point::new(-200.0, -200.0), "y={y}");
+            assert_eq!(segment.b, Point::new(200.0, -200.0), "y={y}");
+        }
     }
 
-    /// Same contract on the other axis: zero width cannot normalize either.
+    /// Mirror image on the other axis.
     #[test]
-    fn zero_width_fold_import_is_rejected_with_a_typed_error() {
-        let input = r#"{
-            "vertices_coords": [[0.5,0],[0.5,1]],
-            "edges_vertices": [[0,1]],
-            "edges_assignment": ["M"],
-            "edges_foldAngle": [-180.0]
-        }"#;
-        let error = import_fold_json(input).expect_err("zero-width FOLD must not import as Ok");
-        assert!(
-            matches!(error, IoError::InvalidField { .. }),
-            "degenerate input wants a typed error, got: {error:?}"
-        );
+    fn zero_width_fold_import_succeeds_finite_with_full_live_span() {
+        for x in [0.5, 3.0] {
+            let input = format!(
+                r#"{{
+                    "vertices_coords": [[{x},0],[{x},1]],
+                    "edges_vertices": [[0,1]],
+                    "edges_assignment": ["M"],
+                    "edges_foldAngle": [-180.0]
+                }}"#
+            );
+            let model = import_fold_json(&input).expect("single crease must import");
+            assert_eq!(
+                non_finite_coords(&model),
+                0,
+                "finite in, finite out (x={x})"
+            );
+            assert_eq!(
+                model.line_segments.len(),
+                1,
+                "one crease in, one out (x={x})"
+            );
+            let segment = &model.line_segments[0];
+            assert_eq!(segment.a, Point::new(-200.0, -200.0), "x={x}");
+            assert_eq!(segment.b, Point::new(-200.0, 200.0), "x={x}");
+        }
     }
 
     /// Control: a real 2D pattern still imports, and stays finite.
@@ -992,6 +1048,60 @@ mod degenerate_import_tests {
         assert!(
             matches!(error, IoError::InvalidField { .. }),
             "degenerate input wants a typed error, got: {error:?}"
+        );
+    }
+
+    /// The interaction that forced the revised contract: a single-crease
+    /// document must survive a FOLD file export->import round trip.
+    #[test]
+    fn single_crease_fold_file_round_trip_is_ok_and_finite() {
+        use super::{export_fold_file_document_json, import_fold_file_document_json};
+        use crate::CreasePatternDocument;
+        use crate::geometry::{LineColor, LineSegment};
+
+        let mut document = CreasePatternDocument::default();
+        document.crease_pattern.add_line_segment(
+            LineSegment::from_coordinates(0.0, 0.5, 100.0, 0.5).with_line_color(LineColor::Red1),
+        );
+        let json = export_fold_file_document_json(&document).expect("export fold file");
+        let back = import_fold_file_document_json(&json).expect("single crease must reimport");
+        assert_eq!(
+            back.crease_pattern.line_segments.len(),
+            1,
+            "one crease round-trips"
+        );
+        assert_eq!(
+            non_finite_coords(&back.crease_pattern),
+            0,
+            "finite in, finite out"
+        );
+    }
+
+    /// Same legitimacy through the share RAW fallback: `v1::decode` routes a
+    /// RAW body through the FOLD importer, so refusing single-axis input
+    /// broke a single crease's share round trip with `NotRepresentable`.
+    #[test]
+    fn single_crease_share_raw_round_trip_decodes() {
+        use super::export_fold_file_document_json;
+        use crate::CreasePatternDocument;
+        use crate::geometry::{LineColor, LineSegment};
+        use crate::share::v1;
+
+        let mut document = CreasePatternDocument::default();
+        document.crease_pattern.add_line_segment(
+            LineSegment::from_coordinates(0.0, 0.5, 100.0, 0.5).with_line_color(LineColor::Red1),
+        );
+        let fold_text = export_fold_file_document_json(&document).expect("export fold file");
+        let decoded = v1::decode(&v1::encode_raw(&fold_text)).expect("RAW decode must succeed");
+        assert_eq!(
+            decoded.model.line_segments.len(),
+            1,
+            "one crease round-trips"
+        );
+        assert_eq!(
+            non_finite_coords(&decoded.model),
+            0,
+            "finite in, finite out"
         );
     }
 }
