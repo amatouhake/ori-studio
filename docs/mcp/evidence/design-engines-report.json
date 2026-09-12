@@ -1,0 +1,31 @@
+{
+  "success": true,
+  "treemaker": {
+    "optimized": {
+      "converged": true,
+      "is_feasible": true,
+      "kind": "scale",
+      "message": "ALM scale optimization converged",
+      "new_scale": 0.4999979217291305,
+      "old_scale": 0.1
+    },
+    "cp": "has_full_cp",
+    "derived_lines": 16
+  },
+  "box_pleat": {
+    "packing": {
+      "errors": [],
+      "valid": true
+    },
+    "derived_lines": 28
+  },
+  "atomic_failure": true,
+  "retry_receipt": true,
+  "rollback": true,
+  "construction_preview": true,
+  "round_trips": [
+    "tmd5",
+    "bps",
+    "ori"
+  ]
+}

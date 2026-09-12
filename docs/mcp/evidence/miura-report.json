@@ -1,0 +1,73 @@
+{
+  "success": true,
+  "tools": 19,
+  "geometry": {
+    "lines": 40,
+    "panels": 16
+  },
+  "local_checks": {
+    "before": 0,
+    "intentionally_broken": 14,
+    "repaired": 0
+  },
+  "visual_feedback": {
+    "baseline": {
+      "width": 1024,
+      "height": 1024,
+      "red": 6704,
+      "blue": 10130,
+      "nonwhite": 24451
+    },
+    "intentionally_broken": {
+      "width": 1024,
+      "height": 1024,
+      "red": 7294,
+      "blue": 9621,
+      "nonwhite": 24523
+    },
+    "repaired": {
+      "width": 1024,
+      "height": 1024,
+      "red": 6704,
+      "blue": 10130,
+      "nonwhite": 24451
+    },
+    "simulation": {
+      "width": 1024,
+      "height": 1024,
+      "red": 12637,
+      "blue": 461319,
+      "nonwhite": 488481
+    }
+  },
+  "folding": "Solved",
+  "simulation": {
+    "backend": "reference",
+    "converged": true,
+    "diagnostics": {
+      "averageEdgeStrain": 0.00000568018414831165,
+      "errors": [],
+      "maxEdgeStrain": 0.000019550312177929463,
+      "maxNodalStrain": 0.00001084731434223644,
+      "warnings": []
+    },
+    "face_count": 32,
+    "fold_amount": 0.55,
+    "max_strain": 0.00001084731434223644,
+    "max_velocity": 0.00000972020916378824,
+    "scope": "Numerical physical relaxation, not a collision-free or global foldability proof.",
+    "step": 2216,
+    "vertex_count": 25
+  },
+  "checkpoint_id": "867cfa67-f3b9-4290-9a08-99b3c388d5b8",
+  "history": "one-step undo/redo verified through MCP",
+  "artifacts": [
+    "miura.osf",
+    "miura.cp",
+    "miura.ori",
+    "miura.fold",
+    "miura.svg",
+    "miura.png",
+    "miura.obj"
+  ]
+}
