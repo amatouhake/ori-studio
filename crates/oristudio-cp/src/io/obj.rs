@@ -135,9 +135,17 @@ fn parse_i32(token: &str, line: usize) -> Result<i32> {
 }
 
 fn parse_f64(token: &str, line: usize) -> Result<f64> {
-    token.parse::<f64>().map_err(|error| IoError::InvalidLine {
+    let value = token.parse::<f64>().map_err(|error| IoError::InvalidLine {
         format: "obj",
         line,
         message: error.to_string(),
-    })
+    })?;
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(IoError::InvalidField {
+            field: "obj_coordinate",
+            message: format!("non-finite coordinate {token:?} at line {line}"),
+        })
+    }
 }
