@@ -77,6 +77,9 @@ export const createAutomationSlice: WorkspaceSliceCreator<AutomationSlice> = (se
     } finally { await prepared.discard(); }
   },
   publishDesignExperiment: (kind, text, title, viewState) => {
+    // A pending save owns an older tab snapshot and may still mark it clean.
+    // Refuse before allocating a tab or adopting any registry/hydration state.
+    if (!workspaceOperationsIdle()) throw new AutomationError('workspace_busy', 'Wait for the current application action to finish, then retry');
     const tab = createDesignTab(get().designTabs, { kind, title, pendingHydration: true });
     if (tab.kind === 'box-pleat' && viewState) tab.boxPleat.symmetry = { ...tab.boxPleat.symmetry, ...bpDocumentSymmetry(viewState.symmetry) };
     adoptDesign(tab.id, text);

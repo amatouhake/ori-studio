@@ -383,3 +383,45 @@ rerun unchanged. Rust workspace/oracle and simulator package suites were not
 rerun because this pass changes no Rust source or simulator code; their earlier
 limitations remain documented above. The curated validation record identifies
 which boundary each text regression exercises.
+
+## Design-tab publication during Save As (2026-09-12)
+
+Independent review reproduced a remaining workspace-action race: while Save As
+held an older tab snapshot, TreeMaker/BP publication could install another tab.
+The save then completed without that tab and marked the workspace clean. CP
+publication already respected the operation fence; design-tab publication did
+not.
+
+`publishDesignExperiment` now checks `workspaceOperationsIdle()` as its first
+operation and throws `workspace_busy` before tab allocation, symmetry assignment,
+registry adoption or hydration. The existing synchronous idle path is unchanged.
+After the pending workspace action finishes, clients can retry `commit_design`
+with a fresh `request_id`; successful publication sets `dirty=true`. As with
+other MCP mutation receipts, replaying the rejected request's ID replays its
+original result.
+
+`automation/designPublication.test.ts` reproduces the race through the public MCP
+service dispatcher and the ordinary application's `saveProjectAs` action. It
+holds the file-service promise open after native serialization has captured the
+old tabs. Both TreeMaker and BP cases failed before the guard because publication
+succeeded, while both idle cases passed. With the fix, the tests verify no tab
+allocation, registry adoption or hydration on rejection; unchanged live tabs and
+BP symmetry; no unsaved hidden tab when the save completes; and a successful,
+dirty retry with the same serialized payload and BP native symmetry. Separate
+idle tests assert immediate string return, registry ownership and hydration
+scheduling. File destination and engine hydration are substituted; the MCP
+service, operation fence, registry and native workspace save action are real.
+
+The public HTTP tools do not expose Save As or a way to hold its dialog promise,
+so the forced race is covered at that application/service boundary without adding
+test-only server commands. The existing desktop HTTP probes cover idle
+publication and native symmetry against the actual running application.
+
+Validation: 36 focused tests pass, including all four new publication cases;
+the full web suite passes 490 files / 6,067 tests. Web lint, typecheck, production
+build and explicit landing prerender pass, as do desktop check/build and all
+23 desktop library tests. All six public desktop HTTP probes pass (security,
+native state, hardening, Miura acceptance, design engines and text publication).
+The TypeScript-only build reused the unchanged generated WASM artifacts; Rust
+workspace/oracle and simulator package suites were not rerun because no engine,
+Rust or simulator code changed.
