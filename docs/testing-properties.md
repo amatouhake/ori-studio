@@ -40,6 +40,17 @@ sources as `*.proptest-regressions`. Commit those files when a failure is found;
 retain a named regression when its meaning should survive generator changes.
 The existing TreeMaker stress property now has a fixed default seed and failure
 persistence too, retaining its 16-case budget and real optimizer/build calls.
+It checks the first TMD5 parse against the generated tree's coordinates, pins,
+labels, edge lengths and node/edge/path connectivity, then checks canonical
+text stability on the second round-trip. Counts alone would miss those losses.
+Trees contain 2–8 nodes; coordinate/length comparisons allow `1e-10` for the
+writer's ten-decimal-place rounding. Vary this existing property's seed/budget
+with the same environment variables:
+
+```sh
+PROPTEST_RNG_SEED=17 PROPTEST_CASES=1024 cargo test -p treemaker-core --test stress
+```
+
 See [Proptest failure persistence](https://proptest-rs.github.io/proptest/proptest/failure-persistence.html).
 
 Run the web properties after the normal generated-artifact bootstrap:
@@ -75,6 +86,9 @@ Share immutable computed fixtures within a file when several assertions inspect
 the same input and output. Keep mutable sessions independent unless the tests
 are deliberately combined into one flow. The BP reshape suite freezes its
 shared sweep results; it still checks every original shape/handle/delta.
+Its hot loops use Node's strict assertions, preserving numeric comparisons and
+case/value diagnostics while avoiding repeated Vitest matcher bookkeeping.
+Keep ordinary Vitest assertions elsewhere; only make this trade after profiling.
 
 Seed sweeps whose solves are independent should expose separate libtest cases,
 so the existing test pool can schedule them and report the seed in the test name.

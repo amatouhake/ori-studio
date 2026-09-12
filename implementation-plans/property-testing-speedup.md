@@ -31,15 +31,20 @@ add overlapping property suites in this work.
 - [x] Add targeted property tests with reproducible failures
 - [x] Measure after timings and validate changed surfaces
 - [x] Document results and commit logical changes
-- [ ] Open draft PR — blocked by GitHub write access (HTTP 403)
+- [x] Create the amatouhake fork and push the existing branch
+- [x] Review against freshly fetched upstream main, keeping #366–#368 excluded
+- [x] Implement and validate worthwhile second-pass improvements
+- [x] Push additional logical test commits to the same fork branch
+- [x] Update cumulative timings and handoff; do not create a PR
 
 ## Results and validation
 
 The [profile report](../research/test-suite-profile-2026-09-12.md) records two
-warmed before/after measurements: web duration 78.69–82.01s → 60.83–68.14s;
-Rust workspace wall time 16.15–16.57s → 12.47–13.72s. Both improve about 20% at
-the midpoint. Full passes retain the original assertions while combining
-duplicate-result flows: 6,014 web tests and 1,904 Rust tests pass.
+warmed baseline, first-pass and final measurements. Final web duration is
+63.00–64.90s versus 78.69–82.01s upstream; final Rust workspace wall time is
+10.01–12.74s versus 16.15–16.57s. These small samples have visible run-to-run
+variation. Both full final runs pass: 6,014 web tests and 1,904 Rust tests, with
+the same five Rust ignores and the same web test inventory as the first pass.
 
 Added five Rust and three web properties; see
 [coverage domains and replay commands](../docs/testing-properties.md). Seed 17
@@ -55,14 +60,34 @@ no product algorithm, bridge, fixture or browser flow changed. Existing generate
 artifacts were prepared before web validation. No local UI server is needed for
 this test-only change.
 
+## Second-pass result
+
+Freshly fetched upstream main remains `c6c7e94d`; no merge or rebase was needed.
+The BP reshape suite now uses Node's strict assertions in measured hot loops,
+retaining every comparison and case diagnostic. Alternating isolated runs show
+1.94–1.99s → 0.195–0.204s (about 90% less test time). The existing TreeMaker
+property now verifies geometry and topology against the generated input and
+canonical TMD5 stability, using its original case budget and real operations.
+
+Full workspace and web tests passed twice again, as did lint, typecheck, Rust
+format/clippy and alternate seed 17 with 1,024 cases for all eight new properties
+and the strengthened TreeMaker property. Temporary fault injections verified
+fractional/NaN reshape diagnostics and coordinate/connectivity round-trip failures;
+all injected faults were restored before final validation.
+
+A SettingsModal query simplification had no measured benefit and was discarded.
+The branch has reached diminishing returns for small test-only changes; catalog
+rendering and the real raster/solver sweeps are the strongest remaining profiling
+targets. Their coverage and iteration budgets are intact. Issues #366–#368 remain
+out of scope.
+
 ## Handoff
 
-Four logical commits on `test/property-testing-speedup` contain optimizer test
-structure, reproducible properties, web environment/fixture improvements and
-documentation. The working tree is clean after committing this handoff.
+The fork is [amatouhake/ori-studio](https://github.com/amatouhake/ori-studio), added
+as remote `fork`. The branch tracks
+[`fork/test/property-testing-speedup`](https://github.com/amatouhake/ori-studio/tree/test/property-testing-speedup).
+The original four commits and two additional implementation commits are pushed;
+the final documentation commit records the cumulative measurements and review.
 
-`git push -u origin test/property-testing-speedup` was rejected with HTTP 403:
-`Permission to zacharyfmarion/ori-studio.git denied to amatouhake.` The chained
-draft-PR command therefore did not run. Push this branch with an account that
-has repository write access, then open a draft against `main`. Local validation
-and implementation are complete; no remote branch or PR was created.
+No pull request was created, as explicitly requested. No local UI server is
+needed for this test-only change.

@@ -2,19 +2,24 @@
 
 ## Result
 
-Two warmed measurements per revision show approximately **20% less elapsed
-time** for both Rust and web tests, including the added property coverage.
+The first pass reduced elapsed time by approximately **20%** for both Rust and
+web tests, including the added property coverage. The second pass strengthens
+an existing property and cuts the BP reshape sweep's isolated test time by **90%**.
 Product algorithms and fixture contents are unchanged; no existing integration
 iteration budget or test timeout was reduced.
 
-| Workload | Before, seconds | After, seconds | Midpoint reduction |
+| Workload | Upstream baseline, seconds | First pass, seconds | Final cumulative, seconds |
 | --- | --- | --- | --- |
-| Rust `cargo test --workspace`, process wall time | 16.57, 16.15 | 12.47, 13.72 | 20.0% |
-| Web, Vitest duration | 78.69, 82.01 | 60.83, 68.14 | 19.7% |
-| Web, npm process wall time | 83.14, 88.22 | 65.25, 72.59 | 19.6% |
+| Rust `cargo test --workspace`, process wall time | 16.57, 16.15 | 12.47, 13.72 | 12.74, 10.01 |
+| Web, Vitest duration | 78.69, 82.01 | 60.83, 68.14 | 64.90, 63.00 |
+| Web, npm process wall time | 83.14, 88.22 | 65.25, 72.59 | 69.45, 67.54 |
 
-The sample count is two, not a statistical benchmark; ranges show the local
-variation. These are execution improvements, not cold-build or CI predictions.
+Each column has two warmed samples, not a statistical benchmark; ranges show
+the local variation. Final web totals overlap the first-pass range: the focused
+alternating measurements establish the additional reshape gain, not a resolved
+whole-suite incremental speedup. The second pass adds no Rust runtime optimization;
+its lower elapsed times should not be attributed to the stronger assertions.
+These are execution measurements, not cold-build or CI predictions.
 
 ## Method
 
@@ -32,7 +37,7 @@ Web measurements use the CI-style `--ignore-scripts` invocation to exclude
 The first exploratory runs overlapped cold Rust compilation: Rust took 266.82s
 (237s compiling), and web took 158.17s in Vitest with one SettingsModal timeout.
 Those runs identify hotspots but are **excluded** from the comparison. Both
-uncontended baselines and both after-runs pass. For the repeated baseline, restored
+uncontended baselines and all four after-runs pass. For the repeated baseline, restored
 the original test/config sources temporarily, measured, then restored the changes;
 the new property files were excluded from the web baseline and the new Rust test
 file was absent from the Rust baseline. No dependency/build time is credited as
@@ -89,8 +94,9 @@ Other measured hotspots and decisions:
   SVG assertions, flat-reset comparison and the 4,000-step solve budget remain.
 - `bpFlapReshapeInvariants`: computes its complete deterministic sweep once,
   freezes the results and reuses them across invariant checks. Shapes, handles,
-  deltas and failure messages are unchanged. Runtime remains about 3.2–3.6s;
-  assertions dominate, so no separate speedup is claimed for the cache.
+  deltas and failure messages are unchanged. First-pass runtime remained about
+  3.2–3.6s; assertions dominated, so no separate speedup is claimed for the cache.
+  The second pass addresses that assertion overhead below.
 - `folded3dProjectorParity`: about 5.6–6.1s. Keeps all five 104-camera sweeps,
   the separately reported camera and full raster resolution.
 - Trialing Vitest's thread pool took 92.70s versus the 78.69s fork baseline, so
@@ -111,16 +117,62 @@ FOLD normalization and ORH import/export implementations and their regression
 coverage are untouched. Existing cross-language goldens and real integrations
 remain the checks against shared mistakes in a round-trip pair.
 
+## Second-pass review
+
+Fetched upstream `main` again after creating the requested fork and pushing the
+first four commits. It remains `c6c7e94d`, so the review is against the same
+upstream revision as the original baseline; no merge or rebase was required.
+Issues #366–#368 remain excluded. No pull request was created.
+
+Two further changes earned their place:
+
+- **BP reshape assertions:** the isolated first-pass file took 1.94–1.99s;
+  the integer-field check alone took about 0.61s. Replacing Vitest's matcher
+  machinery in hot sweep loops with Node's strict assertions reduces the full
+  file to **0.195–0.204s**, about **90%**. The benchmark alternated before/after
+  sources twice, running only this file without competing builds or tests.
+  All 13 test names, sweep cases, comparisons and solve calls remain. Equality
+  retains `Object.is` semantics; inequalities still reject NaN. Case/field/value
+  messages remain, and temporary fractional-width and NaN-radius injections
+  both failed with the expected diagnostics. No fault injection is committed.
+  In the final full-suite runs the file takes 0.31–0.34s, down from the first
+  pass's 3.2–3.6s under parallel suite load.
+- **TreeMaker's existing generated-tree property:** summary equality only checked
+  counts and aggregate state. The first parse now must preserve node coordinates,
+  pins, labels, edge lengths and node/edge/path connectivity; the second round-trip
+  must also preserve canonical TMD5 text. These assertions reuse the existing
+  16 generated trees and retain real optimizer/build operations. Temporary moved
+  node and reversed-edge injections fail with the affected record identified,
+  confirming detection of losses the old summary check missed. The property also
+  passed 1,024 cases with seed 17.
+
+A SettingsModal selector simplification measured 16.35s versus 15.94s before in
+an isolated run, so it was discarded. All real catalog rendering, conflict and
+keyboard-dispatch coverage remains. No additional random raster/solver sampling
+or broader property suite was warranted by this review.
+
+The branch is at diminishing returns for small, test-only changes. The strongest
+remaining target is SettingsModal's repeated rendering of the complete shortcut
+catalog: profile rendering before deciding which assertions can use smaller
+fixtures, and preserve full-catalog integration checks. The projector's five
+104-camera raster sweeps and Rust's freely-angled solver sweep remain meaningful
+expensive coverage. Further reductions there need dedicated profiling and a
+careful equivalence argument, not fewer samples or lower resolution.
+
 ## Validation
 
-- Two full warmed Rust workspace passes after the change: 1,904 passed, five
+- Two full warmed Rust workspace passes after each pass: 1,904 passed, five
   existing ignored tests.
-- Two full web passes: 479 files, 6,014 tests. Web lint and typecheck passed.
+- Two full web runs after each pass: 479 files, 6,014 tests. Final inventories
+  exactly match the first pass by file and full test name. Web lint and typecheck
+  passed again after the second-pass changes.
 - `cargo fmt --check` and workspace/all-target clippy passed. This Rust 1.96
   installation reports the pre-existing unknown `clippy::chunks_exact_to_as_chunks`
   lint configured for newer Rust; no lint policy was changed.
 - All eight new properties also pass with seed 17 and 1,024 generated cases
-  each, exercising both documented seed/case overrides.
+  each, exercising both documented seed/case overrides; repeated after the
+  second pass along with the strengthened TreeMaker property at the same seed
+  and budget. Temporary failure injections checked diagnostics as described above.
 - Production builds, WASM rebuilds and separate external-oracle runs are outside
   this test-only change: no runtime, bridge, algorithm or fixture changed. The
   normal generated artifacts were prepared before running web tests.
