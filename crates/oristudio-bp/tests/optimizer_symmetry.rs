@@ -678,51 +678,57 @@ mod drawn_sides {
         flap.x < result.width / 2.0
     }
 
-    #[test]
-    fn every_pair_lands_on_the_side_it_was_drawn() {
-        let request = request(vec![1, 3, 5]);
-        for seed in 0..12 {
-            let result = solve(&request, Some(seed)).unwrap();
-            for (drawn_left, drawn_right) in [(1, 2), (3, 4), (5, 6)] {
-                assert!(
-                    left_of_centre(&result, drawn_left),
-                    "seed {seed}: flap {drawn_left} was drawn left but packed right"
-                );
-                assert!(
-                    !left_of_centre(&result, drawn_right),
-                    "seed {seed}: flap {drawn_right} was drawn right but packed left"
-                );
-            }
-        }
+    // Each seed has its own diagnostic and can use libtest's existing pool.
+    macro_rules! seeded_cases {
+        ($check:ident; $($name:ident: $seed:expr),+ $(,)?) => {
+            mod $check {$(
+                #[test]
+                fn $name() { super::$check($seed); }
+            )+}
+        };
     }
 
-    #[test]
-    fn reversing_the_drawing_reverses_the_packing() {
+    fn every_pair_lands_on_the_side_it_was_drawn(seed: u64) {
+        let request = request(vec![1, 3, 5]);
+        let result = solve(&request, Some(seed)).unwrap();
+        // Validate the same solved layout whose drawn sides we inspect.
+        validate_optimizer_packing(&request, &result)
+            .unwrap_or_else(|error| panic!("seed {seed}: invalid packing: {error}"));
+        for (drawn_left, drawn_right) in [(1, 2), (3, 4), (5, 6)] {
+            assert!(
+                left_of_centre(&result, drawn_left),
+                "seed {seed}: flap {drawn_left} was drawn left but packed right"
+            );
+            assert!(
+                !left_of_centre(&result, drawn_right),
+                "seed {seed}: flap {drawn_right} was drawn right but packed left"
+            );
+        }
+    }
+    seeded_cases!(every_pair_lands_on_the_side_it_was_drawn;
+        seed_0: 0, seed_1: 1, seed_2: 2, seed_3: 3,
+        seed_4: 4, seed_5: 5, seed_6: 6, seed_7: 7,
+        seed_8: 8, seed_9: 9, seed_10: 10, seed_11: 11,
+    );
+
+    fn reversing_the_drawing_reverses_the_packing(seed: u64) {
         let request = request(vec![2, 4, 6]);
-        for seed in 0..6 {
-            let result = solve(&request, Some(seed)).unwrap();
-            for (drawn_left, drawn_right) in [(2, 1), (4, 3), (6, 5)] {
-                assert!(
-                    left_of_centre(&result, drawn_left),
-                    "seed {seed}: flap {drawn_left}"
-                );
-                assert!(
-                    !left_of_centre(&result, drawn_right),
-                    "seed {seed}: flap {drawn_right}"
-                );
-            }
+        let result = solve(&request, Some(seed)).unwrap();
+        for (drawn_left, drawn_right) in [(2, 1), (4, 3), (6, 5)] {
+            assert!(
+                left_of_centre(&result, drawn_left),
+                "seed {seed}: flap {drawn_left}"
+            );
+            assert!(
+                !left_of_centre(&result, drawn_right),
+                "seed {seed}: flap {drawn_right}"
+            );
         }
     }
-
-    #[test]
-    fn orienting_never_returns_a_layout_the_checker_rejects() {
-        let request = request(vec![1, 3, 5]);
-        for seed in 0..12 {
-            let result = solve(&request, Some(seed)).unwrap();
-            validate_optimizer_packing(&request, &result)
-                .unwrap_or_else(|error| panic!("seed {seed}: {error}"));
-        }
-    }
+    seeded_cases!(reversing_the_drawing_reverses_the_packing;
+        seed_0: 0, seed_1: 1, seed_2: 2, seed_3: 3,
+        seed_4: 4, seed_5: 5,
+    );
 
     /// Mirror *subtrees*, whose partners are not interchangeable: 1 and 2 are
     /// short leaves, 3 and 4 long ones, and each short leaf is a sibling of the
@@ -777,19 +783,6 @@ mod drawn_sides {
     }
 
     #[test]
-    fn a_pair_that_cannot_be_exchanged_keeps_the_layout_valid() {
-        // The packing wins over the labelling: where an exchange would not hold,
-        // the solver's arrangement stands rather than a broken separation.
-        let request = subtree_request(vec![1, 3]);
-        for seed in 0..12 {
-            let result = solve(&request, Some(seed)).unwrap();
-            validate_optimizer_packing(&request, &result).unwrap_or_else(|error| {
-                panic!("seed {seed}: orienting produced an invalid layout: {error}")
-            });
-        }
-    }
-
-    #[test]
     fn a_wholly_reversed_layout_is_reflected_rather_than_unpicked_pair_by_pair() {
         // Here the partners are not interchangeable one at a time, so per-pair
         // exchanges get refused. Reflecting the whole layout moves every flap to
@@ -799,6 +792,9 @@ mod drawn_sides {
         let request = subtree_request(vec![1, 3]);
         for seed in 0..12 {
             let result = solve(&request, Some(seed)).unwrap();
+            // Validate the same solved layout whose drawn sides we inspect.
+            validate_optimizer_packing(&request, &result)
+                .unwrap_or_else(|error| panic!("seed {seed}: invalid packing: {error}"));
             let centre = result.width / 2.0;
             let left = |id: u32| result.flaps.iter().find(|flap| flap.id == id).unwrap().x < centre;
             assert!(
@@ -808,15 +804,16 @@ mod drawn_sides {
         }
     }
 
-    #[test]
-    fn an_empty_drawing_leaves_the_solver_alone() {
+    fn an_empty_drawing_leaves_the_solver_alone(seed: u64) {
         // Nothing declared, nothing moved: the previous behaviour, which is what
         // an older client's request still gets.
         let plain = request(Vec::new());
-        for seed in 0..6 {
-            validate_optimizer_packing(&plain, &solve(&plain, Some(seed)).unwrap()).unwrap();
-        }
+        validate_optimizer_packing(&plain, &solve(&plain, Some(seed)).unwrap()).unwrap();
     }
+    seeded_cases!(an_empty_drawing_leaves_the_solver_alone;
+        seed_0: 0, seed_1: 1, seed_2: 2, seed_3: 3,
+        seed_4: 4, seed_5: 5,
+    );
 }
 
 /// The bridge sends this request as JSON, so the field names have to line up

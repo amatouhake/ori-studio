@@ -288,8 +288,7 @@ fn optimizer_packing_validation_rejects_invalid_distance() {
 /// is why the failure only ever appeared under "keep widths and heights of
 /// flaps". Driven from the real design rather than a synthetic pair, because a
 /// two-flap case is packed loosely enough to satisfy both distances by luck.
-#[test]
-fn optimizer_honours_fractional_tree_distances() {
+fn optimizer_honours_fractional_tree_distances(seed: u64) {
     let project = oristudio_bp::io::bps::load_project_str(include_str!(
         "../../../tests/fixtures/bp-studio/dimensioned-fractional-distance.sample.json"
     ))
@@ -318,16 +317,29 @@ fn optimizer_honours_fractional_tree_distances() {
     )
     .unwrap();
 
-    for seed in 0..8 {
-        let result = solve(&request, Some(seed)).expect("solve");
-        // Asserted through the shared checker rather than a hand-rolled
-        // distance: the separation is a rounded-rectangle metric, not a
-        // centre-to-centre one, and re-deriving it is how a test ends up
-        // agreeing with the bug it is meant to catch.
-        validate_optimizer_packing(&request, &result).unwrap_or_else(|error| {
-            panic!("seed {seed}: solver returned a layout its own checker rejects: {error}")
-        });
+    let result = solve(&request, Some(seed)).expect("solve");
+    // Asserted through the shared checker rather than a hand-rolled
+    // distance: the separation is a rounded-rectangle metric, not a
+    // centre-to-centre one, and re-deriving it is how a test ends up
+    // agreeing with the bug it is meant to catch.
+    validate_optimizer_packing(&request, &result).unwrap_or_else(|error| {
+        panic!("seed {seed}: solver returned a layout its own checker rejects: {error}")
+    });
+}
+
+// Independent seeds keep every original solve, while letting libtest schedule
+// them in parallel and identify a failing seed without rerunning the sweep.
+mod fractional_distance_seeds {
+    macro_rules! cases {
+        ($($name:ident: $seed:expr),+ $(,)?) => {$(
+            #[test]
+            fn $name() {
+                super::optimizer_honours_fractional_tree_distances($seed);
+            }
+        )+};
     }
+    cases!(seed_0: 0, seed_1: 1, seed_2: 2, seed_3: 3,
+           seed_4: 4, seed_5: 5, seed_6: 6, seed_7: 7);
 }
 
 #[test]
