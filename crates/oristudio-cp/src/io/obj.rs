@@ -70,8 +70,14 @@ pub fn import_obj_str(input: &str) -> Result<CreasePatternModel> {
         }
     }
 
+    // The index-0 point/line seeds mirror Oriedita `ObjImporter`, whose dummy
+    // line is real output for non-empty files (see the dummy-line parity test).
+    // With no parseable content the seed alone resolved to a zero-length
+    // origin segment (F-006), where the cp importer returns an empty model;
+    // drop the placeholder unless at least one parsed line produced a segment.
     let mut model = CreasePatternModel::default();
-    for line in lines {
+    let mut imported_real = 0;
+    for (index, line) in lines.iter().enumerate() {
         let Some(begin) = usize::try_from(line.begin)
             .ok()
             .and_then(|index| points.get(index))
@@ -86,6 +92,12 @@ pub fn import_obj_str(input: &str) -> Result<CreasePatternModel> {
         };
         let color = obj_postprocess_color(line.color)?;
         model.add_line_segment(LineSegment::with_color(*begin, *end, color));
+        if index > 0 {
+            imported_real += 1;
+        }
+    }
+    if imported_real == 0 {
+        return Ok(CreasePatternModel::default());
     }
 
     Ok(model)
