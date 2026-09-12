@@ -144,8 +144,16 @@ export async function createBlankTree(api: EngineClient): Promise<TreeSnapshot> 
   return claimTree(api, await api.newDesign({ paper_width: 1, paper_height: 1 }), target);
 }
 
-export async function loadTreeFromText(api: EngineClient, text: string): Promise<TreeSnapshot> {
-  const target = readActiveDesign();
+export async function loadTreeFromText(
+  api: EngineClient,
+  text: string,
+  designId?: string
+): Promise<TreeSnapshot> {
+  // Undo/redo pass the design they captured before their first await: reading
+  // the live tab here would adopt the rebuilt tree into a sibling switched to
+  // mid-round-trip. Omitted, the target stays the live tab, as before.
+  const target: ActiveDesignRef | null =
+    designId !== undefined ? { id: designId, kind: 'treemaker' } : readActiveDesign();
   return claimTree(api, await api.loadTmd(text), target);
 }
 
@@ -174,7 +182,7 @@ export async function initializeBlankTree(api: EngineClient): Promise<TreeSnapsh
   return blankPromise;
 }
 
-export async function ensureTreeHandle(): Promise<{
+export async function ensureTreeHandle(designId?: string): Promise<{
   api: EngineClient;
   treeHandle: number;
   initializedSnapshot?: TreeSnapshot;
@@ -184,7 +192,13 @@ export async function ensureTreeHandle(): Promise<{
   // A TreeMaker design is active: its handle belongs to it, not to the module.
   // This is what stops two tabs sharing one tree — and it hydrates a design the
   // LRU had parked, transparently to every caller.
-  const active = readActiveDesign();
+  //
+  // An explicit id pins the lookup to the design that asked for it. Undo/redo
+  // capture theirs before their first await; resolving the live tab after this
+  // await would hand back the sibling's handle on a mid-flight switch. Omitted,
+  // the lookup stays live, as before.
+  const active: ActiveDesignRef | null =
+    designId !== undefined ? { id: designId, kind: 'treemaker' } : readActiveDesign();
   if (active && active.kind === 'treemaker') {
     const designHandle = await acquireDesignHandle(active.id, 'treemaker');
     if (designHandle !== null) return { api, treeHandle: designHandle };
