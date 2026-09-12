@@ -117,6 +117,11 @@ pub fn encode_share_reported(
     let model = &document.crease_pattern;
     let title = document.title.as_deref();
 
+    // Fail fast on non-finite geometry. NaN/inf coordinates serialize
+    // to JSON `null` in the `.fold` fallback body, which the RAW decoder
+    // rejects — without this gate the fallback would emit a dead link.
+    check_finite(model)?;
+
     let f_min = if has_non_classic(model) {
         canon::F_MIN_SPATIAL
     } else {
@@ -151,12 +156,69 @@ pub fn encode_share_reported(
     // a large link beats a wrong one.
     let fold = crate::io::fold::export_fold_file_document_json(document)
         .map_err(|_| ShareError::NotRepresentable("document could not be exported as .fold"))?;
+    let raw = v1::encode_raw(&fold);
+    // The encoder's contract is "never returns a payload it has not decoded
+    // and checked itself" — the fallback used to skip that check and emitted
+    // dead links for non-finite documents. A fallback that fails its
+    // own decode is an encoder bug, reported as such.
+    v1::decode(&raw).map_err(|_| ShareError::SelfCheck {
+        rounds: options.max_rounds,
+        reason: "fallback payload failed to decode",
+    })?;
     Ok(EncodeReport {
-        payload: frame::write(v1::VERSION, &v1::encode_raw(&fold)),
+        payload: frame::write(v1::VERSION, &raw),
         rounds: options.max_rounds,
         used_fallback: true,
         fallback_reason: Some(last_reason),
     })
+}
+
+/// Finiteness gate for every float a payload can carry.
+///
+/// `canon::quantise` rejects non-finite crease/point coordinates, but circle
+/// centres/radii and text anchors bypass the alphabets through
+/// `Quantised::raw`, which saturates instead of failing — and the `.fold`
+/// fallback serialises NaN/inf as JSON `null`, which the RAW decoder rejects.
+/// So the check lives here, at the encode entry, covering every coordinate
+/// exactly once and failing with the same message `quantise` uses.
+fn check_finite(model: &CreasePatternModel) -> Result<()> {
+    const NOT_FINITE: &str = "coordinate is not finite";
+    for s in model
+        .line_segments
+        .iter()
+        .chain(model.aux_line_segments.iter())
+    {
+        if !s.a.x.is_finite() || !s.a.y.is_finite() || !s.b.x.is_finite() || !s.b.y.is_finite() {
+            return Err(ShareError::NotRepresentable(NOT_FINITE));
+        }
+    }
+    for p in model.points.iter() {
+        if !p.x.is_finite() || !p.y.is_finite() {
+            return Err(ShareError::NotRepresentable(NOT_FINITE));
+        }
+    }
+    for c in model.circles.iter() {
+        if !c.x.is_finite() || !c.y.is_finite() || !c.r.is_finite() {
+            return Err(ShareError::NotRepresentable(NOT_FINITE));
+        }
+    }
+    for t in model.texts.iter() {
+        if !t.x.0.is_finite() || !t.y.0.is_finite() {
+            return Err(ShareError::NotRepresentable(NOT_FINITE));
+        }
+    }
+    let g = &model.grid;
+    if !g.grid_xa.is_finite()
+        || !g.grid_xb.is_finite()
+        || !g.grid_xc.is_finite()
+        || !g.grid_ya.is_finite()
+        || !g.grid_yb.is_finite()
+        || !g.grid_yc.is_finite()
+        || !g.grid_angle.is_finite()
+    {
+        return Err(ShareError::NotRepresentable(NOT_FINITE));
+    }
+    Ok(())
 }
 
 /// One encode + self-check round. `Err` carries why it failed, so the caller can
