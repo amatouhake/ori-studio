@@ -18,7 +18,7 @@ jobs:
           ref: test/property-testing-speedup
           fetch-depth: 0
 
-      - name: Merge main and regenerate lockfiles
+      - name: Merge main, resolve lockfile, and validate
         shell: bash
         run: |
           set -euo pipefail
@@ -31,34 +31,21 @@ jobs:
           merge_rc=$?
           set -e
 
-          if [ "$merge_rc" -eq 0 ]; then
-            echo "Merge completed without conflicts."
-          else
+          if [ "$merge_rc" -ne 0 ]; then
             conflicts="$(git diff --name-only --diff-filter=U | sort)"
-            expected="$(printf '%s\n' Cargo.lock apps/web/package.json package-lock.json | sort)"
             echo "Conflicts detected:"
             printf '%s\n' "$conflicts"
-            if [ "$conflicts" != "$expected" ]; then
+            if [ "$conflicts" != "package-lock.json" ]; then
               echo "Unexpected conflict set; refusing automatic resolution."
               exit 1
             fi
 
-            git checkout --theirs apps/web/package.json
-            node <<'NODE'
-          const fs = require('fs');
-          const path = 'apps/web/package.json';
-          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-          pkg.devDependencies ||= {};
-          pkg.devDependencies['fast-check'] = '^4.10.0';
-          pkg.devDependencies = Object.fromEntries(Object.entries(pkg.devDependencies).sort(([a], [b]) => a.localeCompare(b)));
-          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
-          NODE
-            git add apps/web/package.json
-
-            git checkout --theirs package-lock.json Cargo.lock
+            # Cargo.lock and apps/web/package.json merge cleanly. Start from
+            # main's npm lockfile, then regenerate it from the merged manifests
+            # so it contains both MCP and fast-check dependency graphs.
+            git checkout --theirs package-lock.json
             npm install --package-lock-only --ignore-scripts
-            cargo check -p oristudio-cp --tests
-            git add package-lock.json Cargo.lock
+            git add package-lock.json
           fi
 
           test -z "$(git diff --name-only --diff-filter=U)"
@@ -67,7 +54,12 @@ jobs:
           grep -q '^proptest = ' Cargo.toml
           grep -q '^proptest.workspace = true' crates/oristudio-cp/Cargo.toml
 
-          if ! git diff --cached --quiet || [ "$merge_rc" -ne 0 ]; then
+          # Validate that both regenerated/auto-merged lockfiles are internally
+          # consistent without invoking project build hooks.
+          npm ci --ignore-scripts
+          cargo check -p oristudio-cp --tests --locked
+
+          if [ "$merge_rc" -ne 0 ]; then
             git commit -m "merge main into test/property-testing-speedup"
           fi
 
