@@ -1,3 +1,4 @@
+import { sourceTargetCoverage } from './sourceFoldTargets';
 import type { PreparedOrigamiModel } from '@treemaker/origami-simulator';
 
 type Vec = [number, number, number];
@@ -26,11 +27,23 @@ export function measureFoldTargets(model: PreparedOrigamiModel, positions: Float
     const residual = measured === null ? null : Math.abs(((measured - target + 540) % 360) - 180);
     return { edge_index: crease.edge, target_degrees: target, measured_degrees: measured, residual_degrees: residual };
   });
+  const measurements = new Map(creases.map(c => [c.edge_index, c]));
+  const coverage = sourceTargetCoverage(model)?.map(source => {
+    const measured = source.prepared_edge_indices.every(edge => measurements.get(edge)?.measured_degrees != null);
+    return { ...source, status: source.status === 'represented' ? measured ? 'represented_and_measured' : 'unmeasurable' : source.status };
+  });
+  const complete = coverage !== undefined && coverage.every(source => source.status === 'represented_and_measured');
+  const provenance = new Map<number, number[]>();
+  for (const source of coverage ?? []) for (const edge of source.prepared_edge_indices) {
+    provenance.set(edge, [...(provenance.get(edge) ?? []), source.source_edge_index]);
+  }
   const residuals = creases.flatMap(c => c.residual_degrees === null ? [] : [c.residual_degrees]);
   const maxResidual = residuals.length ? Math.max(...residuals) : null;
-  return { status: !creases.length || residuals.length !== creases.length ? 'unknown' : maxResidual! <= toleranceDegrees ? 'attained' : 'not_attained',
+  return { status: !complete || !creases.length || residuals.length !== creases.length ? 'unknown' : maxResidual! <= toleranceDegrees ? 'attained' : 'not_attained',
+    source_coverage: { status: complete ? 'complete' : 'incomplete', requested_count: coverage?.length ?? null, targets: coverage ?? null },
     tolerance_degrees: toleranceDegrees, max_residual_degrees: maxResidual,
     rms_residual_degrees: residuals.length ? Math.sqrt(residuals.reduce((sum, r) => sum + r * r, 0) / residuals.length) : null,
     unmeasurable_count: creases.length - residuals.length, crease_count: creases.length,
-    reference: 'Zero-based edges of the prepared triangulated simulator mesh, not CP line IDs. Principal dihedral residuals; no winding or collision proof.', creases };
+    reference: 'Zero-based edges of the prepared triangulated simulator mesh, not CP line IDs. Principal dihedral residuals; no winding or collision proof. Source edge indices refer to the exported input FOLD, not CP line IDs.',
+    creases: creases.map(crease => ({ ...crease, source_edge_indices: provenance.get(crease.edge_index) ?? [], origin: provenance.has(crease.edge_index) ? 'source_target' : 'generated_or_unrequested_hinge' })) };
 }
