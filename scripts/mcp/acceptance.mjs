@@ -102,21 +102,30 @@ try {
   const folded = await job('analyze_design', { analysis: 'flat_fold', case_limit: 1 });
   assert.equal(folded.result.outcome, 'Solved', 'The real layer-order solver found a fold');
   await image('04-flat-fold', { view: 'folded', job_id: folded.job_id });
-  const simulation = await job('simulate_design', { fold_amount: 0.55, max_steps: 4000 });
+  const simulation = await job('simulate_design', { fold_amount: 0.55, max_steps: 20000 });
+  assert(Math.abs(simulation.result.effective_fold_percent - 55) < 1e-8);
+  assert.equal(simulation.result.requested_fold_amount, 0.55);
+  assert(simulation.result.target_attainment && simulation.result.outcome);
   assert(simulation.result.step > 0 && Number.isFinite(simulation.result.max_strain));
   const simImage = await image('05-simulation', { view: 'simulation', job_id: simulation.job_id }); assert(simImage.nonwhite > 1000);
   for (const format of ['osf', 'cp', 'ori', 'fold', 'svg', 'png', 'obj']) {
     const args = { ...address(), format, ...(format === 'obj' ? { job_id: simulation.job_id } : {}) };
     const { value } = await call('export_design', args);
     await writeFile(resolve(out, `miura.${format}`), value.encoding === 'base64' ? Buffer.from(value.content, 'base64') : value.content);
+    if (format === 'obj') {
+      assert(value.content.includes('(55%)'));
+      const vertices = value.content.split('\n').filter(line => line.startsWith('v ')).map(line => line.split(/\s+/).slice(1).map(Number));
+      const y = vertices.map(p => p[1]);
+      assert(Math.max(...y) - Math.min(...y) > 0.1, 'Substantial out-of-plane motion at effective 55%, not the old 0.55% result');
+    }
     if (format === 'osf') assert.equal(JSON.parse(value.content).workspace.creasePattern.creasePattern.document.crease_pattern.line_segments.length, 40);
   }
   const committed = (await mutation('commit_design', { label: 'Agent: design and repair Miura sheet' })).value; assert(committed.committed);
   const live = (await call('workspace')).value.live; assert.equal(live.crease_pattern.line_segments, 40);
-  await call('workspace_history', { request_id: randomUUID(), live_revision: live.edit_revision, load_serial: live.load_serial, direction: 'undo' });
+  await call('workspace_history', { request_id: randomUUID(), history_token: live.history_token, live_revision: live.edit_revision, load_serial: live.load_serial, direction: 'undo' });
   const undone = (await call('workspace')).value.live;
   assert.equal(undone.crease_pattern.line_segments, initial.live.crease_pattern?.line_segments ?? 4);
-  await call('workspace_history', { request_id: randomUUID(), live_revision: undone.edit_revision, load_serial: undone.load_serial, direction: 'redo' });
+  await call('workspace_history', { request_id: randomUUID(), history_token: undone.history_token, live_revision: undone.edit_revision, load_serial: undone.load_serial, direction: 'redo' });
   assert.equal((await call('workspace')).value.live.crease_pattern.line_segments, 40);
   const report = { success: true, tools: tools.tools.length, geometry: { lines: geometry.total_lines, panels: 16 },
     local_checks: { before: before.result.issue_count, intentionally_broken: broken.result.issue_count, repaired: repaired.result.issue_count },
