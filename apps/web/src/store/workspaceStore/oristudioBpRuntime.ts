@@ -605,6 +605,31 @@ export interface OristudioBpOptimizerRunSummary {
   document: OristudioBpDocumentState;
   eventCount: number;
   openedNew: boolean;
+  /**
+   * The jitter seed the kernel baked into the view-mode initial vector — the
+   * seed to pass back as `jitterSeed` to replay this run. Always present, even
+   * when the run did not name a seed, because the bridge echoes its default.
+   */
+  jitterSeed: number;
+}
+
+/**
+ * Record a run on its own document, so a past run is replayable from stored
+ * state: the document the history entry keeps carries the full run options
+ * with the effective seed filled in. Later edits rebuild the document and
+ * reset this (their inputs changed, so the old seed replays nothing), which is
+ * why the seed also travels on the summary for immediate capture-replay.
+ */
+function stampOptimizerRun(
+  document: OristudioBpDocumentState,
+  options: OristudioBpOptimizerOptions,
+  jitterSeed: number
+): OristudioBpDocumentState {
+  document.optimizer = {
+    ...document.optimizer,
+    options: { ...options, jitterSeed },
+  };
+  return document;
 }
 
 export async function optimizeOristudioBpLayout(
@@ -620,12 +645,25 @@ export async function optimizeOristudioBpLayout(
     options.layoutMode,
     options.useBasinHopping,
     options.randomCandidateCount,
-    options.useDimension
+    options.useDimension,
+    options.jitterSeed ?? undefined
   );
   // The request is built engine-side and carried as plain JSON, so a symmetry
   // requirement is attached here rather than threaded through the wasm signature.
   if (options.symmetry && request && typeof request === 'object') {
     (request as { symmetry?: OptimizerSymmetryPayload }).symmetry = options.symmetry;
+  }
+  // The bridge echoes the effective seed on the request, defaulting to
+  // `Math.random()` when the run did not name one. Read it back — rather than
+  // trusting the input — because it is the seed the kernel actually consumed,
+  // and therefore the one a replay must pass.
+  const echoed =
+    request && typeof request === 'object' && 'jitterSeed' in request
+      ? request.jitterSeed
+      : undefined;
+  const effectiveJitterSeed = typeof echoed === 'number' ? echoed : (options.jitterSeed ?? null);
+  if (effectiveJitterSeed === null) {
+    throw new Error('Box Pleat optimizer request did not report its jitter seed');
   }
   const report = await solveOptimizerRequestWithProgress(request, options.seed, onProgress);
   const { result: solved, events } = optimizerSolveReportParts(report);
@@ -646,7 +684,12 @@ export async function optimizeOristudioBpLayout(
       dirty: true,
       activeSurface: stateOptions.activeSurface ?? 'packing',
     });
-    return { document, eventCount: events.length, openedNew: true };
+    return {
+      document: stampOptimizerRun(document, options, effectiveJitterSeed),
+      eventCount: events.length,
+      openedNew: true,
+      jitterSeed: effectiveJitterSeed,
+    };
   }
 
   const project = await api.replaceWithOptimizerTemplate(handle, request, result);
@@ -657,7 +700,12 @@ export async function optimizeOristudioBpLayout(
     dirty: true,
     activeSurface: stateOptions.activeSurface ?? 'packing',
   });
-  return { document, eventCount: events.length, openedNew: false };
+  return {
+    document: stampOptimizerRun(document, options, effectiveJitterSeed),
+    eventCount: events.length,
+    openedNew: false,
+    jitterSeed: effectiveJitterSeed,
+  };
 }
 
 /** A history step: the restored document plus the selection it touched. */
