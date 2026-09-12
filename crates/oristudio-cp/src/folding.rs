@@ -4327,6 +4327,18 @@ fn initial_hierarchy_from_graph(
                 second_face,
             });
         }
+        // An unassigned crease states no fold direction — a bare one states
+        // nothing, and a `fold_direction_hint` is not a decision (cf. `solve_k`,
+        // which keeps it unknown, and `checks_spatial`, which flags it) — so it
+        // seeds no order and the pair is left for the overlap search. Seeding
+        // the else-arm below would invent a valley. Oriedita's identical arm
+        // (`FoldedFigure_Configurator.setupHierarchyList`) never observes NONE:
+        // declared in its `LineColor` enum, reached by no handler. The parity
+        // check above still applies: mirroring across the crease flips faces
+        // regardless of direction.
+        if line.color == LineColor::None {
+            continue;
+        }
 
         let first_same_orientation = first_position % 2 == 1;
         let first_above_second = if line.color == LineColor::Red1 {
