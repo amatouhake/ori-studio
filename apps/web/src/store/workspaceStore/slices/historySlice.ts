@@ -282,7 +282,7 @@ export const createHistorySlice: WorkspaceSliceCreator<HistorySlice> = (set, get
       oristudioCpCamvResult: null});
   },
 
-  undo: async () => {
+  undo: async (target) => {
     const undoCreasePattern = async () => {
       const past = get().oristudioCpHistoryPast;
       const previous = past.at(-1);
@@ -431,6 +431,7 @@ export const createHistorySlice: WorkspaceSliceCreator<HistorySlice> = (set, get
       return true;
     };
 
+    if (target === 'crease-pattern') { await undoCreasePattern(); return; }
     const context = get().activeEditingContext;
     if (context === 'bp-tree' || context === 'bp-packing') {
       await navigateBpHistory(undoSnapshot, 'Undid');
@@ -451,7 +452,7 @@ export const createHistorySlice: WorkspaceSliceCreator<HistorySlice> = (set, get
     }
   },
 
-  redo: async () => {
+  redo: async (target) => {
     const redoCreasePattern = async () => {
       const future = get().oristudioCpHistoryFuture;
       const next = future[0];
@@ -586,6 +587,7 @@ export const createHistorySlice: WorkspaceSliceCreator<HistorySlice> = (set, get
       return true;
     };
 
+    if (target === 'crease-pattern') { await redoCreasePattern(); return; }
     const context = get().activeEditingContext;
     if (context === 'bp-tree' || context === 'bp-packing') {
       await navigateBpHistory(redoSnapshot, 'Redid');

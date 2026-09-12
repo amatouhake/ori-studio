@@ -1,0 +1,342 @@
+{
+  "success": true,
+  "evidence": [
+    {
+      "name": "export_design",
+      "expected_error": "export_loss_blocked",
+      "result": {
+        "alternatives": [
+          "fold",
+          "osf"
+        ],
+        "code": "export_loss_blocked",
+        "format": "cp",
+        "losses": [
+          {
+            "blocking": true,
+            "count": 1,
+            "id": "foldAngles"
+          }
+        ],
+        "message": "This format changes crease semantics. Export FOLD for crease interchange or OSF for the editable project."
+      }
+    },
+    {
+      "name": "export_design",
+      "expected_error": "export_loss_blocked",
+      "result": {
+        "alternatives": [
+          "fold",
+          "osf"
+        ],
+        "code": "export_loss_blocked",
+        "format": "ori",
+        "losses": [
+          {
+            "blocking": true,
+            "count": 1,
+            "id": "foldAngles"
+          }
+        ],
+        "message": "This format changes crease semantics. Export FOLD for crease interchange or OSF for the editable project."
+      }
+    },
+    {
+      "name": "export_design",
+      "expected_error": "export_loss_blocked",
+      "result": {
+        "alternatives": [
+          "fold",
+          "osf"
+        ],
+        "code": "export_loss_blocked",
+        "format": "cp",
+        "losses": [
+          {
+            "blocking": true,
+            "count": 1,
+            "id": "unassignedCreases"
+          }
+        ],
+        "message": "This format changes crease semantics. Export FOLD for crease interchange or OSF for the editable project."
+      }
+    },
+    {
+      "name": "edit_creases",
+      "expected_error": "invalid_reference",
+      "result": {
+        "code": "invalid_reference",
+        "message": "Converting auxiliary lines can split/reorder creases. Assign without angle, inspect the new IDs, then set angles in a separate edit."
+      }
+    },
+    {
+      "name": "edit_creases",
+      "expected_error": "invalid_reference",
+      "result": {
+        "code": "invalid_reference",
+        "message": "Inspect after topology changes before using line IDs again, or use a separate batch"
+      }
+    },
+    {
+      "simulation": {
+        "backend": "reference",
+        "converged": true,
+        "diagnostics": {
+          "averageEdgeStrain": 9.408983276948392e-8,
+          "errors": [],
+          "maxEdgeStrain": 1.514731231555544e-7,
+          "maxNodalStrain": 1.1392067459740457e-7,
+          "warnings": []
+        },
+        "effective_fold_percent": 55.00000000000001,
+        "face_count": 2,
+        "fold_amount": 0.55,
+        "max_strain": 1.1392067459740457e-7,
+        "max_velocity": 0.000007421051122946665,
+        "outcome": "settled_at_target",
+        "requested_fold_amount": 0.55,
+        "scope": "Numerical physical relaxation, not a collision-free or global foldability proof.",
+        "solver_settled": true,
+        "step": 624,
+        "target_attainment": {
+          "crease_count": 1,
+          "creases": [
+            {
+              "edge_index": 4,
+              "measured_degrees": 98.99632200014176,
+              "origin": "source_target",
+              "residual_degrees": 0.0036779998582687767,
+              "source_edge_indices": [
+                4
+              ],
+              "target_degrees": 99
+            }
+          ],
+          "max_residual_degrees": 0.0036779998582687767,
+          "reference": "Zero-based edges of the prepared triangulated simulator mesh, not CP line IDs. Principal dihedral residuals; no winding or collision proof. Source edge indices refer to the exported input FOLD, not CP line IDs.",
+          "rms_residual_degrees": 0.0036779998582687767,
+          "source_coverage": {
+            "requested_count": 1,
+            "status": "complete",
+            "targets": [
+              {
+                "assignment": "M",
+                "coverage_fraction": 1,
+                "prepared_edge_indices": [
+                  4
+                ],
+                "source_edge_index": 4,
+                "source_target_degrees": -180,
+                "status": "represented_and_measured"
+              }
+            ]
+          },
+          "status": "attained",
+          "tolerance_degrees": 5,
+          "unmeasurable_count": 0
+        },
+        "vertex_count": 4
+      }
+    },
+    {
+      "name": "workspace_history",
+      "expected_error": "conflict",
+      "result": {
+        "code": "conflict",
+        "message": "The observed canvas/history changed; read workspace again before undo/redo"
+      }
+    },
+    {
+      "full_fold_roundtrip": {
+        "generations": 2,
+        "frame_only_import": true,
+        "metadata_and_embedded_frames_preserved": true
+      }
+    },
+    {
+      "name": "begin_design",
+      "expected_error": "upstream_import_limit",
+      "result": {
+        "code": "upstream_import_limit",
+        "message": "Entirely negative-y FOLD import is excluded until #366 is resolved. Translate the supplied FOLD to nonnegative y, or use CP."
+      }
+    },
+    {
+      "name": "begin_design",
+      "expected_error": "upstream_import_limit",
+      "result": {
+        "code": "upstream_import_limit",
+        "message": "Zero-height FOLD import is excluded until #367 is resolved. Supply CP or ORI geometry."
+      }
+    },
+    {
+      "dangling_source_target": {
+        "backend": "reference",
+        "converged": true,
+        "diagnostics": {
+          "averageEdgeStrain": 4.416146319001039e-9,
+          "errors": [],
+          "maxEdgeStrain": 1.7114271000373552e-8,
+          "maxNodalStrain": 9.716927262815034e-9,
+          "warnings": []
+        },
+        "effective_fold_percent": 55.00000000000001,
+        "face_count": 2,
+        "fold_amount": 0.55,
+        "max_strain": 9.716927262815034e-9,
+        "max_velocity": 1.066258814574894e-8,
+        "outcome": "settled_without_target_attainment",
+        "requested_fold_amount": 0.55,
+        "scope": "Numerical physical relaxation, not a collision-free or global foldability proof.",
+        "solver_settled": true,
+        "step": 24,
+        "target_attainment": {
+          "crease_count": 1,
+          "creases": [
+            {
+              "edge_index": 5,
+              "measured_degrees": 0,
+              "origin": "generated_or_unrequested_hinge",
+              "residual_degrees": 0,
+              "source_edge_indices": [],
+              "target_degrees": 0
+            }
+          ],
+          "max_residual_degrees": 0,
+          "reference": "Zero-based edges of the prepared triangulated simulator mesh, not CP line IDs. Principal dihedral residuals; no winding or collision proof. Source edge indices refer to the exported input FOLD, not CP line IDs.",
+          "rms_residual_degrees": 0,
+          "source_coverage": {
+            "requested_count": 1,
+            "status": "incomplete",
+            "targets": [
+              {
+                "assignment": "M",
+                "coverage_fraction": 0,
+                "prepared_edge_indices": [],
+                "source_edge_index": 4,
+                "source_target_degrees": -180,
+                "status": "omitted"
+              }
+            ]
+          },
+          "status": "unknown",
+          "tolerance_degrees": 5,
+          "unmeasurable_count": 0
+        },
+        "vertex_count": 6
+      }
+    },
+    {
+      "name": "begin_design",
+      "expected_error": "upstream_import_limit",
+      "result": {
+        "code": "upstream_import_limit",
+        "message": "Entirely negative-y FOLD import is excluded until #366 is resolved. Translate the supplied FOLD to nonnegative y, or use CP."
+      }
+    },
+    {
+      "name": "begin_design",
+      "expected_error": "upstream_import_limit",
+      "result": {
+        "code": "upstream_import_limit",
+        "message": "Zero-height FOLD import is excluded until #367 is resolved. Supply CP or ORI geometry."
+      }
+    },
+    {
+      "ori_text_roundtrip": {
+        "imported_format": "ori",
+        "texts": [
+          {
+            "text": "MCP text round trip — 鳥",
+            "x": 12,
+            "y": 34
+          }
+        ],
+        "generations": 2
+      }
+    },
+    {
+      "ori_text_roundtrip": {
+        "imported_format": "fold",
+        "texts": [
+          {
+            "text": "MCP text round trip — 鳥",
+            "x": 2,
+            "y": 3
+          }
+        ],
+        "generations": 2
+      }
+    },
+    {
+      "close_parallel_provenance": {
+        "backend": "reference",
+        "converged": true,
+        "diagnostics": {
+          "averageEdgeStrain": 8.406826869829706e-8,
+          "errors": [],
+          "maxEdgeStrain": 2.357668200669849e-7,
+          "maxNodalStrain": 1.2699422831848514e-7,
+          "warnings": []
+        },
+        "effective_fold_percent": 55.00000000000001,
+        "face_count": 2,
+        "fold_amount": 0.55,
+        "max_strain": 1.2699422831848514e-7,
+        "max_velocity": 0.000008846477612678427,
+        "outcome": "settled_without_target_attainment",
+        "requested_fold_amount": 0.55,
+        "scope": "Numerical physical relaxation, not a collision-free or global foldability proof.",
+        "solver_settled": true,
+        "step": 1624,
+        "target_attainment": {
+          "crease_count": 1,
+          "creases": [
+            {
+              "edge_index": 4,
+              "measured_degrees": 98.9956244936842,
+              "origin": "source_target",
+              "residual_degrees": 0.004375506315795974,
+              "source_edge_indices": [
+                4
+              ],
+              "target_degrees": 99
+            }
+          ],
+          "max_residual_degrees": 0.004375506315795974,
+          "reference": "Zero-based edges of the prepared triangulated simulator mesh, not CP line IDs. Principal dihedral residuals; no winding or collision proof. Source edge indices refer to the exported input FOLD, not CP line IDs.",
+          "rms_residual_degrees": 0.004375506315795974,
+          "source_coverage": {
+            "requested_count": 2,
+            "status": "incomplete",
+            "targets": [
+              {
+                "assignment": "M",
+                "coverage_fraction": 1,
+                "prepared_edge_indices": [
+                  4
+                ],
+                "source_edge_index": 4,
+                "source_target_degrees": -180,
+                "status": "represented_and_measured"
+              },
+              {
+                "assignment": "M",
+                "coverage_fraction": 0,
+                "prepared_edge_indices": [],
+                "source_edge_index": 5,
+                "source_target_degrees": -180,
+                "status": "omitted"
+              }
+            ]
+          },
+          "status": "unknown",
+          "tolerance_degrees": 5,
+          "unmeasurable_count": 0
+        },
+        "vertex_count": 6
+      }
+    }
+  ],
+  "forced_render_race": "Covered by public service regression with a controlled async TreeMaker completion, without adding production delay hooks."
+}

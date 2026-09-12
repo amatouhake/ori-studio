@@ -1,0 +1,319 @@
+{
+  "format": "oristudio.project",
+  "schemaVersion": 8,
+  "minimumReaderSchemaVersion": 1,
+  "createdBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T09:44:04.883Z"
+  },
+  "modifiedBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T09:44:04.883Z"
+  },
+  "workspace": {
+    "id": "workspace",
+    "title": "Agent design",
+    "activeDocumentId": "crease-pattern",
+    "designs": [],
+    "creasePattern": {
+      "id": "crease-pattern",
+      "kind": "crease-pattern",
+      "title": "Agent design",
+      "source": {
+        "format": "osf",
+        "filename": "design.osf",
+        "path": null
+      },
+      "creasePattern": {
+        "engine": "oristudio-cp",
+        "document": {
+          "crease_pattern": {
+            "line_segments": [
+              {
+                "a": {
+                  "x": -200,
+                  "y": -200
+                },
+                "b": {
+                  "x": 200,
+                  "y": -200
+                },
+                "color": "Black0",
+                "active": "Inactive0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": -200
+                },
+                "b": {
+                  "x": 200,
+                  "y": 200
+                },
+                "color": "Black0",
+                "active": "Inactive0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 200
+                },
+                "b": {
+                  "x": -200,
+                  "y": 200
+                },
+                "color": "Black0",
+                "active": "Inactive0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": 200
+                },
+                "b": {
+                  "x": -200,
+                  "y": -200
+                },
+                "color": "Black0",
+                "active": "Inactive0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              }
+            ],
+            "circles": [],
+            "points": [],
+            "aux_line_segments": [],
+            "texts": [],
+            "grid": {
+              "interval_grid_size": 4,
+              "grid_size": 8,
+              "grid_xa": 1,
+              "grid_xb": 0,
+              "grid_xc": 1,
+              "grid_ya": 1,
+              "grid_yb": 0,
+              "grid_yc": 1,
+              "grid_angle": 90,
+              "base_state": "Hidden",
+              "vertical_scale_position": 0,
+              "horizontal_scale_position": 0,
+              "draw_diagonal_gridlines": false
+            }
+          },
+          "operation_frame": {
+            "active": false,
+            "points": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 0
+              }
+            ]
+          },
+          "metadata": {
+            "oristudio:fold:file": {
+              "edges_assignment": [
+                "B",
+                "B",
+                "B",
+                "B"
+              ],
+              "edges_vertices": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  3
+                ],
+                [
+                  3,
+                  0
+                ]
+              ],
+              "oriedita:texts_coords": [
+                [
+                  2,
+                  3
+                ]
+              ],
+              "oriedita:texts_text": [
+                "Published fold text — 鳥\nSecond line"
+              ],
+              "vertices_coords": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  10,
+                  0
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  0,
+                  10
+                ]
+              ]
+            }
+          }
+        },
+        "source": null,
+        "foldProjection": null,
+        "sourceFold": null,
+        "lineage": {
+          "kind": "imported",
+          "manualEditCount": 0,
+          "stale": false
+        },
+        "images": [],
+        "textAnnotations": [
+          {
+            "kind": "text",
+            "id": "text-64f15a0c-7a96-4f25-bbb2-098264118fbd",
+            "center": {
+              "x": 2,
+              "y": 3
+            },
+            "width": 0.5,
+            "height": 0.055999999999999994,
+            "rotation": 0,
+            "z": 0,
+            "opacity": 1,
+            "locked": false,
+            "hidden": false,
+            "doc": {
+              "root": {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "detail": 0,
+                        "format": 0,
+                        "mode": "normal",
+                        "style": "",
+                        "text": "Published fold text — 鳥",
+                        "type": "text",
+                        "version": 1
+                      }
+                    ],
+                    "direction": null,
+                    "format": "",
+                    "indent": 0,
+                    "type": "paragraph",
+                    "version": 1
+                  },
+                  {
+                    "children": [
+                      {
+                        "detail": 0,
+                        "format": 0,
+                        "mode": "normal",
+                        "style": "",
+                        "text": "Second line",
+                        "type": "text",
+                        "version": 1
+                      }
+                    ],
+                    "direction": null,
+                    "format": "",
+                    "indent": 0,
+                    "type": "paragraph",
+                    "version": 1
+                  }
+                ],
+                "direction": null,
+                "format": "",
+                "indent": 0,
+                "type": "root",
+                "version": 1
+              }
+            },
+            "plainText": "Published fold text — 鳥\nSecond line",
+            "fontSize": 0.04,
+            "autoHeight": true,
+            "minHeight": 0
+          }
+        ],
+        "inlineSimulations": [],
+        "suppressionRegions": []
+      },
+      "viewState": {
+        "creaseColorMode": "mvf",
+        "selection": {
+          "lines": [],
+          "points": [],
+          "circles": [],
+          "texts": [],
+          "faces": []
+        },
+        "viewport": {
+          "gridVisible": true,
+          "snapToGrid": true,
+          "snapToVertices": true,
+          "snapToLines": true,
+          "camvIssuesVisible": true,
+          "foldAngleDisplay": "opacity",
+          "lineStyle": "color",
+          "lineWidth": 1,
+          "pointSize": 1
+        },
+        "camera": null,
+        "foldedFigures": [],
+        "activeFoldedFigureId": null
+      },
+      "extensions": {}
+    },
+    "unknownDesigns": [],
+    "viewState": {}
+  },
+  "artifacts": {},
+  "extensions": {}
+}

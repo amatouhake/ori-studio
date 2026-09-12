@@ -1,0 +1,65 @@
+{
+  "implementation_commit": "d99e5a6b",
+  "focused": {
+    "files": 5,
+    "tests": 33,
+    "passed": true
+  },
+  "web": {
+    "files": 489,
+    "tests": 6063,
+    "passed": true,
+    "lint": true,
+    "typecheck": true,
+    "i18n": true,
+    "production_build_with_wasm_and_prerender": true
+  },
+  "desktop": {
+    "check": true,
+    "build": true,
+    "library_tests_passed": 23
+  },
+  "public_mcp_probes": {
+    "security": true,
+    "native_state": true,
+    "hardening": true,
+    "acceptance": true,
+    "design_engines": true,
+    "text_publication": true
+  },
+  "ordinary_file_service_regression": {
+    "test": "apps/web/src/automation/textPublication.test.ts",
+    "inputs": [
+      "ori",
+      "fold"
+    ],
+    "engine": "actual WASM CP worker API",
+    "actions": [
+      "MCP begin_design",
+      "MCP commit_design",
+      "ordinary exportOri",
+      "real ORI re-import",
+      "ordinary saveProjectAs",
+      "ordinary undo",
+      "ordinary redo",
+      "ordinary exportOri"
+    ],
+    "substitutions": [
+      "worker transport",
+      "dialog acknowledgement",
+      "file destination"
+    ],
+    "assertions": [
+      "one publication history entry",
+      "existing annotations and companions retained",
+      "canonical live and OSF annotations",
+      "empty live kernel text vector",
+      "exact prior document/annotations on undo",
+      "published annotations and exported text after redo"
+    ]
+  },
+  "not_run": [
+    "Rust workspace/oracle suites: no Rust source or ported algorithm changes",
+    "Simulator package suites: no simulator changes; existing baseline golden differences documented in hardening.md"
+  ]
+}

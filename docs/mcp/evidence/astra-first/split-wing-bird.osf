@@ -1,0 +1,825 @@
+{
+  "format": "oristudio.project",
+  "schemaVersion": 8,
+  "minimumReaderSchemaVersion": 1,
+  "createdBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T05:58:58.138Z"
+  },
+  "modifiedBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T05:58:58.138Z"
+  },
+  "workspace": {
+    "id": "workspace",
+    "title": "Split-wing bird — asymmetric petal base",
+    "activeDocumentId": "crease-pattern",
+    "designs": [],
+    "creasePattern": {
+      "id": "crease-pattern",
+      "kind": "crease-pattern",
+      "title": "Split-wing bird — asymmetric petal base",
+      "source": {
+        "format": "osf",
+        "filename": "design.osf",
+        "path": null
+      },
+      "creasePattern": {
+        "engine": "oristudio-cp",
+        "document": {
+          "title": "Split-wing bird — asymmetric petal base",
+          "crease_pattern": {
+            "line_segments": [
+              {
+                "a": {
+                  "x": 0,
+                  "y": -200
+                },
+                "b": {
+                  "x": 200,
+                  "y": -200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": -200
+                },
+                "b": {
+                  "x": 0,
+                  "y": -117.15728752538098
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": -200
+                },
+                "b": {
+                  "x": 0,
+                  "y": -117.15728752538098
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": -117.15728752538098
+                },
+                "b": {
+                  "x": 0,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": -200
+                },
+                "b": {
+                  "x": 200,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 0
+                },
+                "b": {
+                  "x": 200,
+                  "y": 200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": -200
+                },
+                "b": {
+                  "x": 117.15728752538098,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 200
+                },
+                "b": {
+                  "x": 117.15728752538098,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 0
+                },
+                "b": {
+                  "x": 117.15728752538098,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 117.15728752538098,
+                  "y": 0
+                },
+                "b": {
+                  "x": 0,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": -200
+                },
+                "b": {
+                  "x": 0,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 200
+                },
+                "b": {
+                  "x": 0,
+                  "y": 200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": -200,
+                  "y": 200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 200
+                },
+                "b": {
+                  "x": 0,
+                  "y": 117.15728752538098
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": 200
+                },
+                "b": {
+                  "x": 0,
+                  "y": 117.15728752538098
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 200
+                },
+                "b": {
+                  "x": 0,
+                  "y": 117.15728752538098
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 0,
+                  "y": 117.15728752538098
+                },
+                "b": {
+                  "x": 0,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": 200,
+                  "y": 200
+                },
+                "b": {
+                  "x": 0,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": 200
+                },
+                "b": {
+                  "x": -200,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": 200
+                },
+                "b": {
+                  "x": -117.15728752538098,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": 0
+                },
+                "b": {
+                  "x": -117.15728752538098,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -117.15728752538098,
+                  "y": 0
+                },
+                "b": {
+                  "x": 0,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": 200
+                },
+                "b": {
+                  "x": 0,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 0,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": -200
+                },
+                "b": {
+                  "x": -120,
+                  "y": -200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -120,
+                  "y": -200
+                },
+                "b": {
+                  "x": 0,
+                  "y": -200
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": -200
+                },
+                "b": {
+                  "x": -120,
+                  "y": -166.8629150101524
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -120,
+                  "y": -166.8629150101524
+                },
+                "b": {
+                  "x": 0,
+                  "y": -117.15728752538098
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": -200
+                },
+                "b": {
+                  "x": -143.4314575050762,
+                  "y": -143.4314575050762
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -143.4314575050762,
+                  "y": -143.4314575050762
+                },
+                "b": {
+                  "x": 0,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": -200
+                },
+                "b": {
+                  "x": -200,
+                  "y": -120
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": -120
+                },
+                "b": {
+                  "x": -200,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Black0",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -200,
+                  "y": -200
+                },
+                "b": {
+                  "x": -166.8629150101524,
+                  "y": -120
+                },
+                "active": "Inactive0",
+                "color": "Red1",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -166.8629150101524,
+                  "y": -120
+                },
+                "b": {
+                  "x": -117.15728752538098,
+                  "y": 0
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -120,
+                  "y": -200
+                },
+                "b": {
+                  "x": -120,
+                  "y": -166.8629150101524
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -120,
+                  "y": -166.8629150101524
+                },
+                "b": {
+                  "x": -143.4314575050762,
+                  "y": -143.4314575050762
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -143.4314575050762,
+                  "y": -143.4314575050762
+                },
+                "b": {
+                  "x": -166.8629150101524,
+                  "y": -120
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              },
+              {
+                "a": {
+                  "x": -166.8629150101524,
+                  "y": -120
+                },
+                "b": {
+                  "x": -200,
+                  "y": -120
+                },
+                "active": "Inactive0",
+                "color": "Blue2",
+                "selected": 2,
+                "customized": 0,
+                "customized_color": {
+                  "red": 100,
+                  "green": 200,
+                  "blue": 200
+                }
+              }
+            ],
+            "circles": [],
+            "points": [],
+            "aux_line_segments": [],
+            "texts": [],
+            "grid": {
+              "interval_grid_size": 2,
+              "grid_size": 8,
+              "grid_xa": 1,
+              "grid_xb": 0,
+              "grid_xc": 1,
+              "grid_ya": 1,
+              "grid_yb": 0,
+              "grid_yc": 1,
+              "grid_angle": 90,
+              "base_state": "WithinPaper",
+              "vertical_scale_position": 0,
+              "horizontal_scale_position": 0,
+              "draw_diagonal_gridlines": false
+            }
+          },
+          "operation_frame": {
+            "active": false,
+            "points": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 0
+              }
+            ]
+          }
+        },
+        "source": null,
+        "foldProjection": null,
+        "sourceFold": null,
+        "lineage": {
+          "kind": "imported",
+          "manualEditCount": 0,
+          "stale": false
+        },
+        "images": [],
+        "textAnnotations": [],
+        "inlineSimulations": [],
+        "suppressionRegions": []
+      },
+      "viewState": {
+        "creaseColorMode": "mvf",
+        "selection": {
+          "lines": [],
+          "points": [],
+          "circles": [],
+          "texts": [],
+          "faces": []
+        },
+        "viewport": {
+          "gridVisible": true,
+          "snapToGrid": true,
+          "snapToVertices": true,
+          "snapToLines": true,
+          "camvIssuesVisible": true,
+          "foldAngleDisplay": "opacity",
+          "lineStyle": "color",
+          "lineWidth": 1,
+          "pointSize": 1
+        },
+        "camera": null,
+        "foldedFigures": [],
+        "activeFoldedFigureId": null
+      },
+      "extensions": {}
+    },
+    "unknownDesigns": [],
+    "viewState": {}
+  },
+  "artifacts": {},
+  "extensions": {}
+}

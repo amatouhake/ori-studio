@@ -1,0 +1,67 @@
+{
+  "@version": "v1.1",
+  "auxLineSegments": [],
+  "circles": [],
+  "gridModel": {
+    "baseState": "HIDDEN",
+    "drawDiagonalGridlines": false,
+    "gridAngle": 90.0,
+    "gridSize": 8,
+    "gridXA": 1.0,
+    "gridXB": 0.0,
+    "gridXC": 1.0,
+    "gridYA": 1.0,
+    "gridYB": 0.0,
+    "gridYC": 1.0,
+    "horizontalScalePosition": 0,
+    "intervalGridSize": 4,
+    "verticalScalePosition": 0
+  },
+  "lineSegments": [
+    {
+      "a": "-200.0,-200.0",
+      "active": "INACTIVE_0",
+      "b": "200.0,-200.0",
+      "color": "BLACK_0",
+      "customized": 0,
+      "customizedColor": "ff64c8c8",
+      "selected": 0
+    },
+    {
+      "a": "200.0,-200.0",
+      "active": "INACTIVE_0",
+      "b": "200.0,200.0",
+      "color": "BLACK_0",
+      "customized": 0,
+      "customizedColor": "ff64c8c8",
+      "selected": 0
+    },
+    {
+      "a": "200.0,200.0",
+      "active": "INACTIVE_0",
+      "b": "-200.0,200.0",
+      "color": "BLACK_0",
+      "customized": 0,
+      "customizedColor": "ff64c8c8",
+      "selected": 0
+    },
+    {
+      "a": "-200.0,200.0",
+      "active": "INACTIVE_0",
+      "b": "-200.0,-200.0",
+      "color": "BLACK_0",
+      "customized": 0,
+      "customizedColor": "ff64c8c8",
+      "selected": 0
+    }
+  ],
+  "points": [],
+  "texts": [
+    {
+      "text": "Published fold text — 鳥\nSecond line",
+      "x": 2.0,
+      "y": 3.0
+    }
+  ],
+  "title": "_"
+}

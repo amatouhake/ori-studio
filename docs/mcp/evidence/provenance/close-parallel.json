@@ -1,0 +1,185 @@
+{
+  "source": {
+    "file_spec": 1.1,
+    "file_creator": "oriedita",
+    "frame_title": "Agent design",
+    "vertices_coords": [
+      [
+        -200,
+        -200
+      ],
+      [
+        200,
+        -200
+      ],
+      [
+        200,
+        200
+      ],
+      [
+        -200,
+        200
+      ],
+      [
+        -80,
+        -79.9992
+      ],
+      [
+        -40,
+        -39.9992
+      ]
+    ],
+    "edges_vertices": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        0
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        4,
+        5
+      ]
+    ],
+    "edges_assignment": [
+      "B",
+      "B",
+      "B",
+      "B",
+      "M",
+      "M"
+    ],
+    "edges_foldAngle": [
+      0,
+      0,
+      0,
+      0,
+      -180,
+      -180
+    ],
+    "faces_vertices": [
+      [
+        0,
+        2,
+        1
+      ],
+      [
+        0,
+        3,
+        2
+      ]
+    ],
+    "faces_edges": [
+      [
+        0,
+        4,
+        1
+      ],
+      [
+        4,
+        3,
+        2
+      ]
+    ],
+    "oriedita:edges_colors": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "oriedita:grid_size": 8,
+    "oriedita:grid_style": 1,
+    "oriedita:version": "dev",
+    "oristudio:edges_line_colors": [
+      0,
+      0,
+      0,
+      0,
+      1,
+      1
+    ]
+  },
+  "result": {
+    "backend": "reference",
+    "converged": true,
+    "diagnostics": {
+      "averageEdgeStrain": 8.406826869829706e-8,
+      "errors": [],
+      "maxEdgeStrain": 2.357668200669849e-7,
+      "maxNodalStrain": 1.2699422831848514e-7,
+      "warnings": []
+    },
+    "effective_fold_percent": 55.00000000000001,
+    "face_count": 2,
+    "fold_amount": 0.55,
+    "max_strain": 1.2699422831848514e-7,
+    "max_velocity": 0.000008846477612678427,
+    "outcome": "settled_without_target_attainment",
+    "requested_fold_amount": 0.55,
+    "scope": "Numerical physical relaxation, not a collision-free or global foldability proof.",
+    "solver_settled": true,
+    "step": 1624,
+    "target_attainment": {
+      "crease_count": 1,
+      "creases": [
+        {
+          "edge_index": 4,
+          "measured_degrees": 98.9956244936842,
+          "origin": "source_target",
+          "residual_degrees": 0.004375506315795974,
+          "source_edge_indices": [
+            4
+          ],
+          "target_degrees": 99
+        }
+      ],
+      "max_residual_degrees": 0.004375506315795974,
+      "reference": "Zero-based edges of the prepared triangulated simulator mesh, not CP line IDs. Principal dihedral residuals; no winding or collision proof. Source edge indices refer to the exported input FOLD, not CP line IDs.",
+      "rms_residual_degrees": 0.004375506315795974,
+      "source_coverage": {
+        "requested_count": 2,
+        "status": "incomplete",
+        "targets": [
+          {
+            "assignment": "M",
+            "coverage_fraction": 1,
+            "prepared_edge_indices": [
+              4
+            ],
+            "source_edge_index": 4,
+            "source_target_degrees": -180,
+            "status": "represented_and_measured"
+          },
+          {
+            "assignment": "M",
+            "coverage_fraction": 0,
+            "prepared_edge_indices": [],
+            "source_edge_index": 5,
+            "source_target_degrees": -180,
+            "status": "omitted"
+          }
+        ]
+      },
+      "status": "unknown",
+      "tolerance_degrees": 5,
+      "unmeasurable_count": 0
+    },
+    "vertex_count": 6
+  }
+}

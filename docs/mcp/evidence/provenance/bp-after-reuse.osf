@@ -1,0 +1,46 @@
+{
+  "format": "oristudio.project",
+  "schemaVersion": 8,
+  "minimumReaderSchemaVersion": 1,
+  "createdBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T09:07:15.986Z"
+  },
+  "modifiedBy": {
+    "app": "Ori Studio",
+    "version": "0.4.0",
+    "savedAt": "2026-09-12T09:07:15.986Z"
+  },
+  "workspace": {
+    "id": "workspace",
+    "title": "Agent design",
+    "activeDocumentId": "agent-design",
+    "designs": [
+      {
+        "id": "agent-design",
+        "title": "Agent design",
+        "payload": {
+          "kind": "box-pleat",
+          "text": "{\"version\":\"0.7\",\"design\":{\"title\":\"\",\"mode\":\"tree\",\"layout\":{\"sheet\":{\"type\":\"rect\",\"width\":16,\"height\":16},\"flaps\":[{\"id\":2,\"x\":13,\"y\":3,\"width\":0,\"height\":0},{\"id\":3,\"x\":8,\"y\":13,\"width\":0,\"height\":0},{\"id\":1,\"x\":9,\"y\":8,\"width\":0,\"height\":0}],\"stretches\":[]},\"tree\":{\"sheet\":{\"type\":\"rect\",\"width\":20,\"height\":20},\"nodes\":[{\"id\":0,\"x\":10,\"y\":10,\"name\":\"\"},{\"id\":2,\"x\":16,\"y\":4,\"name\":\"\"},{\"id\":3,\"x\":10,\"y\":16,\"name\":\"\"},{\"id\":1,\"x\":11,\"y\":10,\"name\":\"\"}],\"edges\":[{\"n1\":0,\"n2\":2,\"length\":2},{\"n1\":0,\"n2\":3,\"length\":2},{\"n1\":0,\"n2\":1,\"length\":2}]}},\"history\":{\"index\":2,\"savedIndex\":0,\"steps\":[{\"commands\":[{\"type\":2,\"tag\":\"tree\",\"old\":0,\"new\":0,\"edits\":[[false,{\"n1\":1,\"n2\":0,\"length\":2}]]}],\"mode\":\"tree\",\"before\":[],\"after\":[]},{\"commands\":[{\"type\":2,\"tag\":\"tree\",\"old\":0,\"new\":0,\"edits\":[[true,{\"n1\":1,\"n2\":0,\"length\":2}]]}],\"mode\":\"tree\",\"before\":[\"v1\"],\"after\":[\"v1\"]}]}}",
+          "format": "bps"
+        },
+        "viewState": {
+          "symmetry": {
+            "enabled": true,
+            "fold": "diagonal",
+            "quarterTurn": true,
+            "sidesSwapped": true,
+            "pairs": []
+          }
+        },
+        "extensions": {}
+      }
+    ],
+    "creasePattern": null,
+    "unknownDesigns": [],
+    "viewState": {}
+  },
+  "artifacts": {},
+  "extensions": {}
+}

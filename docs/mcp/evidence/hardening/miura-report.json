@@ -1,0 +1,328 @@
+{
+  "success": true,
+  "tools": 19,
+  "geometry": {
+    "lines": 40,
+    "panels": 16
+  },
+  "local_checks": {
+    "before": 0,
+    "intentionally_broken": 14,
+    "repaired": 0
+  },
+  "visual_feedback": {
+    "baseline": {
+      "width": 1024,
+      "height": 1024,
+      "red": 6704,
+      "blue": 10130,
+      "nonwhite": 24451
+    },
+    "intentionally_broken": {
+      "width": 1024,
+      "height": 1024,
+      "red": 7294,
+      "blue": 9621,
+      "nonwhite": 24523
+    },
+    "repaired": {
+      "width": 1024,
+      "height": 1024,
+      "red": 6704,
+      "blue": 10130,
+      "nonwhite": 24451
+    },
+    "simulation": {
+      "width": 1024,
+      "height": 1024,
+      "red": 18960,
+      "blue": 339668,
+      "nonwhite": 374608
+    }
+  },
+  "folding": "Solved",
+  "simulation": {
+    "backend": "reference",
+    "converged": true,
+    "diagnostics": {
+      "averageEdgeStrain": 0.03190839721637025,
+      "errors": [],
+      "maxEdgeStrain": 0.1248649859893417,
+      "maxNodalStrain": 0.049484381262388966,
+      "warnings": []
+    },
+    "effective_fold_percent": 55.00000000000001,
+    "face_count": 32,
+    "fold_amount": 0.55,
+    "max_strain": 0.049484381262388966,
+    "max_velocity": 0.000009693275387689935,
+    "outcome": "settled_without_target_attainment",
+    "requested_fold_amount": 0.55,
+    "scope": "Numerical physical relaxation, not a collision-free or global foldability proof.",
+    "solver_settled": true,
+    "step": 5928,
+    "target_attainment": {
+      "crease_count": 40,
+      "creases": [
+        {
+          "edge_index": 3,
+          "measured_degrees": -99.32908350041302,
+          "residual_degrees": 0.32908350041304857,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 5,
+          "measured_degrees": 77.73877587089115,
+          "residual_degrees": 21.26122412910888,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 7,
+          "measured_degrees": -101.80035524395716,
+          "residual_degrees": 2.800355243957142,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 9,
+          "measured_degrees": 154.66232299940168,
+          "residual_degrees": 55.66232299940168,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 11,
+          "measured_degrees": 152.93641844158404,
+          "residual_degrees": 53.93641844158401,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 12,
+          "measured_degrees": 87.54416844672615,
+          "residual_degrees": 11.45583155327381,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 13,
+          "measured_degrees": 159.49940576081966,
+          "residual_degrees": 60.49940576081963,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 14,
+          "measured_degrees": -75.6682667533025,
+          "residual_degrees": 23.331733246697468,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 15,
+          "measured_degrees": 131.87517348370434,
+          "residual_degrees": 32.875173483704316,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 16,
+          "measured_degrees": 72.18843300426778,
+          "residual_degrees": 26.81156699573228,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 18,
+          "measured_degrees": -131.49455900578718,
+          "residual_degrees": 32.49455900578715,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 20,
+          "measured_degrees": -152.50964379535216,
+          "residual_degrees": 53.50964379535213,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 21,
+          "measured_degrees": -65.64544532232428,
+          "residual_degrees": 33.354554677675765,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 22,
+          "measured_degrees": -155.93681871961292,
+          "residual_degrees": 56.93681871961291,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 23,
+          "measured_degrees": 79.50219997040128,
+          "residual_degrees": 19.497800029598693,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 24,
+          "measured_degrees": -148.12490294270316,
+          "residual_degrees": 49.12490294270316,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 25,
+          "measured_degrees": -71.84597260929807,
+          "residual_degrees": 27.154027390701913,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 27,
+          "measured_degrees": 148.63505257762728,
+          "residual_degrees": 49.63505257762722,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 29,
+          "measured_degrees": 157.69223863947914,
+          "residual_degrees": 58.692238639479115,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 30,
+          "measured_degrees": 67.81561009041624,
+          "residual_degrees": 31.184389909583786,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 31,
+          "measured_degrees": 140.34109206371411,
+          "residual_degrees": 41.341092063714086,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 32,
+          "measured_degrees": -98.50355384859232,
+          "residual_degrees": 0.49644615140766746,
+          "target_degrees": -99
+        },
+        {
+          "edge_index": 33,
+          "measured_degrees": 127.62295088659631,
+          "residual_degrees": 28.6229508865963,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 34,
+          "measured_degrees": 59.69463903889971,
+          "residual_degrees": 39.30536096110029,
+          "target_degrees": 99
+        },
+        {
+          "edge_index": 40,
+          "measured_degrees": -0.0022927346443986692,
+          "residual_degrees": 0.002292734644356642,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 41,
+          "measured_degrees": 29.867696279992956,
+          "residual_degrees": 29.86769627999297,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 42,
+          "measured_degrees": 6.49715613704812,
+          "residual_degrees": 6.497156137048137,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 43,
+          "measured_degrees": 28.1212947434624,
+          "residual_degrees": 28.121294743462386,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 44,
+          "measured_degrees": -26.445673655640135,
+          "residual_degrees": 26.44567365564012,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 45,
+          "measured_degrees": -5.187585137074895,
+          "residual_degrees": 5.187585137074848,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 46,
+          "measured_degrees": -7.270452203834793,
+          "residual_degrees": 7.270452203834793,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 47,
+          "measured_degrees": 3.7690949716217097,
+          "residual_degrees": 3.769094971621712,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 48,
+          "measured_degrees": 0.6801545332656591,
+          "residual_degrees": 0.680154533265636,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 49,
+          "measured_degrees": 2.2396948645476065,
+          "residual_degrees": 2.239694864547573,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 50,
+          "measured_degrees": 1.077135847360308,
+          "residual_degrees": 1.077135847360296,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 51,
+          "measured_degrees": 31.822883358497045,
+          "residual_degrees": 31.82288335849705,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 52,
+          "measured_degrees": -0.004679511367915784,
+          "residual_degrees": 0.004679511367953637,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 53,
+          "measured_degrees": -0.7687928808690683,
+          "residual_degrees": 0.768792880869114,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 54,
+          "measured_degrees": 22.914111736989113,
+          "residual_degrees": 22.91411173698907,
+          "target_degrees": 0
+        },
+        {
+          "edge_index": 55,
+          "measured_degrees": -8.33825525535697,
+          "residual_degrees": 8.338255255357012,
+          "target_degrees": 0
+        }
+      ],
+      "max_residual_degrees": 60.49940576081963,
+      "reference": "Zero-based edges of the prepared triangulated simulator mesh, not CP line IDs. Principal dihedral residuals; no winding or collision proof.",
+      "rms_residual_degrees": 31.422312682001024,
+      "status": "not_attained",
+      "tolerance_degrees": 5,
+      "unmeasurable_count": 0
+    },
+    "vertex_count": 25
+  },
+  "checkpoint_id": "f5cc8b6b-40b7-497c-9993-3eb02fa32229",
+  "history": "one-step undo/redo verified through MCP",
+  "artifacts": [
+    "miura.osf",
+    "miura.cp",
+    "miura.ori",
+    "miura.fold",
+    "miura.svg",
+    "miura.png",
+    "miura.obj"
+  ]
+}

@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 mod cp_detect;
 mod cp_engine;
+mod mcp;
 mod updater;
 
 #[derive(Default)]
@@ -241,6 +242,15 @@ pub fn run() {
 
     builder
         .manage(OpenedFiles::default())
+        .manage(mcp::McpState::default())
+        .manage(mcp::folding::Jobs::default())
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main"
+                && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+            {
+                mcp::renderer_loading(webview.app_handle());
+            }
+        })
         .manage(cp_engine::new_state())
         // Separate state, not a field on the engine: a fold holds the engine
         // mutex for its whole duration, so the cancel flag has to live somewhere
@@ -276,6 +286,13 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            mcp::folding::mcp_fold_prepare,
+            mcp::folding::mcp_fold_run,
+            mcp::folding::mcp_fold_cancel,
+            mcp::mcp_configure,
+            mcp::mcp_status,
+            mcp::mcp_ready,
+            mcp::mcp_reply,
             platform_ping,
             read_text_file,
             read_binary_file,
