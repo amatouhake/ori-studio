@@ -1,6 +1,7 @@
 use crate::error::{BpError, BpResult};
 use crate::math::{lcm, to_fraction};
 use crate::model::{Flap, GridType, NodeId, Project, Sheet, Vertex};
+use crate::shared::MAX_SHEET_SIZE;
 
 const FRACTION_ERROR: f64 = 0.1;
 const MIN_SHEET_SIZE: f64 = 8.0;
@@ -118,19 +119,37 @@ impl TreeMakerParser {
                 "TreeMaker import sheet must be at least 8 by 8",
             ));
         }
+        if sheet_width > MAX_SHEET_SIZE as f64 || sheet_height > MAX_SHEET_SIZE as f64 {
+            return Err(invalid_tree_maker(format!(
+                "TreeMaker import sheet {sheet_width} by {sheet_height} exceeds maximum {} by {}",
+                MAX_SHEET_SIZE, MAX_SHEET_SIZE,
+            )));
+        }
 
-        let fx = sheet_width / width;
-        let fy = sheet_height / height;
+        // Upstream Box Pleating Studio scales x by sw/width and y by sh/height
+        // independently, which shears non-square paper (fx != fy). Use one
+        // uniform fit scale so aspect is preserved. `min` (fit-inside) keeps
+        // the scaled paper within the ceiled sheet; `max` (fill) would push
+        // the longer axis past the sheet edge. Square paper is unaffected:
+        // sw == sh implies fx == fy, so the minimum is a no-op there.
+        let fit = (sheet_width / width).min(sheet_height / height);
         for flap in &mut parser.result.design.layout.flaps {
-            flap.x = (flap.x * fx).round();
-            flap.y = (flap.y * fy).round();
+            flap.x = (flap.x * fit).round();
+            flap.y = (flap.y * fit).round();
         }
         for node in &mut parser.result.design.tree.nodes {
-            node.x = (node.x * fx).round();
-            node.y = (node.y * fy).round();
+            node.x = (node.x * fit).round();
+            node.y = (node.y * fit).round();
         }
         for edge in &mut parser.result.design.tree.edges {
-            edge.length = (edge.length * fix_f).round().max(1.0);
+            let scaled = (edge.length * fix_f).round();
+            if scaled < 1.0 {
+                return Err(invalid_tree_maker(format!(
+                    "TreeMaker import edge length {} scales to {scaled}, below one grid unit",
+                    edge.length,
+                )));
+            }
+            edge.length = scaled;
         }
 
         let sheet = Sheet {
