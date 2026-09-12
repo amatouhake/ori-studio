@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeBookFoldFixture } from '@treemaker/origami-simulator/testing';
 import { prepareFoldModel } from '@treemaker/origami-simulator';
-import { createSimulatorSession } from '../simulator/simulatorSession';
+import { createSourceSimulatorSession } from '../simulator/sourceSimulatorSession';
 import { measureFoldTargets } from '../simulator/foldTargetAttainment';
 import { SOURCE_TARGETS, requestedFoldTargets, withSourceFoldTargets } from '../simulator/sourceFoldTargets';
 import { simulate } from './analysis';
@@ -12,7 +12,7 @@ vi.mock('./engines', () => ({ exportFold: async () => bridge.source ?? makeBookF
 afterEach(() => { vi.unstubAllGlobals(); bridge.source = undefined; });
 describe('MCP simulation target units and physical attainment', () => {
   it('sends 0.55 as 55%, folds a known hinge substantially, and measures its target', async () => {
-    const session = createSimulatorSession(); bridge.api = session;
+    const session = createSourceSimulatorSession(); bridge.api = session;
     const setTarget = vi.spyOn(session, 'setFoldPercent');
     vi.stubGlobal('Worker', class { terminate() {} });
     try {
@@ -35,7 +35,7 @@ describe('MCP simulation target units and physical attainment', () => {
     bridge.source = { vertices_coords: [[0, 0], [1, 0], [1, 1], [0, 1], [0.3, 0.4]],
       edges_vertices: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 4]],
       edges_assignment: ['B', 'B', 'B', 'B', 'M'], edges_foldAngle: [0, 0, 0, 0, -180], faces_vertices: [[0, 1, 2, 3]] };
-    const session = createSimulatorSession(); bridge.api = session;
+    const session = createSourceSimulatorSession(); bridge.api = session;
     vi.stubGlobal('Worker', class { terminate() {} });
     try {
       const output = await simulate({ kind: 'crease_pattern', document: createStarterOristudioCpDocument('dangling') }, 0.55, 20000, new AbortController().signal);

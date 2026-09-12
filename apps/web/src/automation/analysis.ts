@@ -1,15 +1,12 @@
-import { withSourceFoldTargets } from '../simulator/sourceFoldTargets';
 import { invoke } from '@tauri-apps/api/core';
 import { isDesktopRuntime } from '../platform/runtime';
 import type { OristudioCpFoldedFigureSnapshot } from '../engine/oristudioCpTypes';
 import { wrap, type Remote } from 'comlink';
 import type { OrbitView } from '@treemaker/origami-simulator';
 import type { TreemakerWorkerApi } from '../workers/treemakerWorker';
-import type { SimulatorWorkerApi } from '../workers/simulatorWorker';
+import type { SourceSimulatorWorkerApi } from '../simulator/sourceSimulatorSession';
 import type { OristudioCpFoldedRenderSnapshot } from '../engine/oristudioCpTypes';
 import { beginFoldRun, cancelFoldRun } from '../lib/foldCancellation';
-import { foldArtifactsFromFold } from '../lib/creasePatternImport';
-import { simulationFoldOf } from '../lib/creasePatternSegmentation';
 import { foldedObj } from '../lib/foldedExport';
 import { connectEngine } from '../engines/engineHost';
 import { AutomationError, type DesignData } from './contracts';
@@ -107,14 +104,12 @@ export async function analyze(data: DesignData, analysis: string, args: Record<s
 export async function simulate(data: DesignData, amount: number, maxSteps: number, signal: AbortSignal): Promise<AnalysisOutput> {
   const source = await exportFold(data);
   signal.throwIfAborted();
-  const artifacts = foldArtifactsFromFold(withSourceFoldTargets(source));
-  const fold = simulationFoldOf(artifacts);
-  if (!fold) throw new AutomationError('invalid_geometry', 'No simulation fold could be prepared');
-  const worker = new Worker(new URL('../workers/simulatorWorker.ts', import.meta.url), { type: 'module' });
-  return isolatedWorker<SimulatorWorkerApi, AnalysisOutput>(worker, signal, async api => {
+  const worker = new Worker(new URL('../workers/sourceSimulatorWorker.ts', import.meta.url), { type: 'module' });
+  return isolatedWorker<SourceSimulatorWorkerApi, AnalysisOutput>(worker, signal, async api => {
     // Reference is the application's actual CPU backend, deterministic and
     // available on desktop WebKit implementations without offscreen WebGL2.
-    const model = await api.load(fold, { preferGpu: false });
+    const model = await api.loadSourceFold(source);
+    signal.throwIfAborted();
     await api.setFoldPercent(amount * 100, model.token);
     const frame = await api.settle(maxSteps, { token: model.token });
     if (!frame) throw new AutomationError('simulation_lost', 'Simulation session disappeared');
