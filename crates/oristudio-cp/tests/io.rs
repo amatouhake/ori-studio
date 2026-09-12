@@ -979,6 +979,8 @@ iactive,ACTIVE_BOTH_3
     let model = &document.crease_pattern;
 
     assert_eq!(document.title.as_deref(), Some("orh model"));
+    // #368: the importer trims the unfilled trailing slot, so counts match the
+    // declared `番号` rows (1 seg / 1 circle) instead of carrying a +1 phantom.
     assert_eq!(model.line_segments.len(), 1);
     assert_eq!(model.line_segments[0].color, LineColor::Red1);
     assert_eq!(
@@ -1045,6 +1047,8 @@ fn orh_export_writes_oriedita_sections_and_imports_back_with_quirks() {
 
     let imported = orh::import_orh_str(&output).expect("imports exported orh");
     assert_eq!(imported.title.as_deref(), Some("exported"));
+    // #368: the reimport keeps the exported 1 seg / 1 circle instead of growing
+    // by a trailing phantom per cycle.
     assert_eq!(imported.crease_pattern.line_segments.len(), 1);
     assert_eq!(
         imported.crease_pattern.line_segments[0].a,
