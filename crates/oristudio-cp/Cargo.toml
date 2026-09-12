@@ -38,6 +38,7 @@ thiserror.workspace = true
 treemaker-fold.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 serde_json.workspace = true
 # `examples/rendered_corpus.rs` draws crease patterns the way the editor's
 # export does, to make benchmark cases out of native files.

@@ -2,6 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use proptest::prelude::*;
+use proptest::test_runner::{FileFailurePersistence, RngSeed};
 use treemaker_core::{
     Condition, Crease, Edge, Facet, Node, OwnerRef, Path as TreePath, Point, Poly, TmFloat, Tree,
     TreeError, Vertex,
@@ -18,7 +19,8 @@ struct TreeSpec {
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: 16,
-        failure_persistence: None,
+        rng_seed: RngSeed::Fixed(20260912),
+        failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("proptest-regressions"))),
         .. ProptestConfig::default()
     })]
 
@@ -27,8 +29,40 @@ proptest! {
         let tree = build_tree(&spec);
         let text = tree.to_tmd5_string();
         let parsed = Tree::from_tmd_str(&text).expect("valid generated tree parses");
-        let reparsed = Tree::from_tmd_str(&parsed.to_tmd5_string()).expect("generated tree roundtrips");
+        // Counts alone miss moved nodes, swapped endpoints and lost pin flags.
+        // Check the first read against the generated input as well as checking
+        // canonical stability, which cannot detect loss on that first read.
+        prop_assert_eq!(parsed.nodes.len(), tree.nodes.len());
+        prop_assert_eq!(parsed.edges.len(), tree.edges.len());
+        prop_assert_eq!(parsed.paths.len(), tree.paths.len());
+        for (actual, expected) in parsed.nodes.iter().zip(&tree.nodes) {
+            prop_assert_eq!(actual.index, expected.index);
+            prop_assert_eq!(&actual.label, &expected.label);
+            prop_assert_eq!(actual.is_pinned, expected.is_pinned, "node {} pin", expected.index);
+            // TMD5 writes ten decimal places. Generated coordinates are bounded
+            // within the unit square, so 1e-10 includes only the rounding budget.
+            prop_assert!((actual.loc.x - expected.loc.x).abs() <= 1e-10,
+                "node {} x: {:?} != {:?}", expected.index, actual.loc, expected.loc);
+            prop_assert!((actual.loc.y - expected.loc.y).abs() <= 1e-10,
+                "node {} y: {:?} != {:?}", expected.index, actual.loc, expected.loc);
+            prop_assert_eq!(&actual.edges, &expected.edges, "node {} edges", expected.index);
+            prop_assert_eq!(&actual.leaf_paths, &expected.leaf_paths, "node {} paths", expected.index);
+        }
+        for (actual, expected) in parsed.edges.iter().zip(&tree.edges) {
+            prop_assert_eq!(actual.index, expected.index);
+            prop_assert_eq!(&actual.label, &expected.label);
+            prop_assert_eq!(&actual.nodes, &expected.nodes, "edge {} endpoints", expected.index);
+            prop_assert!((actual.length - expected.length).abs() <= 1e-10,
+                "edge {} length: {} != {}", expected.index, actual.length, expected.length);
+        }
+        for (actual, expected) in parsed.paths.iter().zip(&tree.paths) {
+            prop_assert_eq!(&actual.nodes, &expected.nodes, "path {} nodes", expected.index);
+            prop_assert_eq!(&actual.edges, &expected.edges, "path {} edges", expected.index);
+        }
+        let canonical = parsed.to_tmd5_string();
+        let reparsed = Tree::from_tmd_str(&canonical).expect("generated tree roundtrips");
         prop_assert_eq!(parsed.summary(), reparsed.summary());
+        prop_assert_eq!(canonical, reparsed.to_tmd5_string(), "canonical TMD5 must be stable");
 
         let mut optimized = parsed.clone();
         let optimize = catch_unwind(AssertUnwindSafe(|| optimized.optimize_scale()));
@@ -47,28 +81,34 @@ proptest! {
             prop_assert!(matches!(error, TreeError::InvalidOperation(_)));
         }
     }
+}
 
-    #[test]
-    fn malformed_fixture_mutations_return_structured_errors(
-        fixture_index in 0usize..fixture_texts().len(),
-        mutation in 0usize..5,
-    ) {
-        let fixture = fixture_texts()[fixture_index];
-        let mutated = mutate_fixture(fixture, mutation);
-        let parsed = catch_unwind(AssertUnwindSafe(|| Tree::from_tmd_str(&mutated)));
-        prop_assert!(parsed.is_ok(), "parser panicked");
-        match parsed.unwrap() {
-            Ok(_) => prop_assert!(false, "malformed mutation unexpectedly parsed"),
-            Err(error) => {
-                let structured = matches!(
+// A finite 5 x 5 matrix benefits from exhaustive enumeration: 16 random draws
+// could miss mutations or repeat the same pair, and shrinking an index adds no
+// useful diagnostic beyond naming the fixture and mutation.
+#[test]
+fn malformed_fixture_mutations_return_structured_errors() {
+    for (fixture_index, fixture) in fixture_texts().iter().enumerate() {
+        for mutation in 0..5 {
+            let mutated = mutate_fixture(fixture, mutation);
+            let parsed = catch_unwind(AssertUnwindSafe(|| Tree::from_tmd_str(&mutated)));
+            assert!(
+                parsed.is_ok(),
+                "fixture {fixture_index}, mutation {mutation}: parser panicked"
+            );
+            let error = parsed.unwrap().expect_err(&format!(
+                "fixture {fixture_index}, mutation {mutation}: malformed input parsed"
+            ));
+            assert!(
+                matches!(
                     error,
                     TreeError::Parse { .. }
                         | TreeError::BadReference { .. }
                         | TreeError::UnsupportedVersion(_)
                         | TreeError::UnsupportedOperation(_)
-                );
-                prop_assert!(structured, "{error:?}");
-            }
+                ),
+                "fixture {fixture_index}, mutation {mutation}: {error:?}"
+            );
         }
     }
 }
@@ -268,8 +308,8 @@ fn tree_path(
     (nodes, edges)
 }
 
-fn fixture_texts() -> Vec<&'static str> {
-    vec![
+fn fixture_texts() -> [&'static str; 5] {
+    [
         include_str!("../testdata/minimal_v3.tmd"),
         include_str!("../testdata/minimal_cp_v4.tmd4"),
         include_str!("../testdata/minimal_cp_v5.tmd5"),

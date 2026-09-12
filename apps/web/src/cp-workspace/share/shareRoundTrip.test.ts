@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
 import { renderSharedCpHtml, type ShareCardMeta } from '../../../functions/_lib/cpShareHtml';
 import { inlinedSharedCp, resetInlinedSharedCp } from './sharedCpBootstrap';

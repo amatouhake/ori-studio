@@ -3251,6 +3251,7 @@ dependencies = [
  "image",
  "imageproc",
  "miniz_oxide",
+ "proptest",
  "rayon",
  "serde",
  "serde_json",

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { COARSE_POINTER_QUERY } from '../../platform/pointerSurface';
 import { isShiftLatched, resetShiftLatch, setShiftLatched, withShiftLatch } from './shiftLatch';

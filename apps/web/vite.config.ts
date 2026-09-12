@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { defineConfig, type Plugin } from 'vitest/config';
+import { configDefaults, defineConfig, type Plugin } from 'vitest/config';
 import { build as bundle, type Rollup } from 'vite';
 import react from '@vitejs/plugin-react';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
@@ -371,6 +371,11 @@ function sentryRelease(): string {
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
 const uploadSourcemaps = Boolean(sentryAuthToken);
 
+// Geometry, codecs and utility tests do not need a DOM. Browser-dependent .ts
+// files in these directories opt back in with @vitest-environment jsdom;
+// component tests and the rest of the application retain jsdom by default.
+const logicTestFiles = ['src/{lib,cp-workspace}/**/*.test.ts'];
+
 export default defineConfig({
   plugins: [
     react(),
@@ -505,5 +510,15 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    projects: [
+      {
+        extends: true,
+        test: { name: 'logic', include: logicTestFiles, environment: 'node' },
+      },
+      {
+        extends: true,
+        test: { name: 'application', exclude: [...configDefaults.exclude, ...logicTestFiles] },
+      },
+    ],
   },
 });
