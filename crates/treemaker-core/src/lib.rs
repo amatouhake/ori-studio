@@ -2041,6 +2041,11 @@ impl Tree {
             if !path.is_leaf || self.has_path_active_base_condition(path) {
                 continue;
             }
+            if path.nodes.len() < 2 || path.nodes.first() == path.nodes.last() {
+                return Err(TreeError::InvalidOperation(
+                    "paths must have at least two distinct endpoint nodes",
+                ));
+            }
             self.add_scale_path_constraint(
                 &mut optimizer,
                 &node_offsets,
@@ -2126,6 +2131,11 @@ impl Tree {
             let path = &self.paths[*path_id - 1];
             if !path.is_leaf || self.has_path_active_base_condition(path) {
                 continue;
+            }
+            if path.nodes.len() < 2 || path.nodes.first() == path.nodes.last() {
+                return Err(TreeError::InvalidOperation(
+                    "paths must have at least two distinct endpoint nodes",
+                ));
             }
             self.add_edge_path_constraint(
                 &mut optimizer,
@@ -2231,6 +2241,11 @@ impl Tree {
             let path = &self.paths[*path_id - 1];
             if !path.is_leaf || self.has_path_active_base_condition(path) {
                 continue;
+            }
+            if path.nodes.len() < 2 || path.nodes.first() == path.nodes.last() {
+                return Err(TreeError::InvalidOperation(
+                    "paths must have at least two distinct endpoint nodes",
+                ));
             }
             self.add_strain_path_constraint(
                 &mut optimizer,
@@ -2612,6 +2627,14 @@ impl Tree {
             for id in &path.nodes {
                 self.check_ref("node", *id, self.nodes.len())?;
             }
+            // Paths index both endpoints on every optimizer and ring-walk
+            // path, so a path with fewer than two distinct endpoints is
+            // malformed input, not an empty constraint to skip.
+            if path.nodes.len() < 2 || path.nodes.first() == path.nodes.last() {
+                return Err(TreeError::InvalidOperation(
+                    "paths must have at least two distinct endpoint nodes",
+                ));
+            }
             for id in &path.edges {
                 self.check_ref("edge", *id, self.edges.len())?;
             }
@@ -2650,6 +2673,16 @@ impl Tree {
                 .chain(&poly.owned_paths)
             {
                 self.check_ref("path", *id, self.paths.len())?;
+            }
+            // Both ring walks index ring_paths by ring_nodes position, so a
+            // corresponding ring with three or more nodes must match exactly.
+            // Degenerate stub rings (fewer than three nodes) never reach the
+            // walks: they are pruned as non-convex and rejected by the
+            // contents builders with typed errors.
+            if poly.ring_nodes.len() >= 3 && poly.ring_nodes.len() != poly.ring_paths.len() {
+                return Err(TreeError::InvalidOperation(
+                    "polygon ring nodes and paths must have matching lengths",
+                ));
             }
             if let Some(id) = poly.ridge_path {
                 self.check_ref("path", id, self.paths.len())?;
@@ -4551,6 +4584,19 @@ impl Tree {
     }
 
     fn build_poly_ring(&mut self, path_id: usize, fwd: bool, owner: OwnerRef) -> Result<()> {
+        // Guard before create_poly: the bkd arm already Errs on empty nodes,
+        // and the fwd arm must not panic — or leave a junk poly behind.
+        let (front_node, back_node) = match (
+            self.paths[path_id - 1].nodes.first().copied(),
+            self.paths[path_id - 1].nodes.last().copied(),
+        ) {
+            (Some(front), Some(back)) => (front, back),
+            _ => {
+                return Err(TreeError::InvalidOperation(
+                    "polygon path has no nodes",
+                ));
+            }
+        };
         let poly_id = self.create_poly(owner);
         if fwd {
             self.paths[path_id - 1].fwd_poly = Some(poly_id);
@@ -4558,23 +4604,8 @@ impl Tree {
             self.paths[path_id - 1].bkd_poly = Some(poly_id);
         }
 
-        let path = &self.paths[path_id - 1];
-        let first_node = if fwd {
-            path.nodes[0]
-        } else {
-            *path
-                .nodes
-                .last()
-                .ok_or(TreeError::InvalidOperation("polygon path has no nodes"))?
-        };
-        let mut this_node = if fwd {
-            *path
-                .nodes
-                .last()
-                .ok_or(TreeError::InvalidOperation("polygon path has no nodes"))?
-        } else {
-            path.nodes[0]
-        };
+        let first_node = if fwd { front_node } else { back_node };
+        let mut this_node = if fwd { back_node } else { front_node };
         let mut this_path = path_id;
         let mut ring_nodes = vec![first_node];
         let mut ring_paths = vec![this_path];
@@ -4648,7 +4679,10 @@ impl Tree {
         this_node: usize,
     ) -> Result<(usize, usize)> {
         let path = &self.paths[this_path - 1];
-        let mut that_node = path.nodes[0];
+        let mut that_node = *path
+            .nodes
+            .first()
+            .ok_or(TreeError::InvalidOperation("polygon path has no nodes"))?;
         if that_node == this_node {
             that_node = *path
                 .nodes
@@ -4668,7 +4702,11 @@ impl Tree {
                 continue;
             }
             let candidate = &self.paths[candidate_path - 1];
-            let mut candidate_node = candidate.nodes[0];
+            let mut candidate_node = candidate
+                .nodes
+                .first()
+                .copied()
+                .ok_or(TreeError::InvalidOperation("polygon path has no nodes"))?;
             if candidate_node == this_node {
                 candidate_node = *candidate
                     .nodes
@@ -5069,6 +5107,13 @@ impl Tree {
 
     fn build_poly_creases_and_facets(&mut self, poly_id: usize) -> Result<()> {
         let nn = self.polys[poly_id - 1].ring_nodes.len();
+        // validate() rejects mismatched rings at parse, but rings are mutable
+        // through the public API, so re-check at the walk itself.
+        if self.polys[poly_id - 1].ring_paths.len() != nn {
+            return Err(TreeError::InvalidOperation(
+                "polygon ring nodes and paths must have matching lengths",
+            ));
+        }
 
         for i in 0..nn {
             let front_node = self.polys[poly_id - 1].ring_nodes[i];
@@ -5286,8 +5331,14 @@ impl Tree {
     }
 
     fn build_self_vertices(&mut self, path_id: usize) -> Result<()> {
-        let front_node = self.paths[path_id - 1].nodes[0];
-        let back_node = *self.paths[path_id - 1].nodes.last().unwrap();
+        let path = &self.paths[path_id - 1];
+        if path.nodes.len() < 2 || path.nodes.first() == path.nodes.last() {
+            return Err(TreeError::InvalidOperation(
+                "paths must have at least two distinct endpoint nodes",
+            ));
+        }
+        let front_node = path.nodes[0];
+        let back_node = *path.nodes.last().unwrap();
         let front_vertex = self.get_or_make_node_vertex(front_node);
         let back_vertex = self.get_or_make_node_vertex(back_node);
 
@@ -6845,6 +6896,13 @@ impl Tree {
 
         for poly_id in 1..=self.polys.len() {
             let nn = self.polys[poly_id - 1].ring_nodes.len();
+            // Depth calc is best-effort void plumbing: skip rings that cannot
+            // correspond instead of indexing out of bounds. Parse-time shapes
+            // are rejected in validate(); mutable rings are re-checked at the
+            // fallible build walk.
+            if self.polys[poly_id - 1].ring_paths.len() != nn {
+                continue;
+            }
             for j in 0..nn {
                 let front_node = self.polys[poly_id - 1].ring_nodes[j];
                 let back_node = self.polys[poly_id - 1].ring_nodes[(j + 1) % nn];
@@ -8374,6 +8432,12 @@ impl<'a> Reader<'a> {
         let _legacy_bkd_poly = self.read_usize("path bkd poly")?;
         let nodes = self.read_index_array("path nodes")?;
         let edges = self.read_index_array("path edges")?;
+        if nodes.len() < 2 {
+            return Err(self.err(format!(
+                "path nodes must have at least two distinct endpoints, found {}",
+                nodes.len()
+            )));
+        }
 
         if let Some((node1, node2)) = nodes.first().copied().zip(nodes.last().copied()) {
             if path_fixed_length && min_tree_length == path_fixed_length_value {
@@ -8423,7 +8487,7 @@ impl<'a> Reader<'a> {
 
     fn read_path_v4(&mut self, poly_count: usize) -> Result<Path> {
         self.expect_tag("path")?;
-        Ok(Path {
+        let path = Path {
             index: self.read_usize("path index")?,
             min_tree_length: self.read_f64("path min tree length")?,
             min_paper_length: self.read_f64("path min paper length")?,
@@ -8448,12 +8512,19 @@ impl<'a> Reader<'a> {
             min_depth: DEPTH_NOT_SET,
             min_depth_dist: DEPTH_NOT_SET,
             owned_creases: Vec::new(),
-        })
+        };
+        if path.nodes.len() < 2 {
+            return Err(self.err(format!(
+                "path nodes must have at least two distinct endpoints, found {}",
+                path.nodes.len()
+            )));
+        }
+        Ok(path)
     }
 
     fn read_path_v5(&mut self, poly_count: usize, path_count: usize) -> Result<Path> {
         self.expect_tag("path")?;
-        Ok(Path {
+        let path = Path {
             index: self.read_usize("path index")?,
             min_tree_length: self.read_f64("path min tree length")?,
             min_paper_length: self.read_f64("path min paper length")?,
@@ -8478,7 +8549,14 @@ impl<'a> Reader<'a> {
             owned_vertices: self.read_index_array("path owned vertices")?,
             owned_creases: self.read_index_array("path owned creases")?,
             owner: self.read_path_owner()?,
-        })
+        };
+        if path.nodes.len() < 2 {
+            return Err(self.err(format!(
+                "path nodes must have at least two distinct endpoints, found {}",
+                path.nodes.len()
+            )));
+        }
+        Ok(path)
     }
 
     fn read_poly_v4(&mut self, path_count: usize) -> Result<Poly> {
