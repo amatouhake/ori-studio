@@ -2,6 +2,8 @@ import { createNativeCreasePatternProjectFile, createNativeProjectFile, serializ
 import { emptyOristudioCpSelection, DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS } from '../lib/creasePatternViewport';
 import { importedCpLineage } from '../lib/oristudioCpLineage';
 import { isImageAnnotation, isTextAnnotation, isSuppressionRegionAnnotation } from '../cp-workspace/annotations/annotation';
+import { collectExportLossWarnings, blockingExportLoss, type ExportFormat } from '../lib/supersetFeatures';
+import { defaultBpDocumentSymmetry } from '../lib/bpTreeSymmetry';
 import { APP_VERSION } from '../constants/release';
 import type { CpExperimentBase } from '../store/workspaceStore/slices/automationSlice';
 import { AutomationError, type DesignData } from './contracts';
@@ -9,7 +11,17 @@ import type { AnalysisOutput } from './analysis';
 import { exportFold, withCp } from './engines';
 import { creaseSvg, png } from './render';
 
-export async function exportDesign(data: DesignData, title: string, format: string, base?: CpExperimentBase, output?: AnalysisOutput): Promise<Record<string, unknown>> {
+export async function exportDesign(data: DesignData, title: string, format: string, base?: CpExperimentBase, output?: AnalysisOutput, allowLoss = false): Promise<Record<string, unknown>> {
+  // OBJ is a simulation mesh here, not the application's crease interchange OBJ.
+  const losses = data.kind === 'crease_pattern' && ['cp', 'ori', 'fold', 'svg', 'png'].includes(format)
+    ? collectExportLossWarnings(format as ExportFormat, {
+      lineSegments: data.document.crease_pattern.line_segments,
+      images: base?.annotations.filter(isImageAnnotation) ?? [], richText: base?.annotations.filter(isTextAnnotation) ?? [],
+      suppressionRegions: base?.annotations.filter(isSuppressionRegionAnnotation) ?? [],
+      inlineSimulations: base?.simulations ?? [], foldedFigures: base?.figures ?? [], bpSymmetry: defaultBpDocumentSymmetry(),
+    }) : [];
+  if (blockingExportLoss(losses).length) throw new AutomationError('export_loss_blocked', 'This format changes crease semantics. Export FOLD for crease interchange or OSF for the editable project.', { format, losses, alternatives: ['fold', 'osf'] });
+  if (losses.length && !allowLoss) throw new AutomationError('export_loss_confirmation_required', 'Review losses and retry with allow_loss=true, or export OSF.', { format, losses, alternatives: ['osf'] });
   let content: string;
   let mimeType = 'text/plain';
   let encoding = 'utf8';
@@ -43,6 +55,6 @@ export async function exportDesign(data: DesignData, title: string, format: stri
     if (format === 'ori') mimeType = 'application/json';
   } else if ((format === 'tmd5' && data.kind === 'treemaker') || (format === 'bps' && data.kind === 'box_pleat')) content = data.text;
   else throw new AutomationError('invalid_format', `Cannot export ${data.kind} as ${format}`);
-  return { filename: `design.${format}`, mime_type: mimeType, encoding, content,
+  return { filename: `design.${format}`, mime_type: mimeType, encoding, content, losses,
     limitations: format === 'osf' ? [] : ['Interchange formats omit Ori Studio canvas objects unsupported by that format.'] };
 }

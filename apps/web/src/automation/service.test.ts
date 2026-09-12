@@ -4,7 +4,7 @@ import { useWorkspaceStore } from '../store/workspaceStore/store';
 import * as engines from './engines';
 import { createStarterOristudioCpDocument } from '../lib/oristudioCpStarterDocument';
 import { AutomationError, LIMITS, type DesignData, type ToolResult } from './contracts';
-import { validateTool, TOOLS } from './tools';
+import { validateTool, TOOLS, CAPABILITIES } from './tools';
 
 const data = (): DesignData => ({ kind: 'crease_pattern', document: createStarterOristudioCpDocument('test') });
 const value = (r: ToolResult) => r.structuredContent!;
@@ -28,6 +28,13 @@ describe('semantic MCP contracts', () => {
     expect(() => validateTool('edit_creases', input)).toThrow();
     expect(TOOLS.every(t => t.inputSchema.additionalProperties === false)).toBe(true);
   });
+  it('preserves raw schema constraints and supplies compact operation discovery', () => {
+    const analyze = TOOLS.find(t => t.name === 'analyze_design')!.inputSchema.properties as Record<string, Record<string, unknown>>;
+    expect(analyze.case_limit.maximum).toBe(16);
+    const tree = TOOLS.find(t => t.name === 'edit_tree')!.inputSchema.properties as Record<string, { items: { oneOf: unknown[] } }>;
+    expect(tree.operations.items.oneOf.length).toBeGreaterThan(20);
+    expect(CAPABILITIES.operations.edit_tree.find(op => op.type === 'move_node')).toMatchObject({ required: ['id', 'loc'], fields: { loc: 'x, y' } });
+  });
   it('refuses the excluded FOLD hazards without rewriting importer behavior', () => {
     expect(() => engines.guardFoldImport('{"vertices_coords":[[0,0],[1,0]]}')).toThrow('#367');
     expect(() => engines.guardFoldImport('{"vertices_coords":[[0,-2],[1,-1]]}')).toThrow('#366');
@@ -41,6 +48,13 @@ describe('isolated experiment transactions', () => {
     api.editCp.mockResolvedValueOnce({ data: data() as engines.CpData, reports: [] });
     const reply = value(await service.call('edit_creases', edit(d)));
     expect(reply.changed).toBe(false); expect(reply.revision).toBe(0); service.dispose();
+  });
+  it('distinguishes selection changes from geometric changes in repair receipts', async () => {
+    const { service, api, begin } = setup(); const d = await begin();
+    const selected = data() as engines.CpData; selected.document.crease_pattern.line_segments[0].selected = 2;
+    api.editCp.mockResolvedValueOnce({ data: selected, reports: [] });
+    expect(value(await service.call('edit_creases', edit(d)))).toMatchObject({ changed: true, geometry_changed: false, revision: 1 });
+    service.dispose();
   });
   it('times out a stalled edit without allowing a late write, and keeps status available', async () => {
     vi.useFakeTimers();
@@ -109,5 +123,47 @@ describe('isolated experiment transactions', () => {
     service.dispose(); complete({ data: data() as engines.CpData, reports: [] });
     expect(value(await pending).code).toBe('disconnected'); expect(value(await commit).code).toBe('disconnected');
     expect(state.commitCpExperiment).not.toHaveBeenCalled();
+  });
+});
+
+describe('review regressions: history authorization and render provenance', () => {
+  it.each(['undo', 'redo'] as const)('refuses stale %s authorization after history-only and companion changes', async direction => {
+    const { service, state } = setup();
+    state.undo = vi.fn(async () => undefined); state.redo = vi.fn(async () => undefined);
+    const entry = { document: createStarterOristudioCpDocument(), label: 'observed', timestamp: '', annotations: [], foldedFigures: [], activeFoldedFigureId: null, selection: state.oristudioCpSelection };
+    state.oristudioCpHistoryPast = [entry]; state.oristudioCpHistoryFuture = [entry];
+    for (const key of ['oristudioCpHistoryPast', 'oristudioCpHistoryFuture', 'oristudioCpAnnotations', 'oristudioCpFoldedFigures', 'oristudioCpInlineSimulations'] as const) {
+      const live = value(await service.call('workspace', {})).live as Record<string, unknown>;
+      // Same edit revision/load serial, but a new snapshot of history-affecting state.
+      state[key] = [...state[key]] as never;
+      const response = await service.call('workspace_history', { request_id: key, direction, history_token: live.history_token, live_revision: live.edit_revision, load_serial: live.load_serial });
+      expect(value(response).code).toBe('conflict');
+    }
+    expect(state.undo).not.toHaveBeenCalled(); expect(state.redo).not.toHaveBeenCalled();
+    const live = value(await service.call('workspace', {})).live as Record<string, unknown>;
+    expect(value(await service.call('workspace_history', { request_id: 'fresh', direction, history_token: live.history_token, live_revision: live.edit_revision, load_serial: live.load_serial })).completed).toBe(true);
+    expect(state[direction]).toHaveBeenCalledOnce(); service.dispose();
+  });
+
+  it('labels an in-flight render with its captured revision when a TreeMaker job finishes', async () => {
+    const { state, api } = setup();
+    const before: DesignData = { kind: 'treemaker', text: 'before' };
+    let finishJob!: (v: { result: Record<string, unknown>; data: DesignData }) => void;
+    let finishRender!: (svg: string) => void;
+    const renderSvg = vi.fn((_data: DesignData) => new Promise<string>(resolve => { finishRender = resolve; }));
+    const service = createAutomationService({ store: { getState: () => state }, engines: { ...api, newDesign: async () => before },
+      analyze: () => new Promise(resolve => { finishJob = resolve; }), renderSvg, png: async () => 'image' });
+    const d = value(await service.call('begin_design', { request_id: 'new', kind: 'treemaker', source: 'new' }));
+    const address = { draft_id: d.draft_id, revision: 0 };
+    const job = value(await service.call('analyze_design', { ...address, request_id: 'build', analysis: 'build_cp' }));
+    const pending = service.call('render_view', { ...address, view: 'crease_pattern' });
+    await vi.waitFor(() => expect(renderSvg).toHaveBeenCalled());
+    finishJob({ result: {}, data: { kind: 'treemaker', text: 'after' } });
+    await vi.waitFor(async () => expect(value(await service.call('job_status', { job_id: job.job_id })).status).toBe('completed'));
+    finishRender('before-svg'); const rendered = await pending;
+    expect(renderSvg.mock.calls[0][0]).toEqual(before);
+    expect(value(rendered)).toMatchObject({ revision: 0, stale: true });
+    expect(JSON.parse((rendered.content[0] as { text: string }).text)).toMatchObject({ revision: 0, stale: true });
+    service.dispose();
   });
 });

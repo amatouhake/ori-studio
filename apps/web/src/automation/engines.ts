@@ -93,6 +93,9 @@ export async function editCp(data: CpData, operations: Operation[]): Promise<{ d
         case 'delete_creases':
           reports.push(await api.executeCommand(h, 'LineSegmentDelete', { line_ids: ids })); topologyChanged = true; break;
         case 'assign_creases': {
+          const convertsAuxiliary = ids.some(id => before.crease_pattern.line_segments[id - 1].color === 'Cyan3') && op.assignment !== 'auxiliary';
+          if (convertsAuxiliary && op.angle !== undefined) throw new AutomationError('invalid_reference', 'Converting auxiliary lines can split/reorder creases. Assign without angle, inspect the new IDs, then set angles in a separate edit.');
+          topologyChanged ||= convertsAuxiliary;
           const payload: OristudioCpCommandPayload = { line_ids: ids, line_color: COLORS[String(op.assignment)] };
           reports.push(await api.executeCommand(h, 'CreaseSetLineColor', payload));
           if (op.angle !== undefined) reports.push(await api.executeCommand(h, 'CreaseSetFoldAngle', { line_ids: ids, fold_magnitude_degrees: op.angle as number }));

@@ -1,11 +1,11 @@
 import { serializeDesign } from '../engines/designHandles';
 import { workspaceOperationsIdle } from '../store/workspaceStore/operationFence';
-import { CONSTRUCTIONS, CONSTRUCTION_INPUTS } from './tools';
+import { CONSTRUCTIONS, CONSTRUCTION_INPUTS, CAPABILITIES } from './tools';
 import type { Point } from '../lib/geometry';
 import { track } from '../analytics';
 import type { TreeEdit } from '../engine/types';
 import { useWorkspaceStore } from '../store/workspaceStore/store';
-import { captureCpExperimentBase, type CpExperimentBase } from '../store/workspaceStore/slices/automationSlice';
+import { captureCpExperimentBase, matchesCpExperimentBase, type CpExperimentBase } from '../store/workspaceStore/slices/automationSlice';
 import { AutomationError, LIMITS, failure, result, type DesignData, type DesignKind, type ToolResult } from './contracts';
 import { analyze, simulate, type AnalysisOutput } from './analysis';
 import * as engines from './engines';
@@ -30,8 +30,10 @@ export interface AutomationDependencies {
   simulate: typeof simulate;
   store: Pick<typeof useWorkspaceStore, 'getState'>;
   now: () => number;
+  renderSvg: typeof renderSvg;
+  png: typeof png;
 }
-const DEFAULT_DEPS: AutomationDependencies = { engines, analyze, simulate, store: useWorkspaceStore, now: Date.now };
+const DEFAULT_DEPS: AutomationDependencies = { engines, analyze, simulate, store: useWorkspaceStore, now: Date.now, renderSvg, png };
 
 export function createAutomationService(overrides: Partial<AutomationDependencies> = {}) {
   const deps = { ...DEFAULT_DEPS, ...overrides };
@@ -42,6 +44,13 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
   let disposed = false;
   let queued = 0;
   let receiptBytes = 0;
+  let historyAuthorization: { token: string; base: CpExperimentBase } | undefined;
+  function historyToken() {
+    if (!historyAuthorization || !matchesCpExperimentBase(state(), historyAuthorization.base)) {
+      historyAuthorization = { token: crypto.randomUUID(), base: captureCpExperimentBase(state()) };
+    }
+    return historyAuthorization.token;
+  }
   const live = () => { if (disposed) throw new AutomationError('disconnected', 'MCP was disabled or the renderer restarted'); };
   const state = () => deps.store.getState();
   function checkResources(addition: unknown) {
@@ -118,18 +127,20 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
     active(); sweep();
     if (name === 'workspace') return result({
       protocol: 'ori-studio-automation/1', units: { crease_pattern: 'Oriedita model coordinates, default paper [-200,200]², +y down', treemaker: 'paper units, default [0,1]²', box_pleat: 'BP sheet grid units' },
-      live: { edit_revision: state().oristudioCpRevision, load_serial: state().oristudioCpDocument?.loadSerial ?? 0, undo_label: state().oristudioCpHistoryPast.at(-1)?.label ?? null, redo_label: state().oristudioCpHistoryFuture[0]?.label ?? null, crease_pattern: state().oristudioCpDocument?.summary ?? null,
+      live: { history_token: historyToken(), edit_revision: state().oristudioCpRevision, load_serial: state().oristudioCpDocument?.loadSerial ?? 0, undo_label: state().oristudioCpHistoryPast.at(-1)?.label ?? null, redo_label: state().oristudioCpHistoryFuture[0]?.label ?? null, crease_pattern: state().oristudioCpDocument?.summary ?? null,
         designs: state().designTabs.map(t => ({ id: t.id, kind: t.kind, title: t.title })), dirty: state().dirty },
       drafts: [...drafts.values()].map(describe), limits: LIMITS,
-      construction_inputs: CONSTRUCTION_INPUTS,
+      construction_inputs: CONSTRUCTION_INPUTS, capabilities: CAPABILITIES,
       workflow: 'begin_design → inspect_design → edit → analyze/simulate → job_status → render_view → repair → export_design → commit_design',
       excluded_issues: [366, 367, 368],
     });
     if (name === 'workspace_history') {
       if (!workspaceOperationsIdle()) throw new AutomationError('workspace_busy', 'An application action is running');
+      if (!historyAuthorization || args.history_token !== historyAuthorization.token || !matchesCpExperimentBase(state(), historyAuthorization.base)) throw new AutomationError('conflict', 'The observed canvas/history changed; read workspace again before undo/redo');
       if (args.live_revision !== state().oristudioCpRevision || args.load_serial !== (state().oristudioCpDocument?.loadSerial ?? 0)) throw new AutomationError('conflict', 'The live document changed; read workspace again');
       const stack = args.direction === 'undo' ? state().oristudioCpHistoryPast : state().oristudioCpHistoryFuture;
       if (!stack.length) throw new AutomationError('history_empty', 'No action to undo/redo');
+      historyAuthorization = undefined; // Consume before awaiting the live action.
       await state()[args.direction === 'undo' ? 'undo' : 'redo']('crease-pattern');
       if (state().error) throw state().error;
       return result({ live_revision: state().oristudioCpRevision, direction: args.direction, completed: true });
@@ -179,8 +190,13 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       if (!edited) throw new AutomationError('wrong_design_kind', 'Tool does not match experiment kind');
       active(); checkSize(edited.data);
       const changed = JSON.stringify(d.data) !== JSON.stringify(edited.data);
+      const geometry = (data: DesignData) => data.kind === 'crease_pattern' ? {
+        lines: data.document.crease_pattern.line_segments.map(l => [l.a, l.b, l.color, l.fold_magnitude, l.fold_direction_hint]),
+        auxiliary: data.document.crease_pattern.aux_line_segments, circles: data.document.crease_pattern.circles,
+      } : data;
+      const geometryChanged = JSON.stringify(geometry(d.data)) !== JSON.stringify(geometry(edited.data));
       d.data = edited.data; if (changed) d.revision += 1;
-      return result({ ...describe(d), changed, reports: edited.reports });
+      return result({ ...describe(d), changed, geometry_changed: geometryChanged, reports: edited.reports });
     }
     if (name === 'checkpoint_design') {
       writable(d);
@@ -204,13 +220,17 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       return result(describe(add(data, d.title, d.base)));
     }
     if (name === 'render_view') {
+      const snapshot = describe(d);
+      const data = d.data;
       const output = artifacts(d, args.job_id);
-      const svg = await renderSvg(d.data, String(args.view), output, String(args.camera ?? 'isometric'));
-      const image = await png(svg, Number(args.size ?? 1024));
-      return { ...result({ ...describe(d), view: args.view, camera: args.camera ?? 'isometric', width: args.size ?? 1024, height: args.size ?? 1024 }),
-        content: [{ type: 'text', text: JSON.stringify({ draft_id: d.id, revision: d.revision, view: args.view }) }, { type: 'image', data: image, mimeType: 'image/png' }] };
+      const svg = await deps.renderSvg(data, String(args.view), output, String(args.camera ?? 'isometric'));
+      const image = await deps.png(svg, Number(args.size ?? 1024));
+      const metadata = { ...snapshot, view: args.view, camera: args.view === 'simulation' ? args.camera ?? 'isometric' : null,
+        job_id: args.job_id ?? null, simulation: args.view === 'simulation' ? output?.result : undefined,
+        stale: d.revision !== snapshot.revision, width: args.size ?? 1024, height: args.size ?? 1024 };
+      return { ...result(metadata), content: [{ type: 'text', text: JSON.stringify(metadata) }, { type: 'image', data: image, mimeType: 'image/png' }] };
     }
-    if (name === 'export_design') return result({ ...describe(d), ...await exportDesign(d.data, d.title, String(args.format), d.preserveCompanions ? d.base : undefined, artifacts(d, args.job_id)) });
+    if (name === 'export_design') return result({ ...describe(d), ...await exportDesign(d.data, d.title, String(args.format), d.preserveCompanions ? d.base : undefined, artifacts(d, args.job_id), args.allow_loss === true) });
     if (name === 'commit_design') {
       writable(d); live();
       if (d.data.kind === 'crease_pattern') {

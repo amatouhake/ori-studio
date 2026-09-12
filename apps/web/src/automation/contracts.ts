@@ -14,7 +14,7 @@ export interface ToolResult {
 }
 
 export class AutomationError extends Error {
-  constructor(public readonly code: string, message: string) { super(message); }
+  constructor(public readonly code: string, message: string, public readonly details?: Record<string, unknown>) { super(message); }
 }
 
 export function result(value: Record<string, unknown>): ToolResult {
@@ -24,7 +24,7 @@ export function result(value: Record<string, unknown>): ToolResult {
 export function failure(error: unknown): ToolResult {
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'operation_failed';
   const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error);
-  return { ...result({ code, message }), isError: true };
+  return { ...result({ code, message, ...(error instanceof AutomationError ? error.details : {}) }), isError: true };
 }
 
 export const LIMITS = { drafts: 8, checkpoints: 8, jobs: 32, operations: 128, lines: 20_000,
