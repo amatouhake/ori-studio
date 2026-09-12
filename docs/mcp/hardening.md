@@ -425,3 +425,77 @@ native state, hardening, Miura acceptance, design engines and text publication).
 The TypeScript-only build reused the unchanged generated WASM artifacts; Rust
 workspace/oracle and simulator package suites were not rerun because no engine,
 Rust or simulator code changed.
+
+## Active clone consistency and cancellable preprocessing (2026-09-12)
+
+Two remaining review findings were confirmed. A BP clone could await newer
+engine contents while retaining an older tab's symmetry, and simulation inferred
+topology and prepared models on the renderer before spawning its worker.
+
+Active cloning now checks the workspace operation fence before provisioning or
+serialization, then rechecks it after the awaited serialization. TreeMaker and
+BP clones also revalidate the captured tab ID, active selection, object identity
+and kind. BP native symmetry is copied before the await and compared afterward,
+including pair contents, so even an in-place change cannot turn the captured
+state into a mixed snapshot. Busy actions return `workspace_busy`; changed tabs
+or native state return `conflict`. No draft is installed on rejection. Stable
+clones retain the exact native payload and BP symmetry.
+
+`activeClone.test.ts` exercises public `begin_design`/`workspace`/`export_design`
+service dispatch, including the GUI deletion ordering: engine serialization can
+see deletion before the GUI prunes symmetry and replaces its tab. The test covers
+both an action still pending and one finished before serialization returns. It
+also covers TreeMaker replacement, removal, selection/identity/kind changes,
+in-place BP pair mutation, and stable native OSF exports. The mutation's engine
+completion is controlled by the test; the operation fence and shared native pair
+pruning are real. All rejected cases leave the session's draft list empty.
+
+MCP simulation now sends the exported source FOLD directly to an isolated source
+simulator worker. Source-target identities are captured there, before topology
+inference. The worker shares the existing triangulation, consistent orientation
+and angle-sign logic, then loads the CPU reference session. A discarded
+intermediate model reconstruction was removed: two required preparation passes
+replace the prior three. The normal application artifact path keeps its existing
+behavior. Renderer work is limited to the bounded source export/serialization and
+worker transport; it no longer performs topology inference or model preparation.
+
+Worker termination covers preprocessing and solver execution alike. Job deadlines
+and cancellation remain terminal independently of engine cooperation, release the
+draft lock and reject late artifacts. An abort check after the preparation RPC
+also prevents a late reply from starting further solver calls. Output fields,
+CPU reference-backend choice and conservative endpoint-angle limitations are
+unchanged.
+
+The source-session regression compares old and new paths exactly for CPU mesh
+output and attainment after settling at 55% on six fixtures: book fold, inferred
+faces, split creases, merged creases, close disconnected creases and ambiguous
+provenance. It verifies input immutability and exactly two preparation calls.
+`simulationIsolation.test.ts` holds the worker's preparation RPC unresolved with
+a 15,000-edge payload: public service status remains available, cancellation or
+the real job deadline terminates the worker, and a late reply cannot run the
+solver or publish artifacts. This is a deterministic stalled-worker substitute,
+not a wall-clock performance benchmark. A separate test exercises the actual
+worker entry point and its source-aware CPU output; the rebuilt desktop probes
+exercise the real browser worker transport.
+
+The native-state HTTP probe now retries only transient `workspace_busy` responses
+to active cloning, with fresh request IDs and a bounded wait. Its first run
+correctly hit the new fence during normal BP file loading/hydration; the updated
+probe completed after four busy responses and preserved symmetry through both
+publication generations and the deleted-ID-reuse case. All six public probes
+pass, including substantial folding and the false-attainment reproductions.
+
+One repeated full-web run caught an existing download-button assertion counting
+nine asynchronous `/locales/en/*.json` fetches as release requests. That file is
+unchanged; all seven of its tests passed in isolation. The first full run passed
+all 6,090 tests. This validation interaction was not addressed by changing the
+download UI or translation loading as part of the MCP fixes.
+
+Final validation: the confirming full web run passes 493 files / 6,090 tests;
+all 96 focused tests and the strengthened four-test renderer-preparation guard
+pass. Web lint, typecheck, production build with the new worker bundle, explicit
+landing prerender, desktop check/build and all 23 desktop library tests pass.
+All six public HTTP probes pass. The build reused unchanged generated WASM
+artifacts; Rust workspace/oracle and simulator package suites were not rerun
+because no Rust or simulator-package implementation changed. The source-session
+and actual desktop CPU/provenance probes cover the changed preparation boundary.

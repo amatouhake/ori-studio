@@ -10,7 +10,20 @@ const client = await connect();
 const out = resolve('artifacts/mcp-native-state');
 await mkdir(out, { recursive: true });
 const call = async (name, args = {}) => structured(await client.callTool({ name, arguments: args }));
-const mutate = (name, args) => call(name, { request_id: randomUUID(), ...args });
+let cloneBusyRetries = 0;
+const mutate = async (name, args) => {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const response = await client.callTool({ name, arguments: { request_id: randomUUID(), ...args } });
+    // Tab installation can precede completion of normal OSF loading/hydration.
+    // The server now refuses clones in that interval; rejected receipts must
+    // be retried with a fresh ID after allowing the application to finish.
+    if (name === 'begin_design' && args.source === 'active' && response.isError && response.structuredContent?.code === 'workspace_busy') {
+      cloneBusyRetries++; await delay(100); continue;
+    }
+    return structured(response);
+  }
+  throw new Error('Active clone remained workspace_busy for 10 seconds');
+};
 const fixture = JSON.parse(await readFile(new URL('../../tests/fixtures/mcp/bp-symmetry.osf', import.meta.url), 'utf8'));
 const expected = fixture.workspace.designs[0].viewState.symmetry;
 try {
@@ -47,6 +60,6 @@ try {
   await writeFile(resolve(out, 'symmetry-after-id-reuse.osf'), checked.content);
   await mutate('discard_design', address);
   await mutate('discard_design', { draft_id: clone.draft_id, revision: clone.revision });
-  await writeFile(resolve(out, 'report.json'), JSON.stringify({ success: true, source: 'normal desktop OSF file-open', symmetry: expected, public_mcp_generations: 2, deleted_id_reused_without_pairing: true }, null, 2));
+  await writeFile(resolve(out, 'report.json'), JSON.stringify({ success: true, source: 'normal desktop OSF file-open', symmetry: expected, public_mcp_generations: 2, clone_busy_retries: cloneBusyRetries, deleted_id_reused_without_pairing: true }, null, 2));
   console.log('MCP NATIVE STATE PROBE PASSED', out);
 } finally { await client.close(); }

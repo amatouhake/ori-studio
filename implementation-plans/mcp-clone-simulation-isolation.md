@@ -13,5 +13,5 @@ MCP service/analysis, simulator worker/session boundary, shared simulation prepa
 - [x] Fence and revalidate active TreeMaker/BP snapshots; test races and stable clones.
 - [x] Move preprocessing into the worker and preserve source-target/CPU results.
 - [x] Test preprocessing cancellation/deadline and late-result isolation.
-- [ ] Run focused/full web and desktop validation and public MCP probes.
-- [ ] Document and push logical commits without opening a PR.
+- [x] Run focused/full web and desktop validation and public MCP probes.
+- [x] Document and push logical commits without opening a PR.
