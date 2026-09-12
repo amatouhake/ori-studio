@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   BP_FLAP_HANDLE_SIGNS,
@@ -158,6 +159,8 @@ describe('resize solve invariants', () => {
     // The sharpest one. A fractional flap coordinate makes the junction overlap
     // fractional, and BP's gadget generation then hard-errors for the WHOLE
     // design — every crease and conflict vanishes, with no toast and no log.
+    // Use Node's strict assertions in the hot sweep loops: Vitest's matcher
+    // bookkeeping costs more than the solve here. Keep case/value diagnostics.
     for (const c of cases) {
       const fields = [
         c.result.anchor.x,
@@ -167,17 +170,23 @@ describe('resize solve invariants', () => {
         c.result.radius,
       ];
       for (const value of fields) {
-        expect(Number.isInteger(value), `${describeCase(c)} -> ${value}`).toBe(true);
+        assert.equal(Number.isInteger(value), true, `${describeCase(c)} -> ${value}`);
       }
     }
   });
 
   it('never produces a negative box or an out-of-range radius', () => {
     for (const c of cases) {
-      expect(c.result.width, describeCase(c)).toBeGreaterThanOrEqual(0);
-      expect(c.result.height, describeCase(c)).toBeGreaterThanOrEqual(0);
-      expect(c.result.radius, describeCase(c)).toBeGreaterThanOrEqual(RADIUS.min);
-      expect(c.result.radius, describeCase(c)).toBeLessThanOrEqual(RADIUS.max);
+      assert(c.result.width >= 0, `${describeCase(c)} width ${c.result.width} must be >= 0`);
+      assert(c.result.height >= 0, `${describeCase(c)} height ${c.result.height} must be >= 0`);
+      assert(
+        c.result.radius >= RADIUS.min,
+        `${describeCase(c)} radius ${c.result.radius} must be >= ${RADIUS.min}`
+      );
+      assert(
+        c.result.radius <= RADIUS.max,
+        `${describeCase(c)} radius ${c.result.radius} must be <= ${RADIUS.max}`
+      );
     }
   });
 
@@ -188,15 +197,13 @@ describe('resize solve invariants', () => {
       const after = bpFlapOuterBox(c.result);
       const s = BP_FLAP_HANDLE_SIGNS[c.handle];
       if (s.sx !== 1) {
-        expect(after.x + after.width, `${describeCase(c)} east edge`).toBe(before.x + before.width);
+        assert.equal(after.x + after.width, before.x + before.width, `${describeCase(c)} east edge`);
       }
-      if (s.sx !== -1) expect(after.x, `${describeCase(c)} west edge`).toBe(before.x);
+      if (s.sx !== -1) assert.equal(after.x, before.x, `${describeCase(c)} west edge`);
       if (s.sy !== 1) {
-        expect(after.y + after.height, `${describeCase(c)} north edge`).toBe(
-          before.y + before.height
-        );
+        assert.equal(after.y + after.height, before.y + before.height, `${describeCase(c)} north edge`);
       }
-      if (s.sy !== -1) expect(after.y, `${describeCase(c)} south edge`).toBe(before.y);
+      if (s.sy !== -1) assert.equal(after.y, before.y, `${describeCase(c)} south edge`);
     }
   });
 
@@ -211,11 +218,12 @@ describe('resize solve invariants', () => {
       const s = BP_FLAP_HANDLE_SIGNS[c.handle];
       const check = (axis: string, was: number, now: number, asked: number) => {
         const got = now - was;
-        expect(Math.abs(got), `${describeCase(c)} ${axis} overshoot`).toBeLessThanOrEqual(
-          Math.abs(asked)
+        assert(
+          Math.abs(got) <= Math.abs(asked),
+          `${describeCase(c)} ${axis} overshoot: |${got}| must be <= |${asked}|`
         );
         if (asked !== 0 && got !== 0) {
-          expect(Math.sign(got), `${describeCase(c)} ${axis} direction`).toBe(Math.sign(asked));
+          assert.equal(Math.sign(got), Math.sign(asked), `${describeCase(c)} ${axis} direction`);
         }
       };
       if (s.sx !== 0) check('width', before.width, after.width, c.dx);
@@ -263,10 +271,10 @@ describe('resize solve invariants', () => {
     // and nothing weaker survives a drag.
     for (const c of cases) {
       const slack = Math.min(c.result.width, c.result.height);
-      expect(
-        slack,
-        `${describeCase(c)} -> w${c.result.width} h${c.result.height} r${c.result.radius}`
-      ).toBeLessThanOrEqual(1);
+      assert(
+        slack <= 1,
+        `${describeCase(c)} -> w${c.result.width} h${c.result.height} r${c.result.radius}: slack ${slack} must be <= 1`
+      );
     }
   });
 
@@ -328,7 +336,10 @@ describe('resize solve invariants', () => {
     // Growing a flap must not make it shorter in the folded model.
     for (const c of cases) {
       if (c.dx < 0 || c.dy < 0) continue;
-      expect(c.result.radius, describeCase(c)).toBeGreaterThanOrEqual(c.source.radius);
+      assert(
+        c.result.radius >= c.source.radius,
+        `${describeCase(c)} radius ${c.result.radius} must be >= ${c.source.radius}`
+      );
     }
   });
 
@@ -365,7 +376,7 @@ describe('resize solve invariants', () => {
     // makes an overshoot recoverable.
     for (const c of cases) {
       const back = solve(c.source, c.handle, 0, 0);
-      expect(back, describeCase(c)).toBeNull();
+      assert.equal(back, null, describeCase(c));
     }
   });
 });
