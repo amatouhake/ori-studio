@@ -18,7 +18,7 @@ use oristudio_cp::folding::{
     possible_overlap_search_for_subfaces_with_swap, prepare_subface_segments, prioritize_subfaces,
     two_colored_folding_estimate_from_segments, two_colored_subface_segments_from_segments,
 };
-use oristudio_cp::geometry::{LineColor, LineSegment, Point, RgbColor};
+use oristudio_cp::geometry::{FoldDirection, LineColor, LineSegment, Point, RgbColor};
 use oristudio_cp::io::{cp, ori};
 
 #[test]
@@ -236,6 +236,69 @@ fn initial_hierarchy_uses_mountain_valley_and_face_parity() {
             lower_face: 1,
         }]
     );
+}
+
+#[test]
+fn unassigned_crease_seeds_no_hierarchy_relation() {
+    // `LineColor::None` states no fold direction — a bare crease states
+    // nothing, and a `fold_direction_hint` is not a decision — so the hierarchy
+    // seed must not invent a valley-side order for it. Oriedita's identical
+    // else-arm (`FoldedFigure_Configurator.setupHierarchyList`) never observes
+    // NONE (declared in its `LineColor` enum, reached by no handler), so there
+    // is no upstream order to match here.
+    fn square_with(diagonal: LineSegment) -> Vec<LineSegment> {
+        let mut segments = square_with_diagonal();
+        segments.pop();
+        segments.push(diagonal);
+        segments
+    }
+    fn diagonal(color: LineColor) -> LineSegment {
+        LineSegment::with_color(Point::new(0.0, 0.0), Point::new(1.0, 1.0), color)
+    }
+    fn hierarchy_of(diagonal: LineSegment) -> InitialHierarchy {
+        initial_hierarchy_from_segments(&square_with(diagonal), 1)
+            .expect("hierarchy should not fail")
+            .expect("hierarchy")
+    }
+
+    // Controls: mountain and valley seed opposite orders.
+    assert_eq!(
+        hierarchy_of(diagonal(LineColor::Red1)).relations,
+        vec![HierarchyRelation {
+            upper_face: 0,
+            lower_face: 1,
+        }]
+    );
+    assert_eq!(
+        hierarchy_of(diagonal(LineColor::Blue2)).relations,
+        vec![HierarchyRelation {
+            upper_face: 1,
+            lower_face: 0,
+        }]
+    );
+
+    // Bare unassigned: same two faces, but no seeded order.
+    let none = hierarchy_of(diagonal(LineColor::None));
+    assert_eq!(none.faces_total, 2);
+    assert!(
+        none.relations.is_empty(),
+        "unassigned diagonal must seed no relation, got {:?}",
+        none.relations
+    );
+
+    // Hinted unassigned: a stated hint is still not a decision (cf. `solve_k`,
+    // which keeps None unknown, and `checks_spatial`, which flags it,
+    // regardless of hint).
+    for hint in [FoldDirection::Mountain, FoldDirection::Valley] {
+        let hinted = diagonal(LineColor::None).with_direction_hint(Some(hint));
+        assert_eq!(hinted.fold_direction_hint, Some(hint));
+        let hierarchy = hierarchy_of(hinted);
+        assert!(
+            hierarchy.relations.is_empty(),
+            "hinted-unassigned diagonal ({hint:?}) must seed no relation, got {:?}",
+            hierarchy.relations
+        );
+    }
 }
 
 #[test]
