@@ -48,8 +48,7 @@ fn orh_empty_roundtrip_is_stable() {
     let c0 = counts(&first);
     assert_eq!(c0, (0, 0), "empty ORH imports as phantom {c0:?}");
     let second = orh::import_orh_str(&orh::export_orh_string(&first)).expect("reimport");
-    let third =
-        orh::import_orh_str(&orh::export_orh_string(&second)).expect("third import");
+    let third = orh::import_orh_str(&orh::export_orh_string(&second)).expect("third import");
     assert_eq!(
         (c0, counts(&second), counts(&third)),
         (c0, c0, c0),
@@ -77,8 +76,7 @@ fn orh_single_entry_roundtrip_is_stable() {
     let c0 = counts(&first);
     assert_eq!(c0, (1, 1), "1-seg/1-circle ORH imports as {c0:?}");
     let second = orh::import_orh_str(&orh::export_orh_string(&first)).expect("reimport");
-    let third =
-        orh::import_orh_str(&orh::export_orh_string(&second)).expect("third import");
+    let third = orh::import_orh_str(&orh::export_orh_string(&second)).expect("third import");
     assert_eq!(
         (counts(&second), counts(&third)),
         (c0, c0),
@@ -94,8 +92,7 @@ fn orh_repo_fixture_roundtrip_is_stable() {
     let c0 = counts(&first);
     assert_eq!(c0, (1, 0), "fixture imports as {c0:?}");
     let second = orh::import_orh_str(&orh::export_orh_string(&first)).expect("reimport");
-    let third =
-        orh::import_orh_str(&orh::export_orh_string(&second)).expect("third import");
+    let third = orh::import_orh_str(&orh::export_orh_string(&second)).expect("third import");
     assert_eq!(
         (counts(&second), counts(&third)),
         (c0, c0),
