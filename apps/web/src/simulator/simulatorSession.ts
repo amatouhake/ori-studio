@@ -1,3 +1,4 @@
+import { measureFoldTargets } from './foldTargetAttainment';
 import { transfer } from 'comlink';
 import { PreparedModelCache } from '../lib/preparedModelCache';
 import type { SimulatorExportBackground } from '../lib/simulatorSettings';
@@ -1165,6 +1166,13 @@ const api = {
    * thread at all, so an exporter has no other way to see the fold. Triangles are
    * the solver's own (already triangulated) faces.
    */
+  measureFoldTargets() {
+    const active = requireSession();
+    const positions = new Float32Array(active.model.prepared.vertexCount * 3);
+    active.backend.readPositions(positions);
+    return measureFoldTargets(active.model.prepared, positions, active.foldPercent);
+  },
+
   exportGeometry(): SimulatorExportGeometry {
     const active = requireSession();
     const positions = new Float32Array(active.model.prepared.vertexCount * 3);

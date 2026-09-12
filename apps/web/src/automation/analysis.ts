@@ -114,10 +114,11 @@ export async function simulate(data: DesignData, amount: number, maxSteps: numbe
     // Reference is the application's actual CPU backend, deterministic and
     // available on desktop WebKit implementations without offscreen WebGL2.
     const model = await api.load(fold, { preferGpu: false });
-    await api.setFoldPercent(amount, model.token);
+    await api.setFoldPercent(amount * 100, model.token);
     const frame = await api.settle(maxSteps, { token: model.token });
     if (!frame) throw new AutomationError('simulation_lost', 'Simulation session disappeared');
     const mesh = await api.exportGeometry();
+    const attainment = await api.measureFoldTargets();
     const positions = new Float32Array(mesh.positions);
     if (!positions.every(Number.isFinite)) throw new AutomationError('simulation_diverged', 'Simulation produced non-finite positions; adjust assignments/angles or reduce fold_amount');
     const views: Record<string, string> = {};
@@ -129,7 +130,11 @@ export async function simulate(data: DesignData, amount: number, maxSteps: numbe
     }
     return { result: { backend: model.backend, vertex_count: model.vertexCount, face_count: model.faceCount,
       step: frame.step, converged: frame.converged, max_velocity: frame.maxVelocity, max_strain: frame.maxStrain,
-      fold_amount: frame.foldPercent, diagnostics: await api.diagnostics(),
+      fold_amount: frame.foldPercent / 100,
+      requested_fold_amount: amount, effective_fold_percent: frame.foldPercent,
+      solver_settled: frame.converged, target_attainment: attainment,
+      outcome: attainment.status === 'attained' ? (frame.converged ? 'settled_at_target' : 'moving_at_target') : (frame.converged ? 'settled_without_target_attainment' : 'step_limit_without_target_attainment'),
+      diagnostics: await api.diagnostics(),
       scope: 'Numerical physical relaxation, not a collision-free or global foldability proof.' }, views,
       obj: foldedObj({ positions, triangles: new Uint32Array(mesh.triangles), foldPercent: mesh.foldPercent }) };
   });
