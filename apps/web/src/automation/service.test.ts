@@ -35,6 +35,13 @@ describe('semantic MCP contracts', () => {
     expect(tree.operations.items.oneOf.length).toBeGreaterThan(20);
     expect(CAPABILITIES.operations.edit_tree.find(op => op.type === 'move_node')).toMatchObject({ required: ['id', 'loc'], fields: { loc: 'x, y' } });
   });
+  it('uses only edge-referenced vertices for quarantine bounds', () => {
+    const check = (vertices_coords: number[][]) => () => engines.guardFoldImport(JSON.stringify({ vertices_coords, edges_vertices: [[0, 1]] }));
+    expect(check([[0, -2], [1, -1], [0, 100]])).toThrow('#366');
+    expect(check([[0, 2], [1, 2], [0, -100], [0, 100]])).toThrow('#367');
+    expect(check([[0, 0], [1, 1], [0, -100], [0, 100]])).not.toThrow();
+    expect(() => engines.guardFoldImport(JSON.stringify({ file_frames: [{ vertices_coords: [[0, 0], [1, 1], [0, -100]], edges_vertices: [[0, 1]] }] }))).not.toThrow();
+  });
   it('guards the native importer-selected geometry, including frame-only files', () => {
     const good = { vertices_coords: [[0, 0], [1, 1]], edges_vertices: [[0, 1]], frame_classes: ['creasePattern'] };
     const negative = { ...good, vertices_coords: [[0, -2], [1, -1]] };

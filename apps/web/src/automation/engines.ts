@@ -51,7 +51,9 @@ export function guardFoldImport(text: string): void {
   const points = selected?.vertices_coords;
   if (!points?.length || points.some(p => p.length < 2 || !p.every(Number.isFinite))) throw new AutomationError('invalid_geometry', 'FOLD needs finite vertices_coords');
   let minY = Infinity, maxY = -Infinity;
-  for (const p of points) { minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]); }
+  const referenced = new Set(selected?.edges_vertices?.flat());
+  if (!referenced.size || [...referenced].some(i => !Number.isInteger(i) || i < 0 || !points[i])) throw new AutomationError('invalid_geometry', 'FOLD edges must reference valid vertices');
+  for (const index of referenced) { const p = points[index]; minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]); }
   if (maxY === minY) throw new AutomationError('upstream_import_limit', 'Zero-height FOLD import is excluded until #367 is resolved. Supply CP or ORI geometry.');
   if (maxY < 0) throw new AutomationError('upstream_import_limit', 'Entirely negative-y FOLD import is excluded until #366 is resolved. Translate the supplied FOLD to nonnegative y, or use CP.');
 }
