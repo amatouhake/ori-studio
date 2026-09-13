@@ -15,6 +15,15 @@ import { validateTool } from './tools';
 import { png, renderSvg } from './render';
 import { captureFoldedForms, exportDesign } from './export';
 
+/** Where the operating rules live. Served natively by the desktop MCP server
+ * (`apps/tauri/src-tauri/src/mcp/guidance.rs`) from `docs/mcp/`; listed here so
+ * a client that ignores server instructions still finds them. */
+export const GUIDANCE = {
+  prompt: 'origami-workflow',
+  resources: ['ori-studio://guide/diagnostics', 'ori-studio://guide/recipes', 'ori-studio://guide/knowledge'],
+  read_first: 'ori-studio://guide/diagnostics',
+} as const;
+
 interface Draft {
   id: string; title: string; revision: number; data: DesignData; base: CpExperimentBase;
   preserveCompanions: boolean; checkpoints: Map<string, { label: string; data: DesignData }>;
@@ -153,6 +162,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       drafts: [...drafts.values()].map(describe), limits: LIMITS,
       construction_inputs: CONSTRUCTION_INPUTS, capabilities: CAPABILITIES,
       workflow: 'begin_design → inspect_design → edit → analyze/simulate → job_status → render_view → repair → export_design → commit_design',
+      guidance: GUIDANCE,
     });
     if (name === 'workspace_history') {
       if (!workspaceOperationsIdle()) throw new AutomationError('workspace_busy', 'An application action is running');

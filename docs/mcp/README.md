@@ -67,6 +67,24 @@ Tool discovery includes complete strict JSON schemas; `workspace` also returns
 units, ordered construction inputs, current revisions, limits and the live
 history labels. Use those contracts instead of guessing parameter names.
 
+The server also serves its operating guidance, so an agent needs no external
+briefing (`workspace.guidance` repeats the names for clients that ignore
+server instructions):
+
+| MCP surface | Content | Source file |
+| --- | --- | --- |
+| prompt `origami-workflow` | One page of operating rules and the default tool loop | [`agent-prompt.md`](agent-prompt.md) |
+| resource `ori-studio://guide/diagnostics` | Check / fold / simulation / TreeMaker / BP result → meaning → action tables | [`diagnostics.md`](diagnostics.md) |
+| resource `ori-studio://guide/recipes` | Step-by-step workflows R1–R7 | [`recipes.md`](recipes.md) |
+| resource `ori-studio://guide/knowledge` | The source-backed knowledge base the two above are derived from | [`../origami-design-knowledge.md`](../origami-design-knowledge.md) |
+
+The text is compiled into the desktop binary (`apps/tauri/src-tauri/src/mcp/guidance.rs`)
+from those files, so editing the files changes what agents are told on the
+next build; `apps/web/src/automation/agentGuides.test.ts` fails if a guide
+names a tool, operation or label that does not exist. For agents working from
+a checkout, the repo-local skill `.agents/skills/ori-studio-origami-agent/`
+points at the same material.
+
 | Stage | Tools | Result |
 | --- | --- | --- |
 | Discover and begin | `workspace`, `begin_design` | Live summaries and an isolated draft ID/revision |
@@ -209,7 +227,10 @@ Outputs go to ignored `artifacts/mcp-acceptance/` and
 `artifacts/mcp-design-engines/`; set `ORI_MCP_ARTIFACTS` to override either.
 They include transcripts, assertions, reports, PNG views and editable files.
 `scripts/mcp/call.mjs` reads a single `{ "name": "workspace", "arguments": {} }`
-tool call from stdin for additional probes (or lists tools when given no name).
+tool call from stdin for additional probes (or lists tools when given no name;
+`{ "name": "prompts/list" }`, `{ "prompt": "origami-workflow" }`,
+`{ "name": "resources/list" }` and `{ "resource": "ori-studio://guide/diagnostics" }`
+read the guidance surface).
 
 See [the implementation report](report.md) for measured results and limitations,
 and [architecture](architecture.md) for the transport and transaction design.

@@ -28,6 +28,14 @@ describe('semantic MCP contracts', () => {
     expect(() => validateTool('edit_creases', input)).toThrow();
     expect(TOOLS.every(t => t.inputSchema.additionalProperties === false)).toBe(true);
   });
+  it('points agents at the native guidance prompt and resources from workspace', async () => {
+    const { service } = setup();
+    const guidance = value(await service.call('workspace', {})).guidance as { prompt: string; resources: string[]; read_first: string };
+    expect(guidance.prompt).toBe('origami-workflow');
+    expect(guidance.resources).toContain(guidance.read_first);
+    expect(guidance.resources.every(uri => uri.startsWith('ori-studio://guide/'))).toBe(true);
+    service.dispose();
+  });
   it('preserves raw schema constraints and supplies compact operation discovery', () => {
     const analyze = TOOLS.find(t => t.name === 'analyze_design')!.inputSchema.properties as Record<string, Record<string, unknown>>;
     expect(analyze.case_limit.maximum).toBe(16);

@@ -536,6 +536,14 @@ feature end-to-end", or "take this from plan to PR", use the repo-local
 owns planning, implementation, validation selection, draft PR creation, and PR
 handoff notes.
 
+For driving the desktop app through its MCP server as an origami agent —
+checking, repairing, designing, folding or exporting — use the repo-local
+`ori-studio-origami-agent` skill under `.agents/skills/ori-studio-origami-agent/`.
+It points at the guidance the server itself serves (`docs/mcp/agent-prompt.md`,
+`diagnostics.md`, `recipes.md`) and at `docs/origami-design-knowledge.md`, the
+source-backed knowledge base those are derived from; extend the knowledge base
+first when an agent needs something the guides do not say.
+
 For checking whether an upstream has moved into code we depend on, use the
 repo-local `upstream-drift` skill under `.agents/skills/upstream-drift/`. It
 triages new upstream commits into port-or-skip buckets, writes a sync plan and

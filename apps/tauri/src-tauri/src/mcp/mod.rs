@@ -10,8 +10,10 @@ use axum::{
 use rmcp::{
     ErrorData, RoleServer, ServerHandler,
     model::{
-        CallToolRequestParams, CallToolResult, Content, Implementation, ListToolsResult,
-        PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
+        CallToolRequestParams, CallToolResult, Content, GetPromptRequestParams, GetPromptResult,
+        Implementation, ListPromptsResult, ListResourcesResult, ListToolsResult,
+        PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult, ServerCapabilities,
+        ServerInfo, Tool,
     },
     service::RequestContext,
     transport::streamable_http_server::{
@@ -30,6 +32,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 pub mod folding;
+pub mod guidance;
 
 const MAX_BODY: usize = 8 * 1024 * 1024;
 const MAX_PENDING: usize = 32;
@@ -90,9 +93,52 @@ struct Handler {
 }
 impl ServerHandler for Handler {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("ori-studio", env!("CARGO_PKG_VERSION")))
-            .with_instructions("Autonomous origami workflow: workspace → begin_design → inspect_design → edit → analyze_design/simulate_design → job_status → render_view → repair → export_design → commit_design. Experiments are isolated. Quote exact revisions and unique mutation request_id values. Retry lost responses with identical arguments and IDs. No host execution or filesystem access.")
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_prompts()
+                .enable_resources()
+                .enable_tools()
+                .build(),
+        )
+        .with_server_info(Implementation::new("ori-studio", env!("CARGO_PKG_VERSION")))
+        .with_instructions("Autonomous origami workflow: workspace → begin_design → inspect_design → edit → analyze_design/simulate_design → job_status → render_view → repair → export_design → commit_design. Experiments are isolated. Quote exact revisions and unique mutation request_id values. Retry lost responses with identical arguments and IDs. No host execution or filesystem access. Read the prompt `origami-workflow` for the operating rules, and the resource `ori-studio://guide/diagnostics` before interpreting analyze_design results; `ori-studio://guide/recipes` and `ori-studio://guide/knowledge` hold the workflows and the reference behind them.")
+    }
+    // Guidance is static text compiled from `docs/`; it never touches the
+    // renderer, so it is answered here without the `ready`/`enabled` gate that
+    // tool calls need.
+    async fn list_prompts(
+        &self,
+        _: Option<PaginatedRequestParams>,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        Ok(ListPromptsResult::with_all_items(guidance::prompt_list()))
+    }
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResult, ErrorData> {
+        guidance::prompt(&request.name).ok_or_else(|| {
+            ErrorData::invalid_params(format!("unknown prompt: {}", request.name), None)
+        })
+    }
+    async fn list_resources(
+        &self,
+        _: Option<PaginatedRequestParams>,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        Ok(ListResourcesResult::with_all_items(
+            guidance::resource_list(),
+        ))
+    }
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        guidance::read_resource(&request.uri).ok_or_else(|| {
+            ErrorData::resource_not_found(format!("unknown resource: {}", request.uri), None)
+        })
     }
     async fn list_tools(
         &self,
