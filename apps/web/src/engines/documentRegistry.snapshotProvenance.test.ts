@@ -615,3 +615,64 @@ it('forget abandons cleanup of an ownership-stale hydration without resurrecting
   await expect(r.registry.serialize(a)).rejects.toThrow('not registered');
   r.registry.dispose();
 });
+
+describe('fresh CLI review: materialization waiter lifetime', () => {
+  it.each(['create', 'hydrate'] as const)('a never-returning %s fails at the exact zero recovery budget on loss', async (operation) => {
+    const r = rig('treemaker', { maxEngineRecoveryAttempts: 0 });
+    const a = doc('a', r.kind);
+    if (operation === 'hydrate') r.registry.adopt('a', 'v2');
+    const gate = operation === 'hydrate' ? r.holdHydrate() : r.holdCreate();
+    let error: unknown;
+    const acquiring = r.registry.acquire(a).catch(failure => { error = failure; });
+    await gate.entered;
+    r.losses.lose('treemaker'); r.failover();
+    for (let i = 0; i < 40; i++) await Promise.resolve();
+    expect(error).toMatchObject({ name: 'EngineRecoveryExhaustedError', attempts: 1 });
+    expect(r.calls.create + r.calls.hydrate).toBe(1);
+    gate.release();
+    await acquiring;
+    expect(r.active().freed).toEqual([]);
+    r.registry.dispose();
+  });
+
+  it('a healthy replacement recovers while the old hydration RPC never responds', async () => {
+    const r = rig('treemaker', { maxEngineRecoveryAttempts: 1 });
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v3');
+    const gate = r.holdHydrate();
+    let recovered: number | undefined;
+    const acquiring = r.registry.acquire(a).then(handle => { recovered = handle; });
+    await gate.entered;
+    r.losses.lose('treemaker'); r.failover();
+    for (let i = 0; i < 40; i++) await Promise.resolve();
+    expect(recovered).toBeDefined();
+    expect(r.active().read(recovered!)).toBe('v3');
+    gate.release();
+    await acquiring;
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(r.active().freed).toEqual([]);
+    expect(r.engines[0]!.freed).toEqual([]);
+    r.registry.dispose();
+  });
+
+  it('forget before stale hydration returns cannot miss cleanup abandonment', async () => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'OLD');
+    const hydration = r.holdHydrate();
+    let error: unknown;
+    const acquiring = r.registry.acquire(a).catch(failure => { error = failure; });
+    await hydration.entered;
+    await r.registry.forget('a');
+    const cleanup = r.holdFree();
+    hydration.release();
+    await cleanup.entered;
+    for (let i = 0; i < 40; i++) await Promise.resolve();
+    expect(error).toMatchObject({ name: 'DocumentOwnershipChangedError' });
+    expect(r.registry.isHot('a')).toBe(false);
+    cleanup.release();
+    await acquiring;
+    await expect(r.registry.serialize(a)).rejects.toThrow('not registered');
+    r.registry.dispose();
+  });
+});
