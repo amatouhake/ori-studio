@@ -44,23 +44,26 @@ export function createBoxPleatCodec(
   getClient: () => Promise<OristudioBpClient>
 ): DesignKindCodec {
   return {
-    async create() {
-      const api = await getClient();
+    // The registry's per-operation client when it resolved one (see
+    // `resolveClient` on the codec interface); direct callers resolve here.
+    resolveClient: getClient,
+    async create(client?: unknown) {
+      const api = (client as OristudioBpClient | undefined) ?? (await getClient());
       // Upstream's starter project, which is what choosing Box-pleated produces
       // today. Note it arrives with content — see `editCount` in the tabs plan;
       // "has content" is not the right close-confirmation predicate for this kind.
       return api.newSampleProject();
     },
-    async hydrate(text: string) {
-      const api = await getClient();
+    async hydrate(text: string, client?: unknown) {
+      const api = (client as OristudioBpClient | undefined) ?? (await getClient());
       return api.loadProject(text);
     },
-    async serialize(handle: number) {
-      const api = await getClient();
+    async serialize(handle: number, client?: unknown) {
+      const api = (client as OristudioBpClient | undefined) ?? (await getClient());
       return api.exportBps(handle);
     },
-    async free(handle: number) {
-      const api = await getClient();
+    async free(handle: number, client?: unknown) {
+      const api = (client as OristudioBpClient | undefined) ?? (await getClient());
       await api.freeProject(handle).catch(() => undefined);
     },
   };
