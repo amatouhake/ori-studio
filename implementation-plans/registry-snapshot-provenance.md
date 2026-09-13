@@ -75,7 +75,7 @@ recovery after its engine dies.
 - [x] Publish per dispatch and abandon cleanup waits on owning-generation loss
 - [x] Focused tests, including exact recovery budget and native-save propagation
 - [x] Fresh read-only Astra `codex exec` review (no session self-review/subagents)
-- [ ] Full web tests, TypeScript, ESLint, diff-check; branch and local handoff updates
+- [x] Full web tests, TypeScript, ESLint, diff-check; prepare reviewed branch/local handoff updates
 
 
 Fresh CLI review 1 identified two additional P2s: a never-returning
@@ -94,3 +94,24 @@ No session self-review or session subagent review was used for this follow-up.
 Reviewer outputs are local: `/tmp/ori-pass8-review-1.txt` and
 `/tmp/ori-pass8-review-2.txt`. Focused validation: 7 files / 132 tests passed;
 TypeScript and full ESLint passed on the owning branch.
+
+
+Final integration validation for the follow-up (source identical to the final
+fresh CLI-reviewed correction):
+
+- Focused registry/provenance/ownership, affinity/recovery, history/undo, and
+  native-save tests: 13 files / 205 tests passed.
+- `npm --workspace @treemaker/web run test --ignore-scripts -- --maxWorkers=4`:
+  507 files / 6200 tests passed; 10 added regression cases.
+- `npm --workspace @treemaker/web run typecheck --ignore-scripts`: passed.
+- `npm run lint:web`: full lint passed.
+- `git diff --check`: passed.
+
+The two requested findings were confirmed, plus the two P2s from fresh CLI
+review 1; one additional correction/review cycle resolved them. Fresh CLI
+review 2 found no scoped P1/P2. No Rust/Tauri/WASM/build source changed, so prior
+validation/artifacts carry over; Windows was not rebuilt. Registry-owned
+create/hydrate and discarded-cleanup waits now release on loss/supersede.
+Generic post-acquisition direct-RPC hangs remain outside this task's policy;
+existing P3 notes remain unchanged. The local result/matrix/manifest retain the
+commit mapping and independent reviewer evidence without being committed.
