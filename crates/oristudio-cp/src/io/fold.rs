@@ -594,6 +594,23 @@ fn normalize_imported_fold_lines(
     Ok(())
 }
 
+/// The similarity transform [`import_fold_document`] applies to every import,
+/// factored out for the share RAW-fallback self-check.
+///
+/// A RAW body is the document's own FOLD text, so decoding it always lands
+/// here: the fallback recipient sees the *normalized* document, exactly as
+/// opening the same bytes as a `.fold` file. The encoder's fallback check
+/// compares against this normalization rather than the raw source — every
+/// other field still compares exactly.
+pub(crate) fn normalize_like_fold_import(model: &mut CreasePatternModel) {
+    let mut bounds = FoldImportBounds::default();
+    for segment in &model.line_segments {
+        bounds.include(segment.a);
+        bounds.include(segment.b);
+    }
+    normalize_imported_fold_lines(model, bounds);
+}
+
 fn normalize_imported_fold_point(
     point: Point,
     source_a: Point,
