@@ -487,3 +487,266 @@ describe('serialize-before-park ordering', () => {
     registry.dispose();
   });
 });
+
+describe('park commit-before-cleanup matrix (A: [I5] + [I10])', () => {
+  /**
+   * Boundary matrix for the serialize/cleanup ordering. The park flow used to
+   * commit only after `free` resolved, so a cleanup hang + engine loss dropped
+   * already-serialized FRESH text (recovering OLD, or nothing), and a cleanup
+   * failure discarded it outright. Each test holds exactly one phase on a
+   * deferred gate — no wall-clock timing drives any interleaving. `mustSettle`
+   * is only a fail-fast hang detector (settled paths resolve in microtasks).
+   *
+   * Codec needs independent serialize AND free gates here (the file-level
+   * `gatedKind` only gates serialize), plus a `freeEntered` signal so tests
+   * observe "serialize resolved, free entered" deterministically.
+   */
+  function deferred() {
+    let resolve: () => void = () => {};
+    const promise = new Promise<void>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  }
+  function twoGateKind(engine: EngineId = 'treemaker') {
+    const contents = new Map<number, string>();
+    let nextHandle = 1;
+    const serializeGates: Array<Promise<void>> = [];
+    const freeGates: Array<Promise<void>> = [];
+    const freeEnteredGate = deferred();
+    const kind = {
+      id: 'fake',
+      engine,
+      codec: {
+        create: vi.fn(async () => {
+          const handle = nextHandle++;
+          contents.set(handle, 'new');
+          return handle;
+        }),
+        hydrate: vi.fn(async (text: string) => {
+          const handle = nextHandle++;
+          contents.set(handle, text);
+          return handle;
+        }),
+        serialize: vi.fn(async (handle: number) => {
+          const gate = serializeGates.shift();
+          if (gate) await gate;
+          const text = contents.get(handle);
+          if (text === undefined) throw new Error(`serialize on dead handle ${handle}`);
+          return text;
+        }),
+        free: vi.fn(async (handle: number) => {
+          freeEnteredGate.resolve();
+          const gate = freeGates.shift();
+          if (gate) await gate;
+          contents.delete(handle);
+        }),
+      },
+    } as unknown as DesignKindDescriptor;
+    return {
+      kind,
+      holdSerialize: () => {
+        const gate = deferred();
+        serializeGates.push(gate.promise);
+        return gate.resolve;
+      },
+      holdFree: () => {
+        const gate = deferred();
+        freeGates.push(gate.promise);
+        return gate.resolve;
+      },
+      freeEntered: freeEnteredGate.promise,
+      edit: (handle: number, text: string) => contents.set(handle, text),
+      read: (handle: number) => contents.get(handle),
+    };
+  }
+
+  function lossChannel() {
+    const listeners = new Set<(loss: { engine: EngineId }) => void>();
+    return {
+      subscribe: (listener: (loss: { engine: EngineId }) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      lose: (engine: EngineId) => {
+        for (const listener of [...listeners]) listener({ engine });
+      },
+    };
+  }
+
+  function mustSettle<T>(promise: Promise<T>, what: string, ms = 500): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`hung: ${what}`)), ms)),
+    ]);
+  }
+
+  it('A1: loss after serialize resolves but before free resolves recovers FRESH (OLD snapshot present)', async () => {
+    const fake = twoGateKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    const h0 = await registry.acquire(document);
+    fake.edit(h0, 'OLD');
+    await registry.park('a');
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'FRESH');
+    // Serialize resolves immediately; only the cleanup hangs.
+    const releaseFree = fake.holdFree();
+    const parking = registry.park('a');
+    await fake.freeEntered;
+
+    engines.lose('treemaker');
+
+    // The park caller is released without depending on the dead worker, and
+    // the already-serialized text — not the older snapshot — is what survives.
+    await mustSettle(parking, 'in-flight park after engine loss');
+    await expect(mustSettle(registry.serialize(document), 'serialize after loss')).resolves.toBe(
+      'FRESH'
+    );
+    const h2 = await mustSettle(registry.acquire(document), 'acquire after loss');
+    expect(fake.read(h2)).toBe('FRESH');
+    // Let the stranded cleanup drain: stale, so it frees but never overwrites.
+    releaseFree();
+    await parking;
+    await expect(registry.serialize(document)).resolves.toBe('FRESH');
+    registry.dispose();
+  });
+
+  it('A2: loss after serialize resolves but before free resolves recovers FRESH (no prior snapshot)', async () => {
+    const fake = twoGateKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+    const events: Array<{ type: string; recoverable?: boolean }> = [];
+    registry.subscribe((event) => {
+      if (event.type === 'parked') events.push({ type: event.type, recoverable: event.recoverable });
+    });
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'FRESH');
+    const releaseFree = fake.holdFree();
+    const parking = registry.park('a');
+    await fake.freeEntered;
+
+    engines.lose('treemaker');
+
+    await mustSettle(parking, 'in-flight park after engine loss');
+    await expect(mustSettle(registry.serialize(document), 'serialize after loss')).resolves.toBe(
+      'FRESH'
+    );
+    // The loss is reported recoverable: the text made it to safety before cleanup.
+    expect(events.some((event) => event.recoverable === true)).toBe(true);
+    releaseFree();
+    await parking;
+    registry.dispose();
+  });
+
+  it('A3: a free failure after a successful serialize never discards the text', async () => {
+    const fake = twoGateKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'FRESH');
+    vi.mocked(fake.kind.codec.free).mockRejectedValueOnce(new Error('free exploded'));
+
+    // The park resolves with the text safe — cleanup failure is logged, not
+    // thrown at the caller — and every later read sees FRESH.
+    await registry.park('a');
+    await expect(registry.serialize(document)).resolves.toBe('FRESH');
+    const h2 = await registry.acquire(document);
+    expect(fake.read(h2)).toBe('FRESH');
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+    registry.dispose();
+  });
+
+  it('A4: early commit still loses to a superseding adoptHandle park (epoch invariant)', async () => {
+    const fake = twoGateKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+    // Old park serializes promptly; its cleanup hangs.
+    const releaseOldFree = fake.holdFree();
+    const parkingOld = registry.park('a');
+    await fake.freeEntered;
+
+    // Supersede while the old cleanup is still pending: the replacement's
+    // park must win even though the old text committed before its own free.
+    const h2 = await fake.kind.codec.create();
+    fake.edit(h2, 'NEW');
+    await registry.adoptHandle(document, h2);
+    await registry.park('a');
+    await expect(registry.serialize(document)).resolves.toBe('NEW');
+
+    releaseOldFree();
+    await parkingOld;
+    await expect(registry.serialize(document)).resolves.toBe('NEW');
+    expect(vi.mocked(fake.kind.codec.free).mock.calls.length).toBe(2);
+    registry.dispose();
+  });
+
+  it('A5: serialize rejects, then loss during cleanup keeps OLD and releases waiters', async () => {
+    const fake = twoGateKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'v1');
+    await registry.park('a');
+
+    const h2 = await registry.acquire(document);
+    fake.edit(h2, 'v2 fresh');
+    vi.mocked(fake.kind.codec.serialize).mockRejectedValueOnce(new Error('engine exploded'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const releaseFree = fake.holdFree();
+    const parking = registry.park('a');
+    await fake.freeEntered;
+
+    engines.lose('treemaker');
+
+    // Nothing new was serialized, so the older snapshot stands — responsively.
+    await mustSettle(parking, 'in-flight park after engine loss');
+    await expect(mustSettle(registry.serialize(document), 'serialize after loss')).resolves.toBe(
+      'v1'
+    );
+    releaseFree();
+    await parking;
+    consoleError.mockRestore();
+    registry.dispose();
+  });
+
+  it('A6: serialize rejects, then loss with no snapshot stays unrecoverable but responsive', async () => {
+    const fake = twoGateKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    await registry.acquire(document);
+    vi.mocked(fake.kind.codec.serialize).mockRejectedValueOnce(new Error('engine exploded'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const releaseFree = fake.holdFree();
+    const parking = registry.park('a');
+    await fake.freeEntered;
+
+    engines.lose('treemaker');
+
+    await mustSettle(parking, 'in-flight park after engine loss');
+    await expect(
+      mustSettle(registry.serialize(document), 'serialize after loss')
+    ).rejects.toThrow('not registered');
+    const h2 = await mustSettle(registry.acquire(document), 'acquire after loss');
+    expect(fake.read(h2)).toBe('new');
+    releaseFree();
+    await parking;
+    consoleError.mockRestore();
+    registry.dispose();
+  });
+});
