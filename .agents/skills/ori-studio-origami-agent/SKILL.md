@@ -58,9 +58,11 @@ edit → `analyze_design` (`checks`, then `flat_fold`) → `job_status` →
 ## Five things agents get wrong
 
 1. **`Angles` is geometry, not assignment.** Never flip mountain/valley for
-   it. `Maekawa`/`BigLittleBig` are assignment problems solved jointly:
-   `|M − V| = 2` must hold at the vertex *and* at the far end of every crease
-   you change; enumerate, apply, `checks`, `rollback_design`, next.
+   it, and never move a vertex to silence it unasked. `Maekawa`/`BigLittleBig`
+   are assignment problems solved jointly: `|M − V| = 2` must hold at the
+   vertex *and* at the far end of every crease you change; compute the
+   candidates from `inspect_design`, present them, apply the chosen one (or
+   act under "fix the assignments"), `checks`, `rollback_design`, next.
 2. **Precondition before any `CheckCamv` reading:** at that `point`, no
    incident line is `unassigned` and every mountain/valley line has
    `abs(fold_angle_degrees) == 180`. Otherwise the entry is `Spatial*` and
@@ -76,12 +78,17 @@ edit → `analyze_design` (`checks`, then `flat_fold`) → `job_status` →
    The moment you edit that CP, any other rule appears, or the CP comes from
    Box Pleating, this exception is gone — validate normally. A BP-derived CP
    is never assumed flat-foldable.
-5. **Consent before changing the design.** Relieving strain, changing edge
-   lengths, adding nodes/conditions, `make_root`, re-optimizing from a new
-   layout, moving CP vertices, or stepping BP stretch configurations (no
-   documented preference exists) all change what the user asked for. Default
-   actions are only those the tool's own failure message prescribes
-   (diagnostics §7 lists them per `cp_status`).
+5. **Consent before changing the design (KB §0.1).** Moving or deleting
+   creases, reassigning or deciding creases, changing fold angles, relieving
+   strain, changing edge lengths, adding nodes/conditions, `make_root`,
+   re-optimizing from a new layout, `resize_flap`, or stepping BP stretch
+   configurations (no documented preference exists) all change what the user
+   asked for: propose from `inspect_design`, apply after agreement or under
+   a delegation that names the class ("pack these flaps" → `move_flap` only;
+   "fix the assignments" → `assign_creases` only). Default actions are only
+   the tools' own prescriptions: `repair: overlaps`/`intersections`/
+   `merge_vertices`, `snap` on 22.5°/box-pleat, and TreeMaker's
+   failure-message remedies (diagnostics §7).
 
 ## What you cannot do
 

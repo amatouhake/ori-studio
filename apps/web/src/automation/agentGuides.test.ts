@@ -17,6 +17,14 @@ const prompt = read('agent-prompt.md');
 const diagnostics = read('diagnostics.md');
 const recipes = read('recipes.md');
 const guides = { prompt, diagnostics, recipes };
+const knowledgeBase = readFileSync(resolve(process.cwd(), '../../docs/origami-design-knowledge.md'), 'utf8');
+const skill = readFileSync(resolve(process.cwd(), '../../.agents/skills/ori-studio-origami-agent/SKILL.md'), 'utf8');
+
+/** Paragraphs (blank-line separated blocks; a table row is its own block) mentioning `needle`. */
+const blocksWith = (text: string, needle: string) =>
+  text.split(/\n\s*\n/).flatMap(block => block.split('\n').filter(line => line.startsWith('|')).length > 1
+    ? block.split('\n').filter(line => line.includes(needle))
+    : block.includes(needle) ? [block] : []);
 
 const toolNames = new Set(TOOLS.map(t => t.name));
 const analyses = (TOOLS.find(t => t.name === 'analyze_design')!.inputSchema.properties as Record<string, { enum?: string[] }>).analysis.enum!;
@@ -74,8 +82,12 @@ describe('agent guides name only real tools, operations and labels', () => {
 
   it('diagnostics cover every CheckCamv rule and colour label the kernel emits', () => {
     for (const rule of ['NumberOfFolds', 'Angles', 'Maekawa', 'BigLittleBig', 'None']) expect(diagnostics).toContain(`\`${rule}\``);
-    for (const colour of ['NotEnoughMountain', 'NotEnoughValley', 'Equal', 'Correct']) expect(diagnostics).toContain(`\`${colour}\``);
+    for (const colour of ['NotEnoughMountain', 'NotEnoughValley', 'Equal', 'Correct', 'Unknown']) expect(diagnostics).toContain(`\`${colour}\``);
     for (const spatial of ['SpatialClosure', 'SpatialUndecided', 'SpatialUnknowable', 'SpatialInteriorBorder', 'SpatialSelfIntersection']) expect(diagnostics).toContain(`\`${spatial}\``);
+    // Every spatial rule the kernel can emit (lib.rs spatial_closure_diagnostics / undecided / unknowable arms).
+    for (const rule of ['Closure', 'Rigid', 'ClosureUnreachable', 'Undecided', 'UndecidedChoice', 'UnsplitJunction', 'NotEnoughCreases', 'TooManyUnknowns', 'NoUniqueAnswer']) {
+      expect(diagnostics, rule).toMatch(new RegExp(`\\| \`Spatial\\w+\` / \`${rule}\``));
+    }
     for (const status of ['has_full_cp', 'edges_too_short', 'polys_not_valid', 'polys_not_filled', 'polys_multiple_ibps', 'vertices_lack_depth', 'facets_not_valid', 'not_local_root_connectable']) expect(diagnostics).toContain(`\`${status}\``);
   });
 
@@ -86,7 +98,7 @@ describe('agent guides name only real tools, operations and labels', () => {
     // Angles is never an assignment fix; angular_flat_foldability is a one-crease completion.
     expect(diagnostics).toMatch(/Angles[^\n]*Flip M\/V/);
     expect(prompt).toMatch(/never fix it by flipping mountain\/valley/);
-    expect(diagnostics).toMatch(/Adds \*\*one\*\* crease/);
+    expect(diagnostics).toMatch(/adds \*\*one\*\* crease/i);
     // The narrow TreeMaker rule keeps its provenance scope in every guide.
     for (const text of [prompt, diagnostics, recipes]) {
       expect(text).toMatch(/unedited/);
@@ -98,6 +110,70 @@ describe('agent guides name only real tools, operations and labels', () => {
     expect(recipes).not.toMatch(/prefer the (first|largest|smallest) (configuration|pattern)/i);
     // Semantic fallbacks are consent-gated.
     expect(recipes).toMatch(/relieve_all_strain[^\n]*consent|consent[^\n]*relieve_all_strain/);
-    expect(prompt).toMatch(/require the user's explicit agreement/);
+    expect(prompt).toMatch(/requires the user's explicit agreement/);
+  });
+});
+
+describe('action/consent boundary (KB §0.1)', () => {
+  it('the knowledge base defines the boundary the guides cite', () => {
+    expect(knowledgeBase).toMatch(/^### 0\.1 Action boundary/m);
+    for (const text of [diagnostics, recipes, skill]) expect(text).toContain('§0.1');
+  });
+
+  // Every mention of a design-changing operation in the guides sits in a block tagged [H].
+  const semantic = ['transform_creases', 'delete_creases', 'assign_creases', 'resize_flap', 'stretch_config', 'stretch_pattern', 'relieve_all_strain', 'relieve_strain', 'make_root', 'split_edge', 'path_active', 'path_angle_quant'];
+  it.each(semantic)('%s is only ever an [H] step in diagnostics and recipes', op => {
+    for (const [name, text] of [['diagnostics', diagnostics], ['recipes', recipes]] as const) {
+      const blocks = blocksWith(text, `\`${op}`);
+      for (const block of blocks) {
+        // Table header/legend rows and "Do not" cells are not actions; every action cell must carry [H].
+        if (/^\| `(kind|repair|cp_status|Field|Rule|Step)`? ?/.test(block) && block.includes('---')) continue;
+        expect(block, `${name}: ${block.slice(0, 120)}`).toMatch(/\[H\]|Do \*\*not\*\*|never|forbidden|Forbidden/i);
+      }
+      expect(blocks.length, `${name} never mentions ${op}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('R3 does not let the agent move geometry for Angles without agreement', () => {
+    const row = recipes.split('\n').find(line => line.startsWith('| `Angles`'))!;
+    expect(row).toMatch(/\*\*\[H\]\*\*/);
+    expect(row).toMatch(/after agreement/);
+    expect(row).not.toMatch(/^\| `Angles` \| [^|]* \| Never reassign\. `transform_creases`/);
+    const diag = diagnostics.split('\n').find(line => line.startsWith('| `CheckCamv` / `Angles`'))!;
+    expect(diag).toMatch(/\[H\] Otherwise report/);
+    expect(diag).toMatch(/move vertices unasked/);
+  });
+
+  it('R3 presents Maekawa / BigLittleBig candidates instead of applying them', () => {
+    for (const rule of ['Maekawa', 'BigLittleBig']) {
+      const row = recipes.split('\n').find(line => line.startsWith(`| \`${rule}\``))!;
+      expect(row).toMatch(/\*\*\[H\]\*\*/);
+      expect(row).toMatch(/Present/);
+    }
+    expect(prompt).toMatch(/apply one only after the user chooses or has delegated/);
+  });
+
+  it('R5 distinguishes move_flap (delegated by a packing request) from resize_flap (explicit consent) and gates stretch stepping', () => {
+    const packing = recipes.slice(recipes.indexOf('## R5'), recipes.indexOf('## R6'));
+    expect(packing).toMatch(/`resize_flap` is never a packing\s+shortcut/);
+    expect(packing).toMatch(/explicit consent/);
+    expect(packing).not.toMatch(/move\/resize/);
+    expect(packing).toMatch(/\*\*\[H\]\*\* Stepping `stretch_config/);
+    expect(packing).toMatch(/only when the\s+user asks for alternatives, or agrees/);
+    expect(packing).toMatch(/without ranking/);
+    const diag = diagnostics.split('\n').find(line => line.startsWith('| `packing.valid: false`'))!;
+    expect(diag).toMatch(/\[H, delegated by "pack these flaps"\] `move_flap`/);
+    expect(diag).toMatch(/\[H, explicit consent\] `resize_flap`/);
+    expect(prompt).toMatch(/"Pack these flaps" delegates flap placement \(`move_flap`\), not sizes/);
+  });
+
+  it('the default (no-consent) action set is closed and identical across guides', () => {
+    for (const text of [prompt, skill]) {
+      expect(text).toMatch(/`repair: overlaps`\/`intersections`\/\s*`merge_vertices`/);
+      expect(text).toMatch(/snap[^\n]*22\.5°\/box-pleat/);
+      expect(text).toMatch(/failure-message remedies/);
+    }
+    expect(recipes).toMatch(/The only default \(\[U\]\) actions here are `repair:\n"intersections"`, `repair: "snap"`[^\n]*\n`repair: "merge_vertices"`/);
+    expect(prompt).toMatch(/never apply one "to see what happens"/);
   });
 });

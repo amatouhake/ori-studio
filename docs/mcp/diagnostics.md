@@ -4,9 +4,11 @@ Runtime material for an agent reading `analyze_design` results. Every row is
 derived from `docs/origami-design-knowledge.md` (the KB); the KB section is
 cited so the reasoning can be checked, and nothing here goes beyond it. Tags:
 **[T]** theorem, **[F]** upstream-documented fact, **[U]** upstream-prescribed
-operation (default action), **[I]** Ori Studio implementation behaviour,
-**[H]** heuristic / semantic fallback (needs the user's consent). Only [U] and
-[H] describe actions.
+operation (default action, no consent needed), **[I]** Ori Studio
+implementation behaviour, **[H]** design change (needs the user's consent or
+a delegation that covers it — KB §0.1). Only [U] and [H] describe actions;
+every action below carries one of the two tags. "Propose" means: compute
+from `inspect_design` data, tell the user, apply only after agreement.
 
 ## 0. Before reading any diagnostic
 
@@ -23,7 +25,10 @@ order), each with `diagnostic_entries[]`; `result.issue_count`;
 `result.conclusion` ∈ `no_local_issues` | `issues_found`;
 `result.checked_vertices`. Each entry: `kind`, `rule`, `severity`, `message`,
 `point?`, `segments[]`, `violation_color?`, `big_little_big[]`,
-`fold_angle_degrees?`, `residual_degrees?` (KB §1.3).
+`fold_angle_degrees?`, `residual_degrees?` (KB §1.3). `violation_color` ∈
+`NotEnoughMountain` | `NotEnoughValley` | `Equal` | `Correct` | `Unknown`
+(`Unknown` accompanies `NumberOfFolds` and `Angles`, where no count verdict
+exists).
 
 **`no_local_issues` means** zero entries of any severity. It is a classical
 local flat-foldability verdict **only if** the document has no `unassigned`
@@ -33,26 +38,28 @@ ADK24 §2]. It never proves a layer order (KB §4).
 
 ## 2. Entry → meaning → action
 
-| `kind` / `rule` | Meaning | Default action [U]/[I] | Do **not** | KB |
+| `kind` / `rule` | Meaning | Action (tagged) | Do **not** | KB |
 | --- | --- | --- | --- | --- |
-| `Check1` (rule `Check1`), `segments: [a, b]` | Two non-auxiliary creases coincide, one contains the other, or they overlap partially. | `repair: overlaps` repeatedly until `changed: false` (each pass merges at most one *exact-equal* pair), then `repair: intersections`. Remaining Check1 entries (contained / partial overlaps) → `delete_creases` on the redundant piece after deciding which assignment is right. | Assume one `overlaps` call fixed everything. | §1.3, §1.4, G1 |
-| `Check2` (rule `Check2`), `segments: [a, b]` | One crease ends on the interior of another without a vertex (near-T). | `repair: intersections` (Fix2). Then `inspect_design` — IDs changed. | Add a crease by hand at the junction. | §1.3, §1.4 |
+| `Check1` (rule `Check1`), `segments: [a, b]` | Two non-auxiliary creases coincide, one contains the other, or they overlap partially. | [U] `repair: overlaps` repeatedly until `changed: false` (each pass merges at most one *exact-equal* pair), then `repair: intersections`. [H] Remaining Check1 entries (contained / partial overlaps): propose which piece is redundant; `delete_creases` only with agreement. | Assume one `overlaps` call fixed everything; delete a user's crease unasked. | §1.3, §1.4, §0.1, G1 |
+| `Check2` (rule `Check2`), `segments: [a, b]` | One crease ends on the interior of another without a vertex (near-T). | [U] `repair: intersections` (Fix2). Then `inspect_design` — IDs changed. | Add a crease by hand at the junction. | §1.3, §1.4 |
 | `Check3` (rule `VertexFlatFoldability`), `point` | Legacy vertex marker, no reason given; at a vertex with an `unassigned` crease it judged a partial fan. | Look up the `CheckCamv` entry at the same `point` and act on that. If none and the vertex has an `unassigned` crease, ignore the Check3 marker. | Act on Check3 alone. | §1.3, G2 |
-| `CheckCamv` / `NumberOfFolds` | Odd number of folding lines at an interior vertex, or a vertex touching ≠ 0/2 boundary lines [T: Maekawa ⇒ even degree]. | 1. Precondition check (§0). 2. Missing vertex where a crease passes through → `repair: intersections`; stray endpoint → `delete_creases`; 1 or 3 `Black0` lines at a paper-edge vertex → fix the boundary drawing. 3. Only if the vertex genuinely needs one more crease: `repair: angular_flat_foldability` with `points: [vertex, pick]` (one-crease completion; §3). | Use `angular_flat_foldability` as a general fix; flip assignments. | §1.3 |
-| `CheckCamv` / `Angles` | Kawasaki–Justin fails on a fully assigned even-degree classic fan: geometry, not assignment. | Move an endpoint (`transform_creases` `translate`) or redraw; on 22.5° / box-pleat grids `repair: snap` with the offending `line_ids`. **Exception:** G16 rule (§4) on a fresh, unedited TreeMaker derivation. | Flip M/V; call `angular_flat_foldability` (it adds a crease, never re-angles). | §1.3, G16 |
-| `CheckCamv` / `Maekawa` + `violation_color` `Equal` | M = V on a fully assigned classic fan. No per-crease payload. | Reassign one or more creases with `assign_creases` so that `|M − V| = 2` **and** big-little-big holds here **and** Maekawa still holds at each changed crease's other endpoint; enumerate candidates, apply one, re-run `checks`. | Read `big_little_big` (empty for this rule); expect one flip to be enough. | §1.3, G12 |
-| `CheckCamv` / `Maekawa` + `NotEnoughMountain` / `NotEnoughValley` | `|M − V| ≠ 2`; the colour says which way the count is off. | As above, moving the count toward the reported colour. | — | §1.3 |
-| `CheckCamv` / `BigLittleBig` (+ `Correct`) | Counts and angles right, M/V order wrong. `big_little_big[].violating: true` marks the first bounding **crease** of each minimal sector whose two bounding creases share a colour. | Enumerate assignments of the flagged creases (and neighbours if needed) that keep `|M − V| = 2` and give each strictly-minimal sector opposite-coloured bounds [T]; apply one with `assign_creases`; re-run `checks`. Match `segment` endpoints to `inspect_design` lines for IDs. | Flip a single crease (breaks Maekawa unless compensated). | §1.2, §1.3 |
-| `CheckCamv` / `None` | Degree-2 collinear same-colour pair. | `repair: merge_vertices`. | — | §1.3 |
-| `SpatialClosure` / `Closure` (`residual_degrees`) | Non-180° creases (or a solved unknown) do not close within 1e-6° [I]. | Change `angle` on the non-classic creases at the point, or omit `angle` to return them to 180. | Treat as Kawasaki; flip M/V. | §1.3 |
-| `SpatialClosure` / `Rigid` | No angle can close this vertex at its degree. | Redraw the fan (add/remove creases). | Adjust angles. | §1.3 |
-| `SpatialClosure` / `ClosureUnreachable` | An unassigned crease meets here and no angle closes it. | Redraw the fan. | — | §1.3 |
-| `SpatialUndecided` / `Undecided` (`info`, `fold_angle_degrees`) | Exactly one angle closes the vertex if the unassigned crease (`segments[0]`) is folded. `fold_angle_degrees` is signed: negative = mountain, positive = valley. | `assign_creases` on that crease with `assignment` from the sign (`mountain` if negative, `valley` if positive) and `angle: abs(fold_angle_degrees)` unless that is 180 (then omit `angle`). | Treat as an error. | §1.3 |
-| `SpatialUndecided` / `UndecidedChoice` (`info`) | Several angles close it. | Decide the crease by design intent; `assign_creases`. | — | §1.3 |
-| `SpatialUnknowable` / `UnsplitJunction` (`info`) | A crease passes through the point without ending. | `repair: intersections`. | — | §1.3 |
-| `SpatialUnknowable` / `NotEnoughCreases`, `TooManyUnknowns`, `NoUniqueAnswer` (`info`) | Nothing could be decided (fewer than three creases / more than one unassigned crease / many angles close it). | Assign more of the incident creases, then re-run. | — | §1.3 |
-| `SpatialInteriorBorder` (`warning`) | A `Black0` line lies in the paper interior and is read as a border/cut. | `assign_creases` it if it was meant as a crease. | — | §1.3, G7 |
-| `SpatialSelfIntersection` | Link self-intersection at a non-flat vertex. | Redraw. | — | §1.3 |
+| `CheckCamv` / `NumberOfFolds` (`violation_color: Unknown`) | Odd number of folding lines at an interior vertex, or a vertex touching ≠ 0/2 boundary lines [T: Maekawa ⇒ even degree]. | 1. Precondition check (§0). 2. [U] A crease passing through the point without a vertex → `repair: intersections`. 3. [H] A stray endpoint (`delete_creases`) or a boundary polygon with 1 or 3 `Black0` lines: propose the correction. 4. [U]+[H] If one more crease is genuinely needed, `repair: angular_flat_foldability` with `points: [vertex, pick]` is Oriedita's one-crease completion (§3); the wedge (`pick`) is the user's choice — apply only after the user names it or accepts "nearest to this point", then show the result. | Use `angular_flat_foldability` as a general fix; flip assignments; delete creases unasked. | §1.3, §0.1 |
+| `CheckCamv` / `Angles` (`violation_color: Unknown`) | Kawasaki–Justin fails on a fully assigned even-degree classic fan: geometry, not assignment. | [U] On 22.5° / box-pleat grids `repair: snap` with the offending `line_ids`. [H] Otherwise report the vertex and the alternating-sum residual computed from `inspect_design`, propose which endpoint to move (`transform_creases` `translate`) or which crease to redraw, apply only with agreement. **Exception:** G16 rule (§4) on a fresh, unedited TreeMaker derivation. | Flip M/V; move vertices unasked; call `angular_flat_foldability` (it adds a crease, never re-angles). | §1.3, §0.1, G16 |
+| `CheckCamv` / `Maekawa` + `violation_color` `Equal` | M = V on a fully assigned classic fan. No per-crease payload. | [H] Compute from `inspect_design` the reassignments that give `|M − V| = 2` here, keep big-little-big here, and keep Maekawa at each changed crease's other endpoint; present them; apply the chosen one with `assign_creases`; re-run `checks`. A request to "fix the assignments" delegates this class. | Read `big_little_big` (empty for this rule); expect one flip to be enough; apply a candidate the user did not choose or delegate. | §1.3, §0.1, G12 |
+| `CheckCamv` / `Maekawa` + `NotEnoughMountain` / `NotEnoughValley` | `|M − V| ≠ 2`; the colour says which way the count is off. | [H] As above, moving the count toward the reported colour. | — | §1.3 |
+| `CheckCamv` / `BigLittleBig` (+ `Correct`) | Counts and angles right, M/V order wrong. `big_little_big[].violating: true` marks the first bounding **crease** of each minimal sector whose two bounding creases share a colour. | [H] Compute the pair-flips among the flagged creases (and neighbours if needed) that keep `|M − V| = 2` and give each strictly-minimal sector opposite-coloured bounds [T]; present; apply the chosen one with `assign_creases`; re-run `checks`. Match `segment` endpoints to `inspect_design` lines for IDs. | Flip a single crease (breaks Maekawa unless compensated); apply unasked. | §1.2, §1.3, §0.1 |
+| `CheckCamv` / `None` | Degree-2 collinear same-colour pair. | [U] `repair: merge_vertices`. | — | §1.3 |
+| `SpatialClosure` / `Closure` (`residual_degrees`) | Non-180° creases (or a solved unknown) do not close within 1e-6° [I]. | [H] Report `residual_degrees`; propose changing `angle` on one of the non-classic creases at the point, or omitting `angle` to return it to 180; apply with agreement. | Treat as Kawasaki; flip M/V; change angles unasked. | §1.3, §0.1 |
+| `SpatialClosure` / `Rigid` | No angle can close this vertex at its degree. | [H] Propose redrawing the fan (add/remove creases). | Adjust angles. | §1.3 |
+| `SpatialClosure` / `ClosureUnreachable` | An unassigned crease meets here and no angle closes it. | [H] Propose redrawing the fan. | — | §1.3 |
+| `SpatialUndecided` / `Undecided` (`info`, `fold_angle_degrees`) | Exactly one angle closes the vertex if the unassigned crease (`segments[0]`) is folded. `fold_angle_degrees` is signed: negative = mountain, positive = valley. | [H] Report the value; with agreement (or a delegation such as "decide the unassigned creases"), `assign_creases` on that crease with `assignment` from the sign (`mountain` if negative, `valley` if positive) and `angle: abs(fold_angle_degrees)` unless that is 180 (then omit `angle`). | Treat as an error; decide the crease unasked. | §1.3, §0.1 |
+| `SpatialUndecided` / `UndecidedChoice` (`info`) | Several angles close it. | [H] Present the options; the user decides. | — | §1.3 |
+| `SpatialUnknowable` / `UnsplitJunction` (`info`) | A crease passes through the point without ending. | [U] `repair: intersections`. | — | §1.3 |
+| `SpatialUnknowable` / `NotEnoughCreases` (`info`) | Fewer than three creases meet here. | Nothing to do at this vertex; report. | — | §1.3 |
+| `SpatialUnknowable` / `TooManyUnknowns` (`info`) | More than one unassigned crease at the vertex. | [H] Deciding some of them is the user's; propose. | — | §1.3 |
+| `SpatialUnknowable` / `NoUniqueAnswer` (`info`) | Many angles close the vertex. | [H] Present; the user decides. | — | §1.3 |
+| `SpatialInteriorBorder` (`warning`) | A `Black0` line lies in the paper interior and is read as a border/cut. | [H] Ask whether it is a cut or a crease; `assign_creases` only if the user says crease. | Reassign unasked. | §1.3, §0.1, G7 |
+| `SpatialSelfIntersection` | Link self-intersection at a non-flat vertex. | [H] Propose redrawing. | — | §1.3 |
 
 ## 3. `repair` operations — what each really does
 
@@ -61,8 +68,8 @@ ADK24 §2]. It never proves a layer order (KB §4).
 | `overlaps` (Fix1) | Merges **one exact-equal** pair per call, survivor takes the second's colour. | Other overlap kinds are only selected (not returned). Loop until `changed: false`. | §1.4, G1 |
 | `intersections` (Fix2) | Splits every near-T-intersection. | Renumbers IDs. | §1.4 |
 | `merge_vertices` (DeleteExtraVertices) | Merges collinear same-colour pairs at degree-2 vertices. | Ignore-colour variant not exposed. | §1.4 |
-| `snap` (FixInaccurate) with `line_ids`, optional `precision` | Snaps to the 22.5° family or the box-pleat grid. | "Only 22.5° and box-pleated crease patterns are currently supported" [F]. Useless on TreeMaker angles. | §1.4, G16 |
-| `angular_flat_foldability` with `points: [vertex, pick, destination?]` | Adds **one** crease to an **odd-degree** folding-line fan so the alternating sum closes; candidates are one ray per wedge (only wedges where the closing ray fits); the pick is the candidate *nearest to `points[1]`*; the crease runs to the first crease it hits unless `points[2]` names a destination; colour from the closure solve, fallback `Red1`. Boundary vertices are declined. | No candidates for an even fan; no preview through the MCP; colour is not checked against Maekawa at the far endpoint — re-run `checks`. | §1.4 |
+| `snap` (FixInaccurate) with `line_ids`, optional `precision` | [U] Snaps to the 22.5° family or the box-pleat grid. | "Only 22.5° and box-pleated crease patterns are currently supported" [F]. Useless on TreeMaker angles. | §1.4, G16 |
+| `angular_flat_foldability` with `points: [vertex, pick, destination?]` | [U] tool, [H] choice: adds **one** crease to an **odd-degree** folding-line fan so the alternating sum closes; candidates are one ray per wedge (only wedges where the closing ray fits); the pick is the candidate *nearest to `points[1]`*; the crease runs to the first crease it hits unless `points[2]` names a destination; colour from the closure solve, fallback `Red1`. Boundary vertices are declined. | No candidates for an even fan; no preview through the MCP; colour is not checked against Maekawa at the far endpoint — re-run `checks`. Apply only after the user names the wedge or accepts "nearest to this point" (KB §0.1). | §1.4, §0.1 |
 
 ## 4. G16 — fresh TreeMaker derivations (narrow rule) [I]
 
@@ -110,7 +117,7 @@ calculation" — run `checks` to a clean state (or the G16 state) first.
 | `solver_settled` | Velocities fell below threshold; says nothing about the target. | §1.7 |
 | `target_attainment.status` `attained` / `unknown` / … | Every source crease reached its requested dihedral within 5°; `unknown` when some source crease is not in the mesh (`source_coverage`). | §1.7 |
 | `outcome` `settled_at_target` | The only success value. `moving_at_target`, `settled_without_target_attainment`, `step_limit_without_target_attainment` are diagnostics. | §1.7 |
-| error `simulation_diverged` | Non-finite positions: reduce `fold_amount` or fix assignments/angles. | §1.7 |
+| error `simulation_diverged` | Non-finite positions: reduce `fold_amount` (an analysis parameter, no consent needed) or return to §2 for the assignments/angles (all [H]). | §1.7 |
 
 Simulation is a compliant numerical relaxation [GDG18]; it proves neither
 collision-freedom nor global foldability.
@@ -120,13 +127,13 @@ collision-freedom nor global foldability.
 | `status` | Default action [U] (TreeMaker's own message) | Consent-requiring fallback [H] | KB |
 | --- | --- | --- | --- |
 | `has_full_cp` | `derive_crease_pattern`. | — | §2.2 |
-| `edges_too_short` | `absorb_edges` on `bad_edges`. | Lengthen the edge (`update_edge`) — changes proportions. | §2.2 |
-| `polys_not_valid` | `analyze_design {analysis: "optimize_edges"}` then `build_cp`. | Add a node/edge or `split_edge` + `add_node` (adds a flap); re-`optimize_scale` from another layout (`move_node`). Stubs are not available. | §2.2, §2.3 |
-| `polys_not_filled` | `build_cp` again. | Treat as `polys_not_valid` if persistent. | §2.2 |
-| `polys_multiple_ibps` | `optimize_edges` then `build_cp`. | `path_active` conditions on the hull paths of `bad_polys` (new constraint; may lower scale). | §2.2 |
-| `vertices_lack_depth` | `optimize_edges` then `build_cp`. | `relieve_strain` / `relieve_all_strain` — **bakes strain into the desired lengths**; explicit consent. | §2.2 |
-| `facets_not_valid` | `derive_crease_pattern`, then hand-assign at `bad_vertices` / `bad_facets` (`assign_creases`), verify with `checks` + `flat_fold`. | `move_node` a leaf and re-optimize; `path_angle_quant` conditions. | §2.2 |
-| `not_local_root_connectable` | `move_node` leaf nodes near `bad_vertices` / `bad_creases` so the disconnected corridor-wall parts are forced closer, then `optimize_scale` and `build_cp`. | `make_root` on another node (different folded form). | §2.2 |
+| `edges_too_short` | `absorb_edges` on `bad_edges`. | [H] Lengthen the edge (`update_edge`) — changes proportions. | §2.2 |
+| `polys_not_valid` | `analyze_design {analysis: "optimize_edges"}` then `build_cp`. | [H] Add a node/edge or `split_edge` + `add_node` (adds a flap); re-`optimize_scale` from another layout (`move_node`). Stubs are not available. | §2.2, §2.3 |
+| `polys_not_filled` | `build_cp` again. | [H] Treat as `polys_not_valid` if persistent. | §2.2 |
+| `polys_multiple_ibps` | `optimize_edges` then `build_cp`. | [H] `path_active` conditions on the hull paths of `bad_polys` (new constraint; may lower scale). | §2.2 |
+| `vertices_lack_depth` | `optimize_edges` then `build_cp`. | [H] `relieve_strain` / `relieve_all_strain` — **bakes strain into the desired lengths**; explicit consent. | §2.2 |
+| `facets_not_valid` | `derive_crease_pattern`, then — as the message says — the assignment at `bad_vertices` / `bad_facets` is found by hand: [H] propose it, `assign_creases` with agreement, verify with `checks` + `flat_fold`. | [H] `move_node` a leaf and re-optimize; `path_angle_quant` conditions. | §2.2 |
+| `not_local_root_connectable` | `move_node` leaf nodes near `bad_vertices` / `bad_creases` so the disconnected corridor-wall parts are forced closer, then `optimize_scale` and `build_cp`. | [H] `make_root` on another node (different folded form). | §2.2 |
 
 `OptimizationReport` from `optimize_scale` / `optimize_edges` /
 `optimize_strain`: `converged`, `is_feasible`, `old_scale`, `new_scale`,
@@ -138,10 +145,10 @@ inequalities are violated at the current scale: change the layout
 
 | Field | Meaning | Action | KB |
 | --- | --- | --- | --- |
-| `packing.valid: false`, `packing.errors[0]` "Optimizer result violates distance `d` between flaps `a` and `b`." | Flap rectangles `a`, `b` closer (Euclidean, axis gaps clamped at 0) than their tree distance [F rule, I port]. Only the **first** violation is reported. | `move_flap` / `resize_flap` so that `dx² + dy² ≥ d²`; re-run `packing`; repeat. | §3.1, §3.2, G8 |
+| `packing.valid: false`, `packing.errors[0]` "Optimizer result violates distance `d` between flaps `a` and `b`." | Flap rectangles `a`, `b` closer (Euclidean, axis gaps clamped at 0) than their tree distance [F rule, I port]. Only the **first** violation is reported. | [H, delegated by "pack these flaps"] `move_flap` `a` or `b` so that `dx² + dy² ≥ d²`; re-run `packing`; repeat. [H, explicit consent] `resize_flap` changes the flap's dimensions — never as a packing shortcut. | §3.1, §3.2, §0.1, G8 |
 | `layout.invalidJunctions[]` | Same rule, per pair, from the layout snapshot. | As above. | §3.1 |
-| `layout.stretches[]` with `patternFound: false` / `layout.patternNotFound: true` | Valid overlap for which no stretch pattern was found [F: "not always possible … in every valid layout"]. | Change the flap layout; no other tool. | §3.1, G15 |
-| `layout.stretches[].configurationCount` / `patternCount` > 1 | Alternatives exist; **no documented preference** [F]. | Enumerate with `stretch_config` / `stretch_pattern {delta}` only if the derived CP fails validation; judge each by `derive_crease_pattern` → `checks` → `flat_fold`. | §3.2, U1 |
+| `layout.stretches[]` with `patternFound: false` / `layout.patternNotFound: true` | Valid overlap for which no stretch pattern was found [F: "not always possible … in every valid layout"]. | [H] Propose a different flap layout; no other tool. | §3.1, G15 |
+| `layout.stretches[].configurationCount` / `patternCount` > 1 | Alternatives exist; **no documented preference** [F]. | [H] Keep the defaults. Step `stretch_config` / `stretch_pattern {delta}` only when the user asks for alternatives (or agrees to try them after the derived CP fails validation); judge each only by `derive_crease_pattern` → `checks` → `flat_fold`, and present the outcomes without ranking. | §3.2, §0.1, U1 |
 
 A Box Pleating-derived CP is **not** guaranteed flat-foldable [F, BPS-manual]; always
 validate it (§1–§5 above), and never apply the G16 residual rule to it.

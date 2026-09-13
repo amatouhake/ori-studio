@@ -5,8 +5,13 @@ MCP. Each step names the tool and arguments it uses; the reasoning behind a
 step is in `docs/origami-design-knowledge.md` (the KB), cited by section, and
 the runtime dictionary for diagnostics is `docs/mcp/diagnostics.md`. The
 recipes turn the KB's **[U]** rows into default steps and its **[H]** rows
-into fallbacks that need the user's consent; they add no origami knowledge of
-their own.
+into steps that need the user's consent or a delegation that covers them
+(KB §0.1: "pack these flaps" delegates flap placement, "fix the assignments"
+delegates reassignment, "design a base for this figure" delegates the
+TreeMaker workflow — never edge lengths, flap sizes, vertex moves or crease
+deletions unless named). They add no origami knowledge of their own. Every
+step that changes the design is marked **[H]**; unmarked steps are read-only,
+housekeeping, or **[U]**.
 
 Conventions used below:
 
@@ -40,13 +45,15 @@ already open (or supplied as a file).
    `diagnostics.md §0`.
 6. Resolve **structure first, vertices second**, one class at a time, re-running
    `checks` and `inspect_design` after each batch because IDs change:
-   1. `Check1` → `edit_creases {operations: [{type: "repair", repair:
+   1. `Check1` → [U] `edit_creases {operations: [{type: "repair", repair:
       "overlaps"}]}` until `changed: false`, then `{repair: "intersections"}`;
-      leftover contained/partial overlaps → `delete_creases` (R2).
-   2. `Check2` / `SpatialUnknowable: UnsplitJunction` → `repair:
+      leftover contained/partial overlaps → **[H]** propose which piece is
+      redundant; `delete_creases` only with agreement.
+   2. `Check2` / `SpatialUnknowable: UnsplitJunction` → [U] `repair:
       "intersections"`.
-   3. `SpatialUndecided` / `SpatialUnknowable: TooManyUnknowns` → decide the
-      unassigned creases with `assign_creases` (see `diagnostics.md §2`).
+   3. `SpatialUndecided` / `SpatialUnknowable: TooManyUnknowns` → **[H]**
+      report the closing angle(s); `assign_creases` only with agreement or
+      a delegation to decide unassigned creases (`diagnostics.md §2`).
    4. `CheckCamv` rules → R3.
 7. Stop when `conclusion: "no_local_issues"` **and** the document has no
    `unassigned` line and every M/V crease has `abs(fold_angle_degrees) ==
@@ -57,9 +64,10 @@ already open (or supplied as a file).
    and/or `commit_design {label: "…"}` (R7). If nothing should be kept,
    `discard_design`.
 
-Do not "repair" by moving vertices or reassigning creases unless a
-diagnostic in `diagnostics.md §2` names that action; geometry changes are the
-user's design decisions.
+Do not move vertices, delete creases or reassign creases on your own
+initiative: every such step is **[H]** in `diagnostics.md §2` and needs the
+user's agreement or a delegation that names it (KB §0.1). Propose from
+`inspect_design` data; apply after the answer.
 
 ## R2 — Interpreting Check1 / Check2 / Check3 / CheckCamv
 
@@ -82,18 +90,23 @@ Use `diagnostics.md §1–§3` as the lookup table. The order of interpretation:
 ## R3 — Classical local flat-foldability repair (NumberOfFolds / Angles / Maekawa / BigLittleBig)
 
 Preconditions: the vertex passed `diagnostics.md §0`. All four rules are
-per-vertex theorems (KB §1.2); the actions are the [U]/[I] rows of
-`diagnostics.md §2`.
+per-vertex theorems (KB §1.2); the actions are the tagged rows of
+`diagnostics.md §2`. **The only default ([U]) actions here are `repair:
+"intersections"`, `repair: "snap"` on 22.5°/box-pleat patterns and
+`repair: "merge_vertices"`; everything that moves, deletes or reassigns a
+crease is [H]** — computed and proposed first, applied after the user
+agrees or under a delegation that names that class ("fix the assignments",
+"decide the unassigned creases").
 
 | Rule | What is wrong | Sequence |
 | --- | --- | --- |
-| `NumberOfFolds` | Wrong crease *count* (odd interior fan, or ≠ 0/2 boundary lines). | 1. `repair: "intersections"` if a crease passes through the point. 2. `delete_creases` for a stray endpoint. 3. Boundary vertex with 1 or 3 `Black0` lines: fix the boundary polygon. 4. Only if one more crease is genuinely needed: `repair: "angular_flat_foldability", points: [vertex, pick]` — one crease, candidate nearest to `pick`, colour solved for closure, fallback mountain; then `checks` again because the far endpoint's Maekawa was not checked. |
-| `Angles` | Wrong *geometry* (Kawasaki–Justin sums). | Never reassign. `transform_creases {line_ids, translate}` on an endpoint, or delete and `add_creases` the corrected line; `repair: "snap", line_ids` only on 22.5° / box-pleat patterns. On a fresh TreeMaker derivation: G16 (`diagnostics.md §4`). |
-| `Maekawa` (+ colour) | Wrong *count balance* `|M − V| ≠ 2`. | No per-crease payload. Enumerate reassignments (`assign_creases {line_ids, assignment}`) of incident creases that (a) give `|M − V| = 2` here, (b) keep each strictly-minimal sector's bounding creases opposite, (c) keep Maekawa at each changed crease's other endpoint; apply one candidate; `checks`; if a new violation appears elsewhere, `rollback_design` to the checkpoint and try the next candidate. |
-| `BigLittleBig` | Wrong *order* of M/V around the vertex. | `big_little_big[].violating` names creases; a single flip breaks Maekawa, so change two creases per step (one toward each colour) among the flagged ones and their neighbours, keeping (a)–(c) above; `checks`; iterate with `rollback_design` between candidates. |
+| `NumberOfFolds` | Wrong crease *count* (odd interior fan, or ≠ 0/2 boundary lines). | 1. [U] `repair: "intersections"` if a crease passes through the point. 2. **[H]** A stray endpoint or a bad boundary polygon: propose the deletion / correction; apply after agreement. 3. **[U]+[H]** If one more crease is genuinely needed: `repair: "angular_flat_foldability", points: [vertex, pick]` — one crease, candidate nearest to `pick`, colour solved for closure, fallback mountain. The wedge is the user's choice: describe the candidate wedges from the fan angles, apply after they pick one, then `checks` again because the far endpoint's Maekawa was not checked. |
+| `Angles` | Wrong *geometry* (Kawasaki–Justin sums). | Never reassign. [U] `repair: "snap", line_ids` on 22.5° / box-pleat patterns. **[H]** Otherwise compute the alternating-sum residual from `inspect_design`, propose which endpoint to move (`transform_creases {line_ids, translate}`) or which crease to redraw (`delete_creases` + `add_creases`), apply after agreement. On a fresh TreeMaker derivation: G16 (`diagnostics.md §4`), no action. |
+| `Maekawa` (+ colour) | Wrong *count balance* `|M − V| ≠ 2`. | No per-crease payload. **[H]** From `inspect_design` (fan sector angles and assignments, plus each incident crease's other endpoint) compute the reassignments (`assign_creases {line_ids, assignment}`) that (a) give `|M − V| = 2` here, (b) keep each strictly-minimal sector's bounding creases opposite, (c) keep Maekawa at each changed crease's other endpoint. Present them. With agreement or a delegation to fix assignments: `checkpoint_design`, apply one, `checks`; if a new violation appears elsewhere, `rollback_design` and apply the next agreed candidate. |
+| `BigLittleBig` | Wrong *order* of M/V around the vertex. | `big_little_big[].violating` names creases; a single flip breaks Maekawa, so candidates are pair-flips (one toward each colour) among the flagged creases and their neighbours, keeping (a)–(c) above. **[H]** Present; apply the chosen one as for `Maekawa`, `checks`, `rollback_design` between candidates. |
 
-Take a `checkpoint_design` before each candidate batch. Stop when the vertex
-no longer appears, or report the remaining candidates to the user.
+Stop when the vertex no longer appears, or report the remaining candidates
+to the user.
 
 ## R4 — TreeMaker: tree → optimize → build_cp → derive → validate/export
 
@@ -108,14 +121,15 @@ no longer appears, or report the remaining candidates to the user.
    branch nodes are ignored [F]; avoid redundant conditions [U].
 3. `analyze_design {analysis: "optimize_scale"}` → `job_status`. Read
    `result.report`: `converged`, `is_feasible`, `new_scale`. If
-   `is_feasible: false`, change the layout (`move_node` on leaf nodes) or
-   the conditions and re-run; **[H]** a different initial layout may give a
-   larger scale — offer it, do not loop silently. If conditions
-   over-constrain the tree (the optimizer reports no solution), the upstream
-   step is `analyze_design {analysis: "optimize_strain"}` after pairing
-   symmetric edges with `edges_same_strain` conditions [U]; it strains edges
-   (their effective lengths change), so say so before running it. When the
-   report shows unpinned parts, `analyze_design {analysis: "optimize_edges"}`
+   `is_feasible: false`, report it; **[H]** changing the initial layout
+   (`move_node` on leaf nodes) or the conditions is a design choice — propose
+   (e.g. "a different starting layout may give a larger scale",
+   KB §2.1) and re-run only with agreement. If conditions over-constrain the
+   tree (the optimizer reports no solution), the upstream step is
+   `analyze_design {analysis: "optimize_strain"}` after pairing symmetric
+   edges with `edges_same_strain` conditions [U]; it strains edges (their
+   effective lengths change), so say so before running it. When the report
+   shows unpinned parts, `analyze_design {analysis: "optimize_edges"}`
    lengthens them (Scale Selection) [U].
 4. `analyze_design {analysis: "build_cp"}` → `job_status` →
    `result.report.cp_status_report.status`. Follow `diagnostics.md §7`:
@@ -148,17 +162,22 @@ no longer appears, or report the remaining candidates to the user.
    `move_flap` / `resize_flap` with integer grid coordinates.
 3. `analyze_design {analysis: "packing"}` → `job_status` →
    `result.packing.valid`. If `false`, act on `packing.errors[0]` (only the
-   first violation is reported, `diagnostics.md §8`): move/resize the named
-   flaps apart until `dx² + dy² ≥ d²`; re-run until `valid: true`.
+   first violation is reported, `diagnostics.md §8`): **[H, delegated by the
+   packing request]** `move_flap` the named flaps apart until `dx² + dy² ≥
+   d²`; re-run until `valid: true`. **`resize_flap` is never a packing
+   shortcut** — flap dimensions are the design; propose and apply only with
+   explicit consent.
 4. `inspect_design` → `layout.stretches[]`, `layout.invalidJunctions[]`,
    `layout.patternNotFound`. If `patternNotFound: true` or a stretch has
    `patternFound: false`, the layout has a valid overlap BP Studio cannot
    pattern [F]; the only remedy is a different flap layout — tell the user.
 5. For each stretch, `complete_stretch {id}` if needed. **There is no
    documented preference among configurations/patterns** (KB U1). Keep the
-   defaults; enumerate with `stretch_config {id, delta: ±1}` /
-   `stretch_pattern {id, delta: ±1}` only when the derived CP fails
-   validation, judging each alternative by step 6.
+   defaults. **[H]** Stepping `stretch_config {id, delta: ±1}` /
+   `stretch_pattern {id, delta: ±1}` is a design choice: do it only when the
+   user asks for alternatives, or agrees to try them after the derived CP
+   fails validation; judge each alternative only by step 6 and present the
+   outcomes without ranking them.
 6. `derive_crease_pattern` → new CP draft; on it `analyze_design {analysis:
    "checks"}` and, if clean, `flat_fold`. **A BP-derived CP is not guaranteed
    flat-foldable [F]**; treat its diagnostics as real (R1–R3), never as
@@ -214,11 +233,19 @@ the user instead of guessing which lines they mean.
 
 ## Consent-requiring fallbacks (never silent)
 
-All **[H]** rows of the KB that a recipe may reach: `relieve_strain` /
-`relieve_all_strain` (bakes strain into desired lengths — explicit consent); lengthening or
-shortening tree edges; adding nodes/edges or `split_edge` to break polygons;
-`path_active` / `path_angle_quant` / other new conditions; `make_root`;
-re-running `optimize_scale` from a different layout; moving CP vertices to
-silence `Angles`; any change to flap sizes in BP beyond what `packing`
-requires. Each changes the design the user asked for; state what changes and
-get agreement first.
+All **[H]** rows of the KB that a recipe may reach (KB §0.1): moving CP
+vertices or redrawing creases (`Angles`); deleting creases (stray endpoints,
+leftover overlaps); reassigning creases (`Maekawa`, `BigLittleBig`);
+deciding `unassigned` creases (`SpatialUndecided`); changing non-180°
+angles (`SpatialClosure`); reassigning interior `Black0` lines; choosing the
+wedge for `angular_flat_foldability`; `relieve_strain` /
+`relieve_all_strain` (bakes strain into desired lengths — explicit consent);
+lengthening or shortening tree edges; adding nodes/edges or `split_edge` to
+break polygons; `path_active` / `path_angle_quant` / other new conditions;
+`make_root`; re-running `optimize_scale` from a different layout; BP
+`resize_flap`, river length or tree changes; stepping BP stretch
+configurations/patterns; BP `move_flap` outside a packing request. Each
+changes the design the user asked for: state what changes and get agreement
+first, or act only inside a delegation the user gave ("pack these flaps",
+"fix the assignments"). Computing and presenting a proposal from
+`inspect_design` data never needs consent.

@@ -37,6 +37,65 @@ never by themselves license an agent to do anything.
 | **[I]** Ori Studio implementation behaviour | What the port or the MCP actually does, with a code pointer. | Plan around it; do not assume upstream behaviour where [I] says otherwise. |
 | **[H]** agent heuristic / semantic fallback | Design lore from tutorials, or a fallback that changes the design (lengths, flap count, conditions) or depends on something not ported. | Only with the user's consent, and never presented as required. |
 
+### 0.1 Action boundary
+
+The derived guides (`docs/mcp/*.md`, the skill) may turn a **[U]** row into
+a default step and an **[H]** row into a consent-gated fallback. They may
+not derive an executable step from a **[T]**, **[F]** or **[I]** statement
+alone: a theorem says what must hold, an implementation fact says what the
+kernel reports — neither says which of the user's creases, nodes or flaps
+should change. This subsection fixes the boundary so the guides do not have
+to guess it.
+
+**Always allowed (no consent):**
+
+- Read-only tools and experiment housekeeping: `workspace`, `inspect_design`,
+  `preview_construction`, `analyze_design`, `simulate_design`, `job_status`,
+  `cancel_job`, `render_view`, `export_design`, `checkpoint_design`,
+  `rollback_design`, `discard_design`, `begin_design` (an isolated draft).
+- **[U]** operations in the situation their upstream prescribes them for:
+  `repair: overlaps` (looped) and `repair: intersections` for Check1/Check2;
+  `repair: merge_vertices` for rule `None`; `repair: snap` on a 22.5° /
+  box-pleat pattern; TreeMaker's own message remedies (`absorb_edges`,
+  `optimize_edges`, `build_cp` again, `move_node` toward the named
+  corridor-wall parts) and the tutorial workflow steps `optimize_scale`,
+  `optimize_edges`, `optimize_strain`, `build_cp`; re-running `checks`.
+- Computing and *presenting* proposals from `inspect_design` data and the
+  theorems in §1.2 (e.g. which reassignments of a fan would satisfy Maekawa
+  and big-little-big) without applying them.
+
+**Consent-gated [H] — the target state is a design choice the theorem or
+fact does not determine:**
+
+| Action | Why it is [H] | KB |
+| --- | --- | --- |
+| Moving CP vertices or redrawing creases to satisfy `Angles` (`transform_creases`, `delete_creases` + `add_creases`). | Kawasaki says the angles are wrong, not which endpoint to move. | §1.3 |
+| Deleting a user-drawn crease (a "stray endpoint", a leftover partial overlap). | Which of two overlapping creases is the intended one is intent. | §1.3, §1.4 |
+| Reassigning creases for `Maekawa` / `BigLittleBig`. | Several assignments satisfy the theorems; each is a different model. | §1.2, §1.3 |
+| Deciding an `unassigned` crease (`SpatialUndecided`), even when exactly one angle closes it. | The crease was left undecided by the user; folding it is a decision. | §1.3 |
+| Changing fold angles of non-180° creases (`SpatialClosure`). | The closure residual does not say which crease's angle was wrong. | §1.3 |
+| Reassigning an interior `Black0` line (`SpatialInteriorBorder`). | It may be an intended cut. | §1.3, G7 |
+| Choosing the wedge for `repair: angular_flat_foldability` (`points[1]`) when more than one candidate can exist. | The tool is [U]; which crease to add is the user's. With the kernel's candidate list not previewable through the MCP, the agent applies only after the user names the wedge or accepts "the candidate nearest to this point", and shows the result. | §1.4 |
+| TreeMaker: changing edge lengths, adding nodes/edges or `split_edge`, adding conditions, `relieve_(all_)strain`, `make_root`, re-optimizing from a different initial layout (`move_node` other than toward the parts a message names). | Each changes the base the user asked for (§2.2 [H] column). | §2.2, §2.3 |
+| Box Pleating: `resize_flap` (changes a flap's dimensions), `edge_length` changes, tree changes. | Flap sizes and river lengths are the design. | §3.1 |
+| Box Pleating: stepping `stretch_config` / `stretch_pattern`. | No source states a preference; each alternative is a different CP (U1). | §3.2 |
+| Any BP `move_flap` that the user did not delegate (below). | Flap placement is the design activity BP Studio hands to the user [F]. | §3.1 |
+
+**Scoped delegation.** A user's request defines which design decisions are
+delegated to the agent for that task: "pack these flaps" delegates flap
+*positions* (`move_flap`) but not sizes; "fix the assignments so it folds
+flat" delegates `assign_creases` on the creases that fail, but not moving
+vertices; "design a base for this stick figure" delegates the TreeMaker
+workflow steps but not lengthening the user's edges. An [H] action inside
+the delegated scope needs no per-step consent; one outside it does. When
+the scope is unclear, the agent asks before applying, and applies nothing
+[H] "to see what happens": proposals are computed from `inspect_design`
+data, not by editing the draft.
+
+**Blanket authorization** ("do whatever it takes") is consent for the
+listed [H] classes the user names, and still requires the agent to report
+every design change it made before `commit_design`.
+
 Three facts shape everything below:
 
 1. **[T] Local conditions decide whether an isometric flat folding exists;
@@ -182,15 +241,15 @@ re-`inspect_design` because IDs change.
 
 | `rule` | Tag | What it means | What to do |
 | --- | --- | --- | --- |
-| `NumberOfFolds` | [T]+[I] | Odd number of folding lines at an interior vertex, or a vertex touching ≠ 0/2 boundary lines (Maekawa ⇒ even degree). | [I] First rule out a missing vertex where a crease should pass through (`repair: intersections`) or a stray endpoint (`delete_creases`); a vertex on the paper edge with 1 or 3 `Black0` lines is a boundary-drawing error. [U] If the vertex genuinely needs one more crease, `repair: angular_flat_foldability` is Oriedita's one-crease completion for an odd-degree fan ("1. Select vertex with odd number of connecting lines. 2. Select flat foldable line. 3. Select a target line to extend to.", §1.4). It adds exactly one crease; it is not a general repair. |
-| `Angles` | [T]+[I] | Kawasaki–Justin fails on a fully assigned, even-degree, classic fan. | [I] Geometry is wrong, not the assignment: move an endpoint (`transform_creases` with `translate`) or redraw. [U] On 22.5° / box-pleat grids, `repair: snap` (FixInaccurate; "Only 22.5° and box-pleated crease patterns are currently supported"). Never fix `Angles` by flipping M/V [T]. `angular_flat_foldability` does **not** apply here: it adds a crease to an incomplete fan and never re-angles existing creases. |
-| `Maekawa` + `Equal` / `NotEnoughMountain` / `NotEnoughValley` | [T]+[I] | `|M − V| ≠ 2` on a fully assigned classic fan; the colour says which direction the count is off. The entry carries **no** per-crease payload (`big_little_big` is empty for this rule). | [I] Reassign with `assign_creases` so that `|M − V| = 2` *and* the big-little-big condition holds at this vertex *and* Maekawa still holds at each changed crease's other endpoint; the diagnostic cannot tell you which crease, so enumerate candidates and use `checks` as the oracle. [H] Prefer creases whose other endpoint is on the boundary (no Maekawa constraint there) — a heuristic, not a rule. |
-| `BigLittleBig` (+ `Correct`) | [T]+[I] | Counts and angles are right; the M/V *order* around the vertex is wrong. `big_little_big[]` lists the fan's creases; `violating: true` marks the **first bounding crease** of each minimal sector whose two bounding creases share a colour (`Check4.java` `littleBigLittleViolations.put(copy, true)`; port `mark_big_little_big`). | [T] A valid reassignment must keep `|M − V| = 2` while giving each strictly minimal sector opposite-coloured bounding creases [Hull-survey Thm 4.2]. A single flip changes the count by two and breaks Maekawa unless paired with a compensating flip in the same fan. [I] Enumerate assignments of the flagged creases and, if needed, their neighbours; apply one; re-run `checks`. Find IDs by matching `segment` endpoints in `inspect_design`. |
-| `None` (rule) | [I] | Reported only for the degree-2 collinear same-colour pair case in Oriedita's logic. | Usually a vertex that should not exist: `repair: merge_vertices`. |
-| `SpatialClosure` / `Closure`, `Rigid`, `ClosureUnreachable` | [I] | Non-180° creases (or a solved unknown) do not close in 3D within 1e-6°. | Change `angle` on the non-classic creases or return them to 180 (omit `angle`); `Rigid` means no angle can help at that degree. Not an Oriedita concept. |
-| `SpatialUndecided` / `Undecided` (`info`) | [I] | An unassigned crease meets here and exactly one angle (`fold_angle_degrees`) closes the vertex. | Decide the crease: `assign_creases` with a colour (and, if the angle is not 180, that `angle`). `UndecidedChoice` means several angles close it. |
-| `SpatialUnknowable` (`info`) | [I] | Nothing could be decided: `UnsplitJunction` (a crease passes through without ending — run `repair: intersections`), `NotEnoughCreases`, `TooManyUnknowns` (more than one unassigned crease at the vertex — assign some), `NoUniqueAnswer`. | As named. These count toward `issue_count`. |
-| `SpatialInteriorBorder` (`warning`) | [I] | A `Black0` line in the paper interior is being read as a border/cut. | Reassign it if it was meant as a crease. `Black0` is overloaded (border, cut, join) — `research/2026-08-31-holes-in-the-folding-pipeline.md` §5. |
+| `NumberOfFolds` | [T]+[I] | Odd number of folding lines at an interior vertex, or a vertex touching ≠ 0/2 boundary lines (Maekawa ⇒ even degree). | [U] First rule out a missing vertex where a crease should pass through: `repair: intersections`. [H] A stray endpoint (`delete_creases`) or a boundary polygon with 1 or 3 `Black0` lines at a vertex is a drawing error only the user can confirm — propose, do not delete. [U]+[H] If the vertex genuinely needs one more crease, `repair: angular_flat_foldability` is Oriedita's one-crease completion for an odd-degree fan ("1. Select vertex with odd number of connecting lines. 2. Select flat foldable line. 3. Select a target line to extend to.", §1.4); the tool is upstream's, the choice of wedge (`points[1]`) is the user's (§0.1). It adds exactly one crease; it is not a general repair. |
+| `Angles` | [T]+[I] | Kawasaki–Justin fails on a fully assigned, even-degree, classic fan. | [T] Geometry is wrong, not the assignment. [U] On 22.5° / box-pleat grids, `repair: snap` (FixInaccurate; "Only 22.5° and box-pleated crease patterns are currently supported"). [H] Otherwise the fix is to move an endpoint (`transform_creases` with `translate`) or redraw the crease — which endpoint is the user's decision (§0.1): report the vertex and the alternating-sum residual computed from `inspect_design`, propose, apply only with consent. Never fix `Angles` by flipping M/V [T]. `angular_flat_foldability` does **not** apply here: it adds a crease to an incomplete fan and never re-angles existing creases. G16 (§4) for fresh TreeMaker derivations. |
+| `Maekawa` + `Equal` / `NotEnoughMountain` / `NotEnoughValley` | [T]+[I] | `|M − V| ≠ 2` on a fully assigned classic fan; the colour says which direction the count is off. The entry carries **no** per-crease payload (`big_little_big` is empty for this rule). | [T] A valid reassignment gives `|M − V| = 2` here, keeps big-little-big here, and keeps Maekawa at each changed crease's other endpoint. [H] Which creases to reassign is a design choice: compute the candidate reassignments from `inspect_design` (sector angles and assignments of the fan and its neighbours), present them, apply the chosen one with `assign_creases` and verify with `checks`. A request to "fix the assignments" delegates this class (§0.1). [H] Preferring creases whose other endpoint is on the boundary is a heuristic for ordering proposals, not a rule. |
+| `BigLittleBig` (+ `Correct`) | [T]+[I] | Counts and angles are right; the M/V *order* around the vertex is wrong. `big_little_big[]` lists the fan's creases; `violating: true` marks the **first bounding crease** of each minimal sector whose two bounding creases share a colour (`Check4.java` `littleBigLittleViolations.put(copy, true)`; port `mark_big_little_big`). | [T] A valid reassignment must keep `|M − V| = 2` while giving each strictly minimal sector opposite-coloured bounding creases [Hull-survey Thm 4.2]. A single flip changes the count by two and breaks Maekawa unless paired with a compensating flip in the same fan. [H] As for `Maekawa`: compute the candidate pair-flips among the flagged creases and their neighbours from `inspect_design`, present, apply the chosen one with `assign_creases`, verify with `checks`. Find IDs by matching `segment` endpoints in `inspect_design`. |
+| `None` (rule) | [I] | Reported only for the degree-2 collinear same-colour pair case in Oriedita's logic. | [U] `repair: merge_vertices` (Oriedita's "Delete a vertex on a straight line of uniform color"). |
+| `SpatialClosure` / `Closure`, `Rigid`, `ClosureUnreachable` | [I] | Non-180° creases (or a solved unknown) do not close in 3D within 1e-6°. | [H] Changing `angle` on the non-classic creases, or returning them to 180 (omit `angle`), is a design choice: report `residual_degrees`, propose, apply with consent. `Rigid` means no angle can help at that degree (redrawing the fan is [H] too). Not an Oriedita concept. |
+| `SpatialUndecided` / `Undecided` (`info`) | [I] | An unassigned crease meets here and exactly one angle (`fold_angle_degrees`, signed: negative mountain, positive valley) closes the vertex. | [H] Deciding the crease (`assign_creases` with the colour from the sign and `angle: abs(fold_angle_degrees)` unless 180) is a design decision the user left open: report the value, apply with consent or under a delegation such as "decide the unassigned creases". `UndecidedChoice` means several angles close it. |
+| `SpatialUnknowable` (`info`) | [I] | Nothing could be decided: `UnsplitJunction` (a crease passes through without ending), `NotEnoughCreases`, `TooManyUnknowns` (more than one unassigned crease at the vertex), `NoUniqueAnswer`. | [U] `UnsplitJunction` → `repair: intersections`. [H] `TooManyUnknowns` / `NoUniqueAnswer` → deciding some of the unassigned creases is the user's. `NotEnoughCreases` → nothing to do at that vertex. These count toward `issue_count`. |
+| `SpatialInteriorBorder` (`warning`) | [I] | A `Black0` line in the paper interior is being read as a border/cut. | [H] Reassigning it is a decision (it may be an intended cut): ask. `Black0` is overloaded (border, cut, join) — `research/2026-08-31-holes-in-the-folding-pipeline.md` §5. |
 
 ### 1.4 Repairs
 
@@ -378,7 +437,10 @@ All rows **[I]**.
 4. `analyze_design {analysis: "packing"}` → `{packing: {valid, errors[]},
    layout}` (`analysis.ts:82-85`; `oristudio-bp-wasm/src/lib.rs:839-885`).
    `errors` holds **at most the first violation**, e.g. "Optimizer result
-   violates distance `d` between flaps `a` and `b`." Fix, re-check.
+   violates distance `d` between flaps `a` and `b`." Resolving it means
+   `move_flap` (placement — the activity BP Studio hands to the user [F],
+   delegated by a request to pack the flaps, §0.1) and never a silent
+   `resize_flap` (dimensions are the design; [H], explicit consent).
 5. Stretches: `inspect_design` → `layout.stretches[] {id, flapIds,
    configurationIndex, configurationCount, patternIndex, patternCount,
    patternFound, regions}`, `layout.invalidJunctions[]`,
@@ -388,8 +450,11 @@ All rows **[I]**.
    index by `delta` with wrap-around and re-initialize the selected pattern;
    `move_device {id, index, x, y}` moves a device
    (`engine/project_session.rs:954-1060`). **There is no source for choosing
-   among configurations or patterns** (§7); the agent can only enumerate
-   them and judge the derived CP.
+   among configurations or patterns** (§7); stepping them is [H] (§0.1):
+   the agent may enumerate alternatives only when the user asks for it or
+   the derived CP fails validation *and the user agrees to try others*, and
+   it judges each only by the derived CP's validation, never by a
+   preference of its own.
 6. `derive_crease_pattern` (FOLD export of the BP layout → CP), then
    **`checks` and `flat_fold` on the result are mandatory** — the upstream
    states its CP export is not intended to be flat-foldable [BPS-manual].

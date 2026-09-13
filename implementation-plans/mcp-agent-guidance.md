@@ -12,7 +12,20 @@ KB) and serving it through the MCP server itself.
 - **Source of truth stays the KB.** `docs/mcp/diagnostics.md` (decision
   tables) and `docs/mcp/recipes.md` (workflows R1–R7) cite KB sections; they
   turn **[U]** rows into default steps and **[H]** rows into consent-gated
-  fallbacks and add nothing from **[T]/[F]/[I]** that is not an action there.
+  steps and add nothing from **[T]/[F]/[I]** that is not an action there.
+  **Action boundary (KB §0.1, decided in the correction pass):** no new
+  "agent-safe" category was added. Every step that changes the design —
+  moving/deleting/reassigning/deciding creases, changing fold angles, the
+  wedge choice of `angular_flat_foldability`, TreeMaker re-layout, edge
+  lengths, nodes, conditions, strain relief, `make_root`, BP `resize_flap`,
+  river/tree changes, stretch stepping, and `move_flap` outside a packing
+  request — is **[H]**: computed and proposed from `inspect_design` data,
+  applied only after agreement or under a *scoped delegation* the user's
+  request gives ("pack these flaps" → `move_flap`; "fix the assignments" →
+  `assign_creases`). The closed set of no-consent defaults is the upstream
+  prescriptions: `repair: overlaps`/`intersections`/`merge_vertices`, `snap`
+  on 22.5°/box-pleat, TreeMaker's failure-message remedies and workflow
+  optimizers, plus read-only tools and experiment housekeeping.
 - **Smallest useful MCP surface.** One prompt (`origami-workflow`, one page,
   `docs/mcp/agent-prompt.md`) and three read-only resources
   (`ori-studio://guide/{diagnostics,recipes,knowledge}`) served natively by
@@ -92,13 +105,15 @@ without a vertex, and one vertex with M = V.
 | 5 | R1.5, diag §0 | `inspect_design {draft_id: A, revision: 1}` | at the Maekawa point: no `unassigned`, all `abs(fold_angle_degrees) == 180` → classical rules apply |
 | 6 | R1.6.1, diag §2 Check1 | `edit_creases {…, operations: [{type: "repair", repair: "overlaps"}]}` → `changed: true`; again → `changed: false`; then `[{type: "repair", repair: "intersections"}]` | loop until `changed: false` (G1) |
 | 7 | R1.6 | `analyze_design checks` → `inspect_design` | `Check1`, `Check2` gone; IDs renumbered |
-| 8 | R1.6.4, R3 Maekawa | `checkpoint_design`; `edit_creases {…, operations: [{type: "assign_creases", line_ids: [k], assignment: "valley"}]}` | candidate chosen so that `|M − V| = 2` here and at line k's other endpoint; no `big_little_big` payload read (G12) |
-| 9 | R3 | `analyze_design checks` | if a new vertex fails → `rollback_design {checkpoint_id}` and next candidate; else done |
-| 10 | R1.7 | — | `no_local_issues` + no `unassigned` + classic ⇒ classical verdict |
-| 11 | R1.8–9 | `analyze_design flat_fold`; `export_design {format: "fold"}`; `workspace`; `commit_design {label}` | R7 conflict check before commit |
+| 8 | R1.6.4, R3 Maekawa | (no tool) compute from `inspect_design` the reassignments giving `|M − V| = 2` here and at each candidate's other endpoint; present them | **[H]**: apply nothing yet; no `big_little_big` payload read (G12) |
+| 9 | R3, KB §0.1 | user picks one (or had said "fix the assignments") → `checkpoint_design`; `edit_creases {…, operations: [{type: "assign_creases", line_ids: [k], assignment: "valley"}]}` | consent or delegation recorded |
+| 10 | R3 | `analyze_design checks` | if a new vertex fails → `rollback_design {checkpoint_id}` and the next agreed candidate; else done |
+| 11 | R1.7 | — | `no_local_issues` + no `unassigned` + classic ⇒ classical verdict |
+| 12 | R1.8–9 | `analyze_design flat_fold`; `export_design {format: "fold"}`; `workspace`; `commit_design {label}` | R7 conflict check before commit |
 
 Forbidden actions the guides never produce here: `transform_creases` to
-"fix" Maekawa; `angular_flat_foldability` on an even fan; a second
+"fix" Maekawa; `angular_flat_foldability` on an even fan; applying an
+`assign_creases` candidate before the user chose or delegated; a second
 `assign_creases` batch without re-running `checks`.
 
 ### W2 — TreeMaker derive flow with the G16 residual case (R4)
@@ -132,16 +147,15 @@ Input: user wants a two-flap-plus-river layout on a 20×20 sheet.
 | --- | --- | --- | --- |
 | 1 | R5.1–2 | `begin_design {source: "new", kind: "box_pleat"}`; `edit_box_pleat {operations: [{type: "initialize_tree", root, leaves: [{loc, length: 4}, {loc, length: 4}]}]}`; `sheet {grid: "rectangular", width: 20, height: 20}` | |
 | 2 | R5.3 | `analyze_design {analysis: "packing"}` | `valid: false`, `errors[0]` names flaps 1, 2 |
-| 3 | diag §8 | `edit_box_pleat {operations: [{type: "move_flap", id: 2, x, y}]}`; `packing` again | until `valid: true` (only the first violation per run, G8) |
+| 3 | diag §8, KB §0.1 | `edit_box_pleat {operations: [{type: "move_flap", id: 2, x, y}]}`; `packing` again | `move_flap` is delegated by the packing request; `resize_flap` is not offered (explicit consent only); until `valid: true` (first violation per run, G8) |
 | 4 | R5.4 | `inspect_design` | `layout.stretches[0]` has `configurationCount: 2`, `patternFound: true` |
 | 5 | R5.5 | keep defaults; **no** `stretch_config` call yet | "no documented preference" (KB U1) |
 | 6 | R5.6 | `derive_crease_pattern` → draft C; `analyze_design {draft_id: C, analysis: "checks"}` | entries are real (BP is never G16); suppose `Maekawa` at one vertex |
-| 7 | R5.5 (enumeration clause) | `stretch_config {id, delta: 1}` on the BP draft; re-derive; `checks` | judged only by validation of the derived CP; report both outcomes to the user, no ranking |
+| 7 | R5.5 (**[H]**) | ask: "the derived CP fails at vertex V; the layout has 2 stretch configurations — try the other?" → only after yes: `stretch_config {id, delta: 1}`; re-derive; `checks` | judged only by validation of the derived CP; report both outcomes, no ranking |
 | 8 | R5.7 | `export_design {format: "bps"}` / `{format: "fold"}` | |
 
-Forbidden: "prefer the first/largest pattern"; treating BP `Angles` as
-numerical residue; editing flap sizes beyond what `packing` requires without
-consent.
+Forbidden: "prefer the first/largest pattern"; stepping stretches unasked;
+treating BP `Angles` as numerical residue; `resize_flap` as a packing fix.
 
 ### W4 — A semantic [H] fallback that must not be applied silently (R4 + diag §7)
 
@@ -162,6 +176,6 @@ silent step; presenting any of them as "the fix".
 
 - `cargo test -p ori-studio --lib mcp` — 7 passed (3 new)
 - `cargo fmt --check -p ori-studio`, `cargo clippy -p ori-studio --all-targets -- -D warnings` — clean (pre-existing unknown-lint warning only)
-- `npx vitest run src/automation` (apps/web) — 12 files / 72 tests passed (agentGuides.test.ts, workspace guidance test new)
+- `npx vitest run src/automation` (apps/web) — 12 files / 89 tests passed (agentGuides.test.ts incl. consent-boundary and spatial-rule coverage, workspace guidance test new)
 - `node --check scripts/mcp/call.mjs`
 - `git diff --check`
