@@ -20,7 +20,9 @@ import { onEngineLost, type EngineId } from './engineHost';
  *   the documents are fine, so they are parked rather than lost.
  *
  * It deliberately knows nothing about tabs, the store, or which document is
- * on screen. It maps document id -> handle, and that is all.
+ * on screen. It maps document id -> handle, qualified by the engine generation
+ * that minted the handle: a bare number is meaningless across workers, so the
+ * pair is the identity (see [I11] below).
  */
 
 /** A document as the registry sees it: an id, a kind, and its serialized form. */
@@ -56,6 +58,14 @@ interface HotEntry {
   handle: number;
   /** Monotonic counter; lowest is least-recently-used. */
   touched: number;
+  /**
+   * Engine that minted `handle`, and its generation at the time [I11].
+   *
+   * Null for kinds with no engine, which have no worker whose death could
+   * invalidate anything.
+   */
+  engine: EngineId | null;
+  engineEpoch: number;
 }
 
 export const DEFAULT_HOT_LIMIT = 3;
@@ -98,7 +108,8 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *
    * [I1 hot handle] At most one live handle per document. Removing the hot
    *   entry transfers cleanup duty to exactly one park (or to `forget` /
-   *   `adoptHandle`'s direct free) — never zero, never two.
+   *   `adoptHandle`'s direct free) — never zero, never two. A dead generation
+   *   discharges the duty by abandon instead [I11].
    * [I2 parked snapshot] `parked` holds the freshest text whose generation is
    *   current. Only a current-epoch park commit or `adopt` overwrites it; only
    *   `adoptHandle` / `forget` delete it. Nothing resurrects deleted text.
@@ -107,8 +118,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *   record per document. Waiters await `done`, never a worker RPC directly.
    * [I4 generation] Bumped synchronously on every ownership/state change (park
    *   start, `adopt`, `adoptHandle`, `forget`, engine-loss drop). A park frees
-   *   its own handle unconditionally but commits text only while its epoch is
-   *   current — checked at serialize time AND at settle time.
+   *   its own handle while its engine generation is still current [I11], but
+   *   commits text only while its epoch is current — checked at serialize time
+   *   AND at settle time.
    * [I5 early commit] A successful serialization whose generation is still
    *   current becomes last-known-good BEFORE the potentially-hanging `free`:
    *   a cleanup hang, failure, or loss must never discard serialized content.
@@ -117,18 +129,30 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *   Records are never dropped without settling their waiters.
    * [I7 supersede retires] `adopt` / `adoptHandle` / `forget` / a newer park
    *   synchronously retire the obsolete record (abandon + remove) while its
-   *   worker RPCs finish or hang untracked — free-but-never-commit. No
-   *   document accumulates multiple live waiter records.
+   *   worker RPCs finish or hang untracked — cleanup-while-current [I11] but
+   *   never commit. No document accumulates multiple live waiter records.
    * [I8 engine loss] Drops live handles without touching the dead worker,
    *   abandons tracked parks synchronously, and bumps generations so late
-   *   settlements free but never commit. Early-committed text stands as the
+   *   settlements never commit. Cleanup of dead-generation handles is skipped
+   *   [I11] — the worker took them with it. Early-committed text stands as the
    *   recovery; a never-parked document stays unrecoverable (nothing invented).
    * [I9 transfer] `adopt` / `adoptHandle` / `forget` apply synchronously —
    *   bump, retire, then update hot/parked — before any await, so no waiter
    *   observes a half-moved document.
-   * [I10 cleanup] Every removed hot handle is freed exactly once; `free`
-   *   errors are logged and never un-commit text nor fail waiters.
-   *   Finalization deletes only its own record, never a newer one.
+   * [I10 cleanup] Every removed hot handle whose engine generation is still
+   *   current is freed exactly once; `free` errors are logged and never
+   *   un-commit text nor fail waiters. Handles of a dead generation are dropped
+   *   without cleanup — freeing them through the replacement could kill an
+   *   unrelated document reusing the number. Finalization deletes only its own
+   *   record, never a newer one.
+   * [I11 handle provenance] A hot handle is valid only with its minting engine
+   *   generation: every worker numbers its own handles from scratch, so a bare
+   *   number is meaningless across generations. Every hot entry records minter
+   *   and epoch; `handleEngineLost` advances the epoch; `acquire` verifies
+   *   still-current before inserting (a straddler is abandoned and retried,
+   *   never inserted, never freed); and every later use — hot hit, serialize,
+   *   park, `adoptHandle`'s and `forget`'s cleanup — revalidates, dropping a
+   *   stale entry without touching the live client.
    */
   /**
    * Ownership generation per document id [I4].
@@ -145,6 +169,21 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     generations.set(documentId, next);
     return next;
   };
+  /**
+   * Engine generation per engine id [I11].
+   *
+   * Advanced synchronously in `handleEngineLost`, before any entry is dropped:
+   * from that point on, anything the dead worker still resolves belongs to an
+   * older generation and must never enter — or leave — `hot` through the
+   * replacement's client. Kinds with no engine (`engine: null`) have no worker
+   * to die and always read epoch 0.
+   */
+  const engineEpochs = new Map<EngineId, number>();
+  const engineEpoch = (engine: EngineId | null): number =>
+    engine === null ? 0 : (engineEpochs.get(engine) ?? 0);
+  /** Whether a hot entry's minter is still the live generation. */
+  const isEntryCurrent = (entry: HotEntry): boolean =>
+    entry.engine === null || entry.engineEpoch === engineEpoch(entry.engine);
   /**
    * A park currently serializing a document whose hot entry is already gone.
    *
@@ -243,6 +282,15 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       await parking.done;
       entry = hot.get(documentId);
     }
+    // [I11] A handle from a dead generation is neither serializable nor
+    // freeable through the live client — its number may already name another
+    // document there. Drop it and return: the dead worker took its handles
+    // with it, so there is nothing to clean up, and whatever parked text
+    // stands is the recovery.
+    if (!isEntryCurrent(entry)) {
+      hot.delete(documentId);
+      return;
+    }
     // Engine work is in flight. Serializing would capture a torn intermediate
     // state, and freeing would pull the handle out from under it. The caller
     // switching tabs mid-optimize simply keeps this document hot until it ends.
@@ -252,9 +300,15 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     hot.delete(documentId);
     // Captured alongside the removal: any ownership change after this point —
     // `adopt`, `adoptHandle`, `forget`, a newer park, an engine-loss drop —
-    // bumps the generation, and this park must then free but never commit.
-    // Its text describes the document as it was when the park started.
+    // bumps the generation, and this park must then never commit. Its text
+    // describes the document as it was when the park started.
     const epoch = bumpGeneration(documentId);
+    // The minter generation alongside it [I11]: an engine loss after this
+    // point strands the handle on a dead worker, and its number may be reused
+    // by the replacement — so the cleanup below must be skipped, not run
+    // through the live client.
+    const minter = entry.document.kind.engine;
+    const minterEpoch = engineEpoch(minter);
     // Retire-then-install [I7]: with synchronous retire on every ownership
     // change this slot is empty here, but a stale record must never be
     // orphaned by overwrite — its waiters would hang outside every loss and
@@ -275,7 +329,8 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       } catch (error) {
         // Serialization failed, so the last known text is all there is. Keeping it
         // loses the edits since, but dropping the entry entirely would lose the
-        // document — and the handle still has to be freed either way.
+        // document — and the handle still has to be freed either way, unless
+        // its engine died with it [I11].
         console.error(`[ori-studio] failed to serialize document ${documentId}`, error);
       }
       // [I5] Publish last-known-good BEFORE the potentially-hanging cleanup:
@@ -287,15 +342,20 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       if (text !== undefined && generations.get(documentId) === epoch) {
         parked.set(documentId, text);
       }
-      // Always freed [I1, I10]: this handle was removed from the hot set above,
-      // so nobody else will free it — not even the ownership change that made
-      // this park stale. A cleanup failure is logged but never un-commits the
+      // Freed while its minter generation is still current [I1, I10, I11]:
+      // this handle was removed from the hot set above, so nobody else will
+      // free it — unless the minter itself died, in which case the worker took
+      // its handles with it and the number may already name another document
+      // on the replacement. Then the cleanup is skipped, never run through
+      // the live client. A cleanup failure is logged but never un-commits the
       // text above and never fails `done` below: waiters proceed from the
       // committed text, and the park caller resolves with the text safe.
-      try {
-        await entry.document.kind.codec.free(entry.handle);
-      } catch (error) {
-        console.error(`[ori-studio] failed to free document ${documentId}`, error);
+      if (minter === null || engineEpoch(minter) === minterEpoch) {
+        try {
+          await entry.document.kind.codec.free(entry.handle);
+        } catch (error) {
+          console.error(`[ori-studio] failed to free document ${documentId}`, error);
+        }
       }
       if (generations.get(documentId) !== epoch) return;
       if (text !== undefined) parked.set(documentId, text);
@@ -306,8 +366,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // via `abandon()` instead. `work` itself never rejects — serialize and
     // cleanup failures are logged above [I10] — so `done` only settles by
     // completion or abandon, never by throwing at waiters. A late settlement
-    // after abandon still runs the generation checks above, so it frees but
-    // never commits over the replacement.
+    // after abandon still runs the generation checks above, so it never
+    // commits over the replacement — and skips its cleanup past an engine
+    // loss [I11] instead of freeing through the replacement's client.
     let releaseWaiters!: () => void;
     const abandoned = new Promise<void>((resolve) => {
       releaseWaiters = resolve;
@@ -331,42 +392,66 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *
    * Creates a fresh document the first time an id is seen, which is what makes
    * "open a new tab" and "restore a tab from a file" the same call.
+   *
+   * Every pass re-reads hot and the in-flight parks: a result that resolves
+   * after the world moved — a park landing, an engine dying — must never
+   * overwrite the replacement [I11].
    */
   async function acquire(document: RegisteredDocument): Promise<number> {
-    const existing = hot.get(document.id);
-    if (existing) {
-      existing.touched = clock += 1;
-      return existing.handle;
-    }
-    // A park is serializing this document: its hot entry is already gone but
-    // its fresh text is not parked yet. Waiting and re-reading hydrates from
-    // that text; proceeding would mint a blank handle — or a stale one from
-    // the text being replaced — that `serialize()`'s hot-first rule then
-    // prefers over the fresh text until the next park makes it permanent.
-    const parking = parksInFlight.get(document.id);
-    if (parking) {
-      await parking.done;
-      return acquire(document);
-    }
+    for (;;) {
+      const existing = hot.get(document.id);
+      if (existing) {
+        if (isEntryCurrent(existing)) {
+          existing.touched = clock += 1;
+          return existing.handle;
+        }
+        // A dead generation's number, which the replacement engine may already
+        // have reused for another document. Drop it without cleanup — freeing
+        // through the live client could kill that document — and recover below.
+        hot.delete(document.id);
+        continue;
+      }
+      // A park is serializing this document: its hot entry is already gone but
+      // its fresh text is not parked yet. Waiting and re-reading hydrates from
+      // that text; proceeding would mint a blank handle — or a stale one from
+      // the text being replaced — that `serialize()`'s hot-first rule then
+      // prefers over the fresh text until the next park makes it permanent.
+      const parking = parksInFlight.get(document.id);
+      if (parking) {
+        await parking.done;
+        continue;
+      }
 
-    const text = parked.get(document.id);
-    const handle =
-      text === undefined
-        ? await document.kind.codec.create()
-        : await document.kind.codec.hydrate(text);
+      // The owning generation, captured before the worker round trip [I11]. An
+      // engine loss in between means this result — whenever it resolves — is
+      // the dead worker's numbering, not the live one's.
+      const engine = document.kind.engine;
+      const epochBefore = engineEpoch(engine);
+      const text = parked.get(document.id);
+      const handle =
+        text === undefined
+          ? await document.kind.codec.create()
+          : await document.kind.codec.hydrate(text);
+      if (engine !== null && engineEpoch(engine) !== epochBefore) {
+        // Straddled a loss: abandon without cleanup (never hot.set, never
+        // free — the number may name another document on the live engine)
+        // and retry on the current generation.
+        continue;
+      }
 
-    hot.set(document.id, { document, handle, touched: (clock += 1) });
-    // The parked text is deliberately *kept*, not consumed. It is the last known
-    // good state, and it is the only thing standing between an engine crash and
-    // losing the document outright — dropping it here would mean a document that
-    // had been parked once could still become unrecoverable simply by being
-    // looked at again. Cost is the text staying resident for at most `hotLimit`
-    // documents; `park` overwrites it with something fresher.
-    emit({ type: 'hydrated', documentId: document.id, handle });
-    // After insertion, so the newly hydrated document counts toward the budget
-    // and cannot itself be chosen as the victim.
-    await evictIfNeeded(document.id);
-    return handle;
+      hot.set(document.id, { document, handle, touched: (clock += 1), engine, engineEpoch: epochBefore });
+      // The parked text is deliberately *kept*, not consumed. It is the last known
+      // good state, and it is the only thing standing between an engine crash and
+      // losing the document outright — dropping it here would mean a document that
+      // had been parked once could still become unrecoverable simply by being
+      // looked at again. Cost is the text staying resident for at most `hotLimit`
+      // documents; `park` overwrites it with something fresher.
+      emit({ type: 'hydrated', documentId: document.id, handle });
+      // After insertion, so the newly hydrated document counts toward the budget
+      // and cannot itself be chosen as the victim.
+      await evictIfNeeded(document.id);
+      return handle;
+    }
   }
 
   /**
@@ -407,7 +492,16 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       return serialize(document);
     }
     const entry = hot.get(document.id);
-    if (entry) return entry.document.kind.codec.serialize(entry.handle);
+    if (entry) {
+      // [I11] A dead generation's number may already name another document on
+      // the live engine: never read through it. Drop it and fall through to
+      // the last parked text (or the honest `not registered` below).
+      if (!isEntryCurrent(entry)) {
+        hot.delete(document.id);
+      } else {
+        return entry.document.kind.codec.serialize(entry.handle);
+      }
+    }
     const text = parked.get(document.id);
     if (text !== undefined) return text;
     throw new Error(`Document ${document.id} is not registered`);
@@ -441,16 +535,25 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    */
   async function adoptHandle(document: RegisteredDocument, handle: number): Promise<void> {
     // First, synchronously: an in-flight park for the previous occupant is stale
-    // from here on — it may still free its own handle, but never commit [I4].
-    // Retire its waiter-visible record as well [I7, I9]: waiters migrate to the
-    // replacement on wake instead of hanging on a record the next park would
-    // otherwise overwrite out from under them.
+    // from here on — it may still free its own handle while its minter lives
+    // [I11], but never commit [I4]. Retire its waiter-visible record as well
+    // [I7, I9]: waiters migrate to the replacement on wake instead of hanging
+    // on a record the next park would otherwise overwrite out from under them.
     bumpGeneration(document.id);
     retirePark(document.id);
     const existing = hot.get(document.id);
-    hot.set(document.id, { document, handle, touched: (clock += 1) });
+    // Stamped with the adopting generation [I11]: the caller proved the minter
+    // alive with a same-client read immediately before this call (snapshot /
+    // buildProjectState), and this install runs synchronously in the same
+    // drain — so the adopted handle is of the current generation, and every
+    // later loss stays honest about it.
+    const engine = document.kind.engine;
+    hot.set(document.id, { document, handle, touched: (clock += 1), engine, engineEpoch: engineEpoch(engine) });
     parked.delete(document.id);
-    if (existing && existing.handle !== handle) {
+    // The previous handle only while its own minter is still live: past a loss
+    // it died with its worker, and freeing its number through the live client
+    // could kill an unrelated document reusing it.
+    if (existing && existing.handle !== handle && isEntryCurrent(existing)) {
       await existing.document.kind.codec.free(existing.handle);
     }
     emit({ type: 'hydrated', documentId: document.id, handle });
@@ -469,7 +572,12 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     const entry = hot.get(documentId);
     if (entry) {
       hot.delete(documentId);
-      await entry.document.kind.codec.free(entry.handle);
+      // Only while its minter is still live [I11]: past a loss the handle died
+      // with its worker, and freeing its number through the live client could
+      // kill an unrelated document reusing it.
+      if (isEntryCurrent(entry)) {
+        await entry.document.kind.codec.free(entry.handle);
+      }
     }
     parked.delete(documentId);
   }
@@ -480,6 +588,11 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * last parked text so the documents can be rehydrated once it respawns.
    */
   const handleEngineLost = (engine: EngineId) => {
+    // Advance first [I11]: from here on, anything the dead worker still
+    // resolves is an older generation — late `acquire` results are abandoned
+    // instead of inserted, and a handle this drop somehow misses is still
+    // refused at every later use.
+    engineEpochs.set(engine, engineEpoch(engine) + 1);
     // A park serializing on the dead engine can never finish: its worker is
     // gone, so the Comlink promise it awaits pends forever — along with every
     // `acquire()`/`serialize()`/`park()` waiting on the tracked entry. Abandon

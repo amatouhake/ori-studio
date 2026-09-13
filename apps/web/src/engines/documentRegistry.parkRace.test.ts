@@ -393,9 +393,11 @@ describe('engine loss during an in-flight park', () => {
     // The replacement's park must win over the stale text, whatever the order.
     await registry.park('a');
     await expect(registry.serialize(document)).resolves.toBe('REPLACEMENT');
-    // …while the stale handle is still freed exactly once: the epoch guard
-    // drops the write, never the cleanup (h1, h2, h3 each freed once).
-    expect(fake.calls.free).toBe(3);
+    // …while the stale handle is abandoned, never freed: its worker died
+    // holding it, so there is nothing to clean up — and freeing its number
+    // through the live client could kill an unrelated document reusing it
+    // (h1 and h3 each freed once; h2's cleanup is skipped, not run).
+    expect(fake.calls.free).toBe(2);
     registry.dispose();
   });
 
