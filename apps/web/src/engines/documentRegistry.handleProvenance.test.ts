@@ -59,17 +59,23 @@ function makeEngine(): SplitEngine {
 
 /**
  * A kind whose codec answers from the *active* engine, like the host swapping
- * workers under a stable client factory. Create/hydrate/serialize capture the
- * active engine when the RPC is *sent* (a late settlement carries the dead
- * worker's data); free resolves the engine when it *runs* (like
- * getClient-then-free), which is what makes freeing through the replacement
- * observable.
+ * workers under a stable client factory — including a faithful connect phase.
+ *
+ * `getClient` answers with the *live* engine at *resolution* time, so a
+ * connect gated across a loss resolves to the replacement (exactly like a
+ * worker spinning up while the old one is dropped). Each operation honors a
+ * bound client when given one and resolves its own otherwise, mirroring the
+ * real codecs' `client ?? await getClient()` shape. RPC gates capture the
+ * owner when the RPC is *sent* (a late settlement carries the dead worker's
+ * data); free resolves the engine when it *runs*, which is what makes freeing
+ * through the replacement observable.
  */
 function splitKind(engine: EngineId) {
   const e1 = makeEngine();
   const e2 = makeEngine();
   let active = e1;
-  const calls = { create: 0, hydrate: 0, serialize: 0, free: 0 };
+  const calls = { create: 0, hydrate: 0, serialize: 0, free: 0, connect: 0 };
+  const connectGates: Array<Promise<void>> = [];
   const createGates: Array<Promise<void>> = [];
   const hydrateGates: Array<Promise<void>> = [];
   const serializeGates: Array<Promise<void>> = [];
@@ -83,34 +89,44 @@ function splitKind(engine: EngineId) {
     return release;
   };
 
+  /** The host's client resolution: whichever engine is live when this settles. */
+  const getClient = async (): Promise<SplitEngine> => {
+    calls.connect += 1;
+    const gate = connectGates.shift();
+    if (gate) await gate;
+    return active;
+  };
+
   const kind = {
     id: 'split-fake',
     engine,
     codec: {
-      create: vi.fn(async () => {
+      resolveClient: () => getClient(),
+      create: vi.fn(async (client?: unknown) => {
         calls.create += 1;
-        const owner = active;
+        const owner = (client as SplitEngine | undefined) ?? (await getClient());
         const gate = createGates.shift();
         if (gate) await gate;
         return owner.alloc('new');
       }),
-      hydrate: vi.fn(async (text: string) => {
+      hydrate: vi.fn(async (text: string, client?: unknown) => {
         calls.hydrate += 1;
-        const owner = active;
+        const owner = (client as SplitEngine | undefined) ?? (await getClient());
         const gate = hydrateGates.shift();
         if (gate) await gate;
         return owner.alloc(text);
       }),
-      serialize: vi.fn(async (handle: number) => {
+      serialize: vi.fn(async (handle: number, client?: unknown) => {
         calls.serialize += 1;
-        const owner = active;
+        const owner = (client as SplitEngine | undefined) ?? (await getClient());
         const gate = serializeGates.shift();
         if (gate) await gate;
         return owner.read(handle);
       }),
-      free: vi.fn(async (handle: number) => {
+      free: vi.fn(async (handle: number, client?: unknown) => {
         calls.free += 1;
-        active.free(handle);
+        const owner = (client as SplitEngine | undefined) ?? (await getClient());
+        owner.free(handle);
       }),
     },
   } as unknown as DesignKindDescriptor;
@@ -123,6 +139,7 @@ function splitKind(engine: EngineId) {
     useE2: () => {
       active = e2;
     },
+    holdConnect: () => hold(connectGates),
     holdCreate: () => hold(createGates),
     holdHydrate: () => hold(hydrateGates),
     holdSerialize: () => hold(serializeGates),
@@ -142,6 +159,21 @@ function lossChannel() {
   };
 }
 
+/**
+ * Let a just-started acquire's (ungated) connect settle before injecting a
+ * loss.
+ *
+ * Client resolution answers in a microtask after the `acquire()` call, while
+ * these tests inject the loss synchronously — no event-driven loss can land in
+ * that window in production (worker loss arrives as a macrotask; the
+ * resolution resumption runs first in the same drain), so without this tick
+ * the capture would observe a post-loss epoch for a pre-loss client: an
+ * instant that cannot happen. One hop suffices — the resumption was queued
+ * ahead of this tick — and the RPC gate below then holds the *sent* RPC open
+ * while the loss lands during it, which is the interleaving under test.
+ */
+const settleConnect = () => Promise.resolve();
+
 const doc = (id: string, kind: DesignKindDescriptor): RegisteredDocument => ({ id, kind });
 
 function rig(engine: EngineId = 'treemaker') {
@@ -160,6 +192,9 @@ describe('late acquisition after engine loss (P1 handle provenance)', () => {
     registry.adopt('a', 'A-text');
     const releaseHydrate = holdHydrate();
     const acquiringA = registry.acquire(documentA);
+    // The connect settles pre-loss (same drain in production); the hydrate gate
+    // below holds the *sent* RPC open while the loss lands during it.
+    await settleConnect();
 
     // The engine dies while A's hydrate is still resolving. The replacement
     // is already serving unrelated documents, reusing numbers from scratch.
@@ -192,6 +227,9 @@ describe('late acquisition after engine loss (P1 handle provenance)', () => {
 
     const releaseCreate = holdCreate();
     const acquiringA = registry.acquire(documentA);
+    // The connect settles pre-loss (same drain in production); the create gate
+    // below holds the *sent* RPC open while the loss lands during it.
+    await settleConnect();
 
     engines.lose('treemaker');
     useE2();
@@ -219,6 +257,9 @@ describe('late acquisition after engine loss (P1 handle provenance)', () => {
     registry.adopt('a', 'A-text');
     const releaseHydrate = holdHydrate();
     const acquiringA = registry.acquire(documentA);
+    // The connect settles pre-loss (same drain in production); the hydrate gate
+    // below holds the *sent* RPC open while the loss lands during it.
+    await settleConnect();
 
     engines.lose('treemaker');
     useE2();
@@ -277,6 +318,9 @@ describe('late acquisition after engine loss (P1 handle provenance)', () => {
     registry.adopt('a', 'A-text');
     const releaseHydrate = holdHydrate();
     const acquiringA = registry.acquire(documentA);
+    // The connect settles pre-loss (same drain in production); the hydrate gate
+    // below holds the *sent* RPC open while the loss lands during it.
+    await settleConnect();
 
     engines.lose('treemaker');
     useE2();
@@ -303,6 +347,9 @@ describe('late acquisition after engine loss (P1 handle provenance)', () => {
     registry.adopt('a', 'A-text');
     const releaseHydrate = holdHydrate();
     const acquiringA = registry.acquire(documentA);
+    // The connect settles pre-loss (same drain in production); the hydrate gate
+    // below holds the *sent* RPC open while the loss lands during it.
+    await settleConnect();
 
     engines.lose('treemaker');
     useE2();
@@ -367,6 +414,9 @@ describe('late acquisition after engine loss (P1 handle provenance)', () => {
     registry.adopt('a', 'TREE-v1');
     const releaseHydrate = holdHydrate();
     const acquiringA = registry.acquire(documentA);
+    // The connect settles pre-loss (same drain in production); the hydrate gate
+    // below holds the *sent* RPC open while the loss lands during it.
+    await settleConnect();
 
     engines.lose('treemaker');
     useE2();
@@ -396,6 +446,9 @@ describe('late acquisition after engine loss (P1 handle provenance)', () => {
 
     const releaseCreate = holdCreate();
     const acquiringA = registry.acquire(documentA);
+    // The connect settles pre-loss (same drain in production); the create gate
+    // below holds the *sent* RPC open while the loss lands during it.
+    await settleConnect();
 
     engines.lose('oristudio-bp');
     useE2();
@@ -418,6 +471,45 @@ describe('late acquisition after engine loss (P1 handle provenance)', () => {
     e2.write(handleA, 'BP-edited');
     expect(e2.read(handleA)).toBe('BP-edited');
     expect(e2.read(handleB)).toBe('BP');
+    registry.dispose();
+  });
+
+  it('10. connect-gated hydrate across loss uses the live result once — no leak, no retry', async () => {
+    // The inverse of tests 1-2: here the RPC is *sent* post-loss (the connect
+    // itself pends across it and resolves to the replacement), so the result
+    // is live and must be used as-is. Capturing the epoch before resolution
+    // abandons it — leaking a live handle on E2 — and pays a second loadTmd.
+    const { kind, calls, e1, e2, engines, registry, useE2, holdConnect } = rig();
+    const documentA = doc('a', kind);
+    const documentB = doc('b', kind);
+
+    registry.adopt('a', 'A-text');
+    const releaseConnect = holdConnect();
+    const acquiringA = registry.acquire(documentA);
+
+    // The loss lands while the connect is pending; the host resolves it to E2.
+    // B's own connect is ungated, so it serves immediately on the replacement.
+    engines.lose('treemaker');
+    useE2();
+    const handleB = await registry.acquire(documentB);
+    expect(handleB).toBe(42);
+    e2.write(handleB, 'B');
+    releaseConnect();
+    const handleA = await acquiringA;
+
+    // Exactly one hydrate, served by E2: the live result is used, not
+    // abandoned-and-retried.
+    expect(calls.hydrate).toBe(1);
+    expect(handleA).not.toBe(handleB);
+    expect(registry.handleFor('a')).toBe(handleA);
+    expect(e2.read(handleA)).toBe('A-text');
+    expect(e2.read(handleB)).toBe('B');
+    // No abandoned live handle: E2 holds exactly B and A, and E1 never served
+    // anything (the RPC was never sent to it).
+    expect(e2.contents.size).toBe(2);
+    expect(e1.contents.size).toBe(0);
+    expect(e1.freed).toEqual([]);
+    expect(e2.freed).toEqual([]);
     registry.dispose();
   });
 });

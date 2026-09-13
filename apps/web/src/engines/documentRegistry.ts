@@ -148,11 +148,17 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * [I11 handle provenance] A hot handle is valid only with its minting engine
    *   generation: every worker numbers its own handles from scratch, so a bare
    *   number is meaningless across generations. Every hot entry records minter
-   *   and epoch; `handleEngineLost` advances the epoch; `acquire` verifies
-   *   still-current before inserting (a straddler is abandoned and retried,
-   *   never inserted, never freed); and every later use — hot hit, serialize,
-   *   park, `adoptHandle`'s and `forget`'s cleanup — revalidates, dropping a
-   *   stale entry without touching the live client.
+   *   and epoch; `handleEngineLost` advances the epoch. Every engine RPC
+   *   resolves its client once per operation and binds to it — the epoch is
+   *   captured after the resolution, never before, because a connect pending
+   *   across a loss resolves to the replacement whose result is live. Same
+   *   generation still implies the same engine (generations advance on every
+   *   replacement while the client stays memoized), so a post-resolution
+   *   capture that still matches at completion proves the result came from the
+   *   live engine: `acquire` inserts it, `serialize` returns it, cleanups run
+   *   it. A mismatch means the RPC spanned a loss — abandon without cleanup
+   *   and recover (retry the acquisition, re-read the document, skip the
+   *   free). Hot hits need no RPC and validate the stamp directly.
    */
   /**
    * Ownership generation per document id [I4].
@@ -323,9 +329,16 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // is no gap between the removal above and the marker for anyone to slip through.
     let committed = false;
     const work = (async () => {
+      // Resolved once for the serialize [I11]: whichever client this settles
+      // to serves the read. A foreign number space cannot commit — the epoch
+      // checks below refuse it — so binding only decides hang-vs-answer here,
+      // never correctness.
+      const connectSerialize =
+        minter === null ? undefined : entry.document.kind.codec.resolveClient;
+      const serializeClient = connectSerialize === undefined ? undefined : await connectSerialize();
       let text: string | undefined;
       try {
-        text = await entry.document.kind.codec.serialize(entry.handle);
+        text = await entry.document.kind.codec.serialize(entry.handle, serializeClient);
       } catch (error) {
         // Serialization failed, so the last known text is all there is. Keeping it
         // loses the edits since, but dropping the entry entirely would lose the
@@ -342,17 +355,21 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       if (text !== undefined && generations.get(documentId) === epoch) {
         parked.set(documentId, text);
       }
-      // Freed while its minter generation is still current [I1, I10, I11]:
-      // this handle was removed from the hot set above, so nobody else will
-      // free it — unless the minter itself died, in which case the worker took
-      // its handles with it and the number may already name another document
-      // on the replacement. Then the cleanup is skipped, never run through
-      // the live client. A cleanup failure is logged but never un-commits the
-      // text above and never fails `done` below: waiters proceed from the
-      // committed text, and the park caller resolves with the text safe.
+      // Resolved once for the cleanup, checked after the resolution it
+      // authorizes [I1, I10, I11]: this handle was removed from the hot set
+      // above, so nobody else will free it — unless the minter itself died, in
+      // which case the worker took its handles with it and the number may
+      // already name another document on the replacement. Then the cleanup is
+      // skipped, never run through the live client. A cleanup failure is
+      // logged but never un-commits the text above and never fails `done`
+      // below: waiters proceed from the committed text, and the park caller
+      // resolves with the text safe.
+      const connectFree =
+        minter === null ? undefined : entry.document.kind.codec.resolveClient;
+      const freeClient = connectFree === undefined ? undefined : await connectFree();
       if (minter === null || engineEpoch(minter) === minterEpoch) {
         try {
-          await entry.document.kind.codec.free(entry.handle);
+          await entry.document.kind.codec.free(entry.handle, freeClient);
         } catch (error) {
           console.error(`[ori-studio] failed to free document ${documentId}`, error);
         }
@@ -422,24 +439,37 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
         continue;
       }
 
-      // The owning generation, captured before the worker round trip [I11]. An
-      // engine loss in between means this result — whenever it resolves — is
-      // the dead worker's numbering, not the live one's.
+      // The owning client, resolved once for this attempt [I11]. The epoch is
+      // captured after the resolution it is bound to — never before. A connect
+      // pending across a loss resolves to the replacement, and its result is
+      // live: capturing before resolution would abandon it and retry (leaking
+      // a live handle and doubling the RPC). Same generation still implies the
+      // same engine — generations advance on every replacement while the
+      // client stays memoized — so a post-resolution capture that still matches
+      // at completion proves the result came from the live engine. A genuinely
+      // late result (RPC sent pre-loss) still mismatches and is abandoned.
+      // No hop when there is nothing to resolve: kinds with no engine, and
+      // codecs without a client factory, answer synchronously in the same
+      // drain, so the capture below doubles as the pre-call one for them —
+      // and awaiting anything here would reorder their waiters behind
+      // already-queued continuations.
       const engine = document.kind.engine;
-      const epochBefore = engineEpoch(engine);
+      const connect = engine === null ? undefined : document.kind.codec.resolveClient;
+      const client = connect === undefined ? undefined : await connect();
+      const epochAtResolution = engineEpoch(engine);
       const text = parked.get(document.id);
       const handle =
         text === undefined
-          ? await document.kind.codec.create()
-          : await document.kind.codec.hydrate(text);
-      if (engine !== null && engineEpoch(engine) !== epochBefore) {
+          ? await document.kind.codec.create(client)
+          : await document.kind.codec.hydrate(text, client);
+      if (engine !== null && engineEpoch(engine) !== epochAtResolution) {
         // Straddled a loss: abandon without cleanup (never hot.set, never
         // free — the number may name another document on the live engine)
         // and retry on the current generation.
         continue;
       }
 
-      hot.set(document.id, { document, handle, touched: (clock += 1), engine, engineEpoch: epochBefore });
+      hot.set(document.id, { document, handle, touched: (clock += 1), engine, engineEpoch: epochAtResolution });
       // The parked text is deliberately *kept*, not consumed. It is the last known
       // good state, and it is the only thing standing between an engine crash and
       // losing the document outright — dropping it here would mean a document that
@@ -486,21 +516,42 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // the race and this read the old parked text (or threw) instead of the
     // live handle it was called on. Re-read after the wait either way: the
     // world moved while suspended.
-    const parking = parksInFlight.get(document.id);
-    if (parking) {
-      await parking.done;
-      return serialize(document);
-    }
-    const entry = hot.get(document.id);
-    if (entry) {
+    for (;;) {
+      const parking = parksInFlight.get(document.id);
+      if (parking) {
+        await parking.done;
+        continue;
+      }
+      const entry = hot.get(document.id);
+      if (!entry) break;
       // [I11] A dead generation's number may already name another document on
-      // the live engine: never read through it. Drop it and fall through to
-      // the last parked text (or the honest `not registered` below).
+      // the live engine: never read through it. Drop it and re-read — the
+      // last parked text (or the honest `not registered` below).
       if (!isEntryCurrent(entry)) {
         hot.delete(document.id);
-      } else {
-        return entry.document.kind.codec.serialize(entry.handle);
+        continue;
       }
+      // Bound to the minter's generation like `acquire` [I11]: the RPC runs on
+      // the client this resolution returned, so a client resolving across a
+      // loss reads the replacement's number space, not this handle's — and the
+      // verify below discards those bytes. No hop when there is nothing to
+      // resolve (same-drain synchronous codecs keep their exact waiter timing).
+      const engine = entry.engine;
+      const connect = engine === null ? undefined : entry.document.kind.codec.resolveClient;
+      const client = connect === undefined ? undefined : await connect();
+      // RPC failures propagate unchanged: only an engine loss discards a
+      // successful read, never an engine error.
+      const text = await entry.document.kind.codec.serialize(entry.handle, client);
+      // Still the minting generation: a loss in between dropped this entry,
+      // and its number may already name another document on the replacement —
+      // so these bytes are not this document's. Re-read (parked text stands)
+      // instead of returning them. A supersede without a loss keeps the
+      // generation and keeps the old answer-first behavior, unchanged.
+      if (!isEntryCurrent(entry)) {
+        hot.delete(document.id);
+        continue;
+      }
+      return text;
     }
     const text = parked.get(document.id);
     if (text !== undefined) return text;
@@ -552,9 +603,17 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     parked.delete(document.id);
     // The previous handle only while its own minter is still live: past a loss
     // it died with its worker, and freeing its number through the live client
-    // could kill an unrelated document reusing it.
-    if (existing && existing.handle !== handle && isEntryCurrent(existing)) {
-      await existing.document.kind.codec.free(existing.handle);
+    // could kill an unrelated document reusing it. Resolved before the check,
+    // so a connect spanning a loss cannot smuggle the stale number onto the
+    // replacement's client — the check authorizes the resolution, not a
+    // pre-resolution guess.
+    if (existing && existing.handle !== handle) {
+      const previous = existing.document.kind;
+      const connectFree = existing.engine === null ? undefined : previous.codec.resolveClient;
+      const freeClient = connectFree === undefined ? undefined : await connectFree();
+      if (isEntryCurrent(existing)) {
+        await previous.codec.free(existing.handle, freeClient);
+      }
     }
     emit({ type: 'hydrated', documentId: document.id, handle });
     await evictIfNeeded(document.id);
@@ -574,9 +633,13 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       hot.delete(documentId);
       // Only while its minter is still live [I11]: past a loss the handle died
       // with its worker, and freeing its number through the live client could
-      // kill an unrelated document reusing it.
+      // kill an unrelated document reusing it. Checked after resolution, like
+      // every other cleanup — see `adoptHandle`.
+      const connectFree =
+        entry.engine === null ? undefined : entry.document.kind.codec.resolveClient;
+      const freeClient = connectFree === undefined ? undefined : await connectFree();
       if (isEntryCurrent(entry)) {
-        await entry.document.kind.codec.free(entry.handle);
+        await entry.document.kind.codec.free(entry.handle, freeClient);
       }
     }
     parked.delete(documentId);
