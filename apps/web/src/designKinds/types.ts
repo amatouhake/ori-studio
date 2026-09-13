@@ -96,14 +96,27 @@ export interface DesignPaneSpec {
  * which document is being operated on. That is what makes N documents possible.
  */
 export interface DesignKindCodec {
+  /**
+   * Resolve the engine client for one operation.
+   *
+   * The registry resolves once per operation and passes the client back into
+   * the method, so the RPC binds to the resolved client instead of
+   * re-resolving mid-operation: a connect pending across an engine loss
+   * resolves to the replacement, and the registry's generation capture is
+   * taken after this settles (see documentRegistry [I11]). Optional so
+   * synchronous test fakes — whose resolution cannot span a loss — need not
+   * implement it; the registry then captures before the call, which is the
+   * same instant for them.
+   */
+  resolveClient?(): Promise<unknown>;
   /** A fresh document, as picking this kind from the chooser produces. */
-  create(): Promise<number>;
+  create(client?: unknown): Promise<number>;
   /** Load serialized text into a new handle. Inverse of {@link serialize}. */
-  hydrate(text: string): Promise<number>;
+  hydrate(text: string, client?: unknown): Promise<number>;
   /** Serialize a handle. Must round-trip losslessly through {@link hydrate}. */
-  serialize(handle: number): Promise<string>;
+  serialize(handle: number, client?: unknown): Promise<string>;
   /** Release a handle. Safe to call on an already-freed handle. */
-  free(handle: number): Promise<void>;
+  free(handle: number, client?: unknown): Promise<void>;
 }
 
 /** What a design needs to know about the Edit canvas it is merging into. */
