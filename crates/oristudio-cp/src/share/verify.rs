@@ -49,12 +49,22 @@ pub fn creases_match(source: &[LineSegment], decoded: &[LineSegment]) -> bool {
                 Some(FoldDirection::Mountain) => 1,
                 Some(FoldDirection::Valley) => 2,
             },
-            s.customized,
-            (
-                s.customized_color.red,
-                s.customized_color.green,
-                s.customized_color.blue,
-            ),
+            // Transported custom-colour semantics, not stored state: the codec
+            // carries an RGB only for an enabled (`customized != 0`) crease and
+            // nothing at all otherwise, so an inactive retained RGB — or any
+            // nonzero `customized` spelling — canonicalizes rather than compares.
+            // Comparing the stored field fails the self-check on a document the
+            // codec reproduces exactly, forcing a needless RAW fallback.
+            s.customized != 0,
+            if s.customized != 0 {
+                (
+                    s.customized_color.red,
+                    s.customized_color.green,
+                    s.customized_color.blue,
+                )
+            } else {
+                (0, 0, 0)
+            },
         )
     };
     let mut counts: BTreeMap<_, i64> = BTreeMap::new();
