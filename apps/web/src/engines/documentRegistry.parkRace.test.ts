@@ -942,25 +942,25 @@ describe('park supersede-retire matrix (B: [I7] + [I6])', () => {
     engines.lose('treemaker');
 
     // The tracked record is abandoned: its waiters proceed without the worker.
-    // Nothing was ever parked for the replacement, so serialize reports that
-    // honestly instead of inventing content.
+    // The H1 waiter's successful dispatch verified NEW after adoption, so
+    // that snapshot now survives even though H2's park never committed.
     await expect(
       mustSettle(waitingSerializeH2, 'H2 serialize waiter after loss')
-    ).rejects.toMatchObject({ name: 'DocumentSerializationConflictError' });
+    ).resolves.toBe('NEW');
     await mustSettle(parkingNew, 'newer park caller after loss');
     await mustSettle(parkingSecond, 'second park waiter after loss');
     await mustSettle(parkingOld, 'superseded park caller');
     // Post-loss recovery invents nothing and stays usable.
     const h3 = await mustSettle(registry.acquire(document), 'acquire after loss');
-    expect(fake.read(h3)).toBe('new');
+    expect(fake.read(h3)).toBe('NEW');
     // The stranded serializes drain without committing over the recovered live
-    // handle: neither the superseded OLD nor the unparked NEW may win.
+    // handle: superseded OLD cannot overwrite the verified NEW recovery.
     releaseOld();
     releaseNew();
     await parkingOld;
     await parkingNew;
     expect(registry.handleFor('a')).toBe(h3);
-    await expect(registry.serialize(document)).resolves.toBe('new');
+    await expect(registry.serialize(document)).resolves.toBe('NEW');
     registry.dispose();
   });
 

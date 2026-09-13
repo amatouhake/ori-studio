@@ -510,3 +510,108 @@ it('pending recovery park cannot overwrite a successful divergent pre-loss save'
   expect(result).toMatchObject({ name: 'DocumentSerializationConflictError' });
   r.registry.dispose();
 });
+
+describe('per-dispatch publication and abandonable recovery cleanup', () => {
+  it.each([1, 2])('a save with %s recovery re-reads publishes its final verified v3 dispatch', async (rereads) => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v2');
+    await r.registry.acquire(a);
+    let readGate = r.holdSerialize();
+    const saving = r.registry.serialize(a);
+    await readGate.entered;
+    for (let i = 0; i < rereads; i++) {
+      r.losses.lose('treemaker'); r.failover();
+      const recovered = await r.registry.acquire(a);
+      if (i === rereads - 1) r.active().write(recovered, 'v3');
+      const nextRead = r.holdSerialize();
+      readGate.release(); // old worker responds v2; save re-addresses recovery
+      await nextRead.entered;
+      readGate = nextRead;
+    }
+    r.losses.lose('treemaker'); r.failover();
+    const hydrateGate = r.holdHydrate();
+    const recovering = r.registry.acquire(a);
+    await hydrateGate.entered;
+    expect(r.kind.codec.hydrate).toHaveBeenLastCalledWith('v2', r.active());
+    readGate.release();
+    await expect(saving).resolves.toBe('v3');
+    hydrateGate.release();
+    const recovered = await recovering;
+    expect(r.active().read(recovered)).toBe('v3');
+    await expect(r.registry.serialize(a)).resolves.toBe('v3');
+    expect(r.active().freed).toEqual([42]);
+    r.registry.dispose();
+  });
+
+  it.each([0, 1])('cleanup loss uses exactly one recovery (budget %s), without freeing ABA handles', async (budget) => {
+    const r = rig('treemaker', { maxEngineRecoveryAttempts: budget });
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v2');
+    const old = await r.registry.acquire(a);
+    r.active().write(old, 'v3');
+    const saveGate = r.holdSerialize();
+    const saving = r.registry.serialize(a);
+    await saveGate.entered;
+    r.losses.lose('treemaker'); r.failover();
+    const hydrateGate = r.holdHydrate();
+    const acquiring = r.registry.acquire(a);
+    const result = { value: undefined as number | undefined, error: undefined as unknown };
+    void acquiring.then(value => { result.value = value; }, error => { result.error = error; });
+    await hydrateGate.entered;
+    saveGate.release();
+    await expect(saving).resolves.toBe('v3');
+    const freeGate = r.holdFree();
+    hydrateGate.release();
+    await freeGate.entered;
+    expect(r.kind.codec.free).toHaveBeenLastCalledWith(42, r.engines[1]);
+    r.losses.lose('treemaker'); r.failover();
+    const b = doc('b', r.kind);
+    const neighbor = await r.registry.acquire(b);
+    expect(neighbor).toBe(42);
+    r.active().write(neighbor, 'B');
+    // Bounded microtask observation only; free remains explicitly held. On
+    // the pre-fix tree the original acquire is still suspended at that free.
+    for (let i = 0; i < 40; i++) await Promise.resolve();
+    if (budget === 0) {
+      expect(result.error).toMatchObject({ name: 'EngineRecoveryExhaustedError', attempts: 1 });
+      expect(r.calls.hydrate).toBe(2); // initial + discarded; no recovery dispatched
+    } else {
+      expect(result.error).toBeUndefined();
+      expect(result.value).toBeDefined();
+      expect(r.active().read(result.value!)).toBe('v3');
+      expect(r.calls.hydrate).toBe(3);
+    }
+    freeGate.release();
+    await acquiring.catch(() => undefined);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(r.active().read(neighbor)).toBe('B');
+    expect(r.active().freed).toEqual([]);
+    expect(r.engines[1]!.freed).toEqual([42]);
+    r.registry.dispose();
+  });
+});
+
+
+it('forget abandons cleanup of an ownership-stale hydration without resurrecting it', async () => {
+  const r = rig();
+  const a = doc('a', r.kind);
+  r.registry.adopt('a', 'OLD');
+  const hydrate = r.holdHydrate();
+  const result = r.registry.acquire(a).catch((error: Error) => error);
+  await hydrate.entered;
+  r.registry.adopt('a', 'NEW');
+  const cleanup = r.holdFree();
+  hydrate.release();
+  await cleanup.entered;
+  await r.registry.forget('a');
+  let error: unknown;
+  void result.then(value => { error = value; });
+  for (let i = 0; i < 40; i++) await Promise.resolve();
+  expect(error).toMatchObject({ name: 'DocumentOwnershipChangedError' });
+  cleanup.release();
+  await result;
+  expect(r.registry.isHot('a')).toBe(false);
+  await expect(r.registry.serialize(a)).rejects.toThrow('not registered');
+  r.registry.dispose();
+});
