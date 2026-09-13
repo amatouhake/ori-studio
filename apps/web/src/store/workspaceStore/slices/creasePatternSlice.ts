@@ -14,7 +14,7 @@ import {
 } from '../../../analytics';
 import type { FoldMode, FoldVerdict } from '../../../analytics';
 import { projectFromSnapshot } from '../../../engine/snapshotMapper';
-import type { FoldArtifacts, FoldDocument, OptimizationReport } from '../../../engine/types';
+import type { FoldArtifacts, FoldDocument, OptimizationReport, TreeSnapshot } from '../../../engine/types';
 import {
   DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS,
   emptyOristudioCpSelection,
@@ -94,13 +94,15 @@ import {
 } from '../foldArtifactResource';
 import {
   engineError,
+  EngineRecoveryError,
   ensureTreeHandle,
   getEngine,
+  MAX_ENGINE_RECOVERY_ATTEMPTS,
   syncTreemakerProject,
   type EngineClient,
 } from '../engineRuntime';
 import { withDesignHandle } from '../../../engines/designHandles';
-import { onEngineLost } from '../../../engines/engineHost';
+import { getEngineGeneration, onEngineLost } from '../../../engines/engineHost';
 import { fetchCpShareWithRetry } from '../../../cp-workspace/share/cpShareService';
 import {
   createBlankOristudioCpDocument,
@@ -1247,21 +1249,42 @@ export const createCreasePatternSlice: WorkspaceSliceCreator<CreasePatternSlice>
     const kind = capabilityId.replace('optimize.', '');
     try {
       // Ensure a tree exists (cold-boot blank if needed). The client is
-      // deliberately not captured here: `withDesignHandle` hydrates below and
-      // a loss in that await would reconnect, leaving a pre-acquisition
-      // client paired with a recovered handle — the same stale pairing
-      // `ensureTreeHandle` re-binds against. Loss after the binding inside
-      // stays a direct-RPC loss, as before.
+      // deliberately not captured here: the pinned acquisition below may
+      // reconnect, and only a stable generation proves the bound pair.
       await requireActiveTree();
       // **Pinned** for the whole run. Switching tabs parks the outgoing design,
       // and parking serializes and *frees* its handle — pulling it out from under
       // the optimizer mid-call. The registry refuses to park or evict a pinned
       // document, which is what this API was built for; nothing had called it.
-      const result = await withDesignHandle(designId, 'treemaker', async (treeHandle) => {
-        const api = await getEngine();
-        const report = await optimize(api, treeHandle);
-        return { report, snapshot: await api.snapshot(treeHandle) };
-      });
+      //
+      // The acquire-then-bind window gets the same generation guard as
+      // `ensureTreeHandle`: a hot-hit performs zero RPCs yet still races a
+      // loss that drops it, and an unconditional re-bind would pair the new
+      // client with the dead number (ABA: silent wrong-document use). On a
+      // moved generation the provenance is unknown, so retry bounded; after
+      // the bind, RPC hangs are the known direct-RPC-loss residual (no
+      // timeouts — recorded, not fixed).
+      let result: { report: OptimizationReport; snapshot: TreeSnapshot } | null = null;
+      for (let attempt = 0; attempt < MAX_ENGINE_RECOVERY_ATTEMPTS; attempt++) {
+        const generation = getEngineGeneration('treemaker');
+        try {
+          result = await withDesignHandle(designId, 'treemaker', async (treeHandle) => {
+            if (getEngineGeneration('treemaker') !== generation) {
+              throw new EngineRecoveryError('Engine was lost during optimizer acquire');
+            }
+            const api = await getEngine();
+            if (getEngineGeneration('treemaker') !== generation) {
+              throw new EngineRecoveryError('Engine was lost during optimizer bind');
+            }
+            const report = await optimize(api, treeHandle);
+            return { report, snapshot: await api.snapshot(treeHandle) };
+          });
+          break;
+        } catch (error) {
+          if (error instanceof EngineRecoveryError && attempt + 1 < MAX_ENGINE_RECOVERY_ATTEMPTS) continue;
+          throw error;
+        }
+      }
       if (!result) return;
       const { report, snapshot } = result;
       set({

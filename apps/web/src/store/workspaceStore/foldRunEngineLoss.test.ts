@@ -24,6 +24,7 @@ vi.mock('../../engines/engineHost', () => ({
     return () => lossListeners.delete(listener);
   },
   ENGINE_IDS: ['treemaker', 'oristudio-cp', 'oristudio-bp'],
+  getEngineGeneration: vi.fn(() => 0),
 }));
 
 const { useWorkspaceStore } = await import('./store');
