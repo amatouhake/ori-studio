@@ -104,7 +104,7 @@ export class DocumentOwnershipChangedError extends Error {
   readonly documentId: string;
   constructor(documentId: string) {
     super(
-      `Document ${documentId} changed ownership while serializing; the in-flight read was discarded`
+      `Document ${documentId} changed ownership during a registry operation; the in-flight result was discarded`
     );
     this.name = 'DocumentOwnershipChangedError';
     this.documentId = documentId;
@@ -173,6 +173,8 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * Write sequence per document id, bumped on every `parked` store. A verified
    * `serialize` refreshes last-known-good only while the sequence it saw at
    * dispatch still holds — so a park commit racing the read always wins.
+   * Hydration captures the same sequence: an engine-current result must not
+   * shadow a newer snapshot published while its materialization was pending.
    */
   const parkedSequences = new Map<string, number>();
   const parkedSequence = (documentId: string): number => parkedSequences.get(documentId) ?? 0;
@@ -268,6 +270,14 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *   `acquire` counts actual engine-generation recoveries against
    *   `maxEngineRecoveryAttempts` and throws `EngineRecoveryExhaustedError`
    *   past it — park-settle waits and plain re-reads are not recoveries.
+   * [I13 materialization provenance] Create/hydrate may enter hot only while
+   *   engine epoch, semantic ownership, source snapshot sequence, and registry
+   *   state still match. A concurrent winner is never overwritten. Current-
+   *   engine discarded results are freed through their bound client; dead-
+   *   generation results are abandoned [I11]. Snapshot refreshes retry without
+   *   consuming the engine budget. Ownership changes reject materialization,
+   *   including forget: retrying a forgotten id would create it anew. Park
+   *   waiters that have not begun materializing may follow replacements [I7].
    */
   /**
    * Ownership generation per document id [I4].
@@ -527,6 +537,12 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // Recoveries observed by THIS call [I12]: each engine generation that dies
     // under it is one retry. Park-settle waits and plain re-reads below are
     // not recoveries and never touch this count.
+    let ownershipAtStart: number | undefined;
+    const assertOwnership = (): void => {
+      if (ownershipAtStart !== undefined && ownershipRevision(document.id) !== ownershipAtStart) {
+        throw new DocumentOwnershipChangedError(document.id);
+      }
+    };
     let recoveryAttempts = 0;
     const noteEngineRecovery = (): void => {
       recoveryAttempts += 1;
@@ -535,6 +551,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       }
     };
     for (;;) {
+      assertOwnership();
       const existing = hot.get(document.id);
       if (existing) {
         if (isEntryCurrent(existing)) {
@@ -555,10 +572,18 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       // prefers over the fresh text until the next park makes it permanent.
       const parking = parksInFlight.get(document.id);
       if (parking) {
+        const beforeWait = ownershipRevision(document.id);
         await parking.done;
+        // Park waiters may follow an adopted replacement, as before [I7].
+        // Forget with no replacement must not turn that waiter into create().
+        if (ownershipRevision(document.id) !== beforeWait &&
+            !hot.has(document.id) && !parked.has(document.id)) {
+          throw new DocumentOwnershipChangedError(document.id);
+        }
         continue;
       }
 
+      ownershipAtStart ??= ownershipRevision(document.id);
       // The owning client, resolved once for this attempt [I11]. The epoch is
       // captured after the resolution it is bound to — never before. A connect
       // pending across a loss resolves to the replacement, and its result is
@@ -576,7 +601,13 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       const engine = document.kind.engine;
       const connect = engine === null ? undefined : document.kind.codec.resolveClient;
       const client = connect === undefined ? undefined : await connect();
+      assertOwnership();
+      // Resolution can yield to a competing acquire or park. Re-read before
+      // dispatch, not just after hydration, so neither can be overwritten.
+      if (hot.has(document.id) || parksInFlight.has(document.id)) continue;
       const epochAtResolution = engineEpoch(engine);
+      const sequenceAtDispatch = parkedSequence(document.id);
+      const stateAtDispatch = generations.get(document.id);
       const text = parked.get(document.id);
       const handle =
         text === undefined
@@ -590,7 +621,24 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
         continue;
       }
 
-      hot.set(document.id, { document, handle, touched: (clock += 1), engine, engineEpoch: epochAtResolution });
+      if (
+        ownershipRevision(document.id) !== ownershipAtStart ||
+        parkedSequence(document.id) !== sequenceAtDispatch ||
+        generations.get(document.id) !== stateAtDispatch ||
+        hot.has(document.id)
+      ) {
+        // No await between the epoch check and dispatch: this client still
+        // owns the discarded handle. Never resolve a replacement for cleanup.
+        try {
+          await document.kind.codec.free(handle, client);
+        } catch (error) {
+          console.error(`[ori-studio] failed to free stale hydration ${document.id}`, error);
+        }
+        assertOwnership();
+        continue;
+      }
+      const installed = { document, handle, touched: (clock += 1), engine, engineEpoch: epochAtResolution };
+      hot.set(document.id, installed);
       // The parked text is deliberately *kept*, not consumed. It is the last known
       // good state, and it is the only thing standing between an engine crash and
       // losing the document outright — dropping it here would mean a document that
@@ -601,6 +649,12 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       // After insertion, so the newly hydrated document counts toward the budget
       // and cannot itself be chosen as the victim.
       await evictIfNeeded(document.id);
+      assertOwnership();
+      if (!isEntryCurrent(installed)) {
+        noteEngineRecovery();
+        continue;
+      }
+      if (hot.get(document.id) !== installed) continue;
       return handle;
     }
   }
