@@ -173,11 +173,22 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * from "the document I read no longer exists" (failure): the coarse
    * `generations` clock moves on both, this one only on the second.
    */
+  interface MaterializationCleanup {
+    documentId: string;
+    engine: EngineId | null;
+    abandon: () => void;
+  }
+  const materializationCleanups = new Set<MaterializationCleanup>();
   const ownershipRevisions = new Map<string, number>();
   const ownershipRevision = (documentId: string): number =>
     ownershipRevisions.get(documentId) ?? 0;
   const bumpOwnership = (documentId: string): void => {
     ownershipRevisions.set(documentId, ownershipRevision(documentId) + 1);
+    for (const cleanup of materializationCleanups) {
+      if (cleanup.documentId !== documentId) continue;
+      materializationCleanups.delete(cleanup);
+      cleanup.abandon();
+    }
   };
   /**
    * Write sequence per document id, bumped on every `parked` store. A verified
@@ -273,10 +284,10 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *   installed (so the bound client is the minter's, never the replacement's)
    *   and (ii) the ownership revision is unchanged at completion. Otherwise it
    *   throws `DocumentOwnershipChangedError` — never older parked text as
-   *   success. A usable result from a direct read (no wait, no re-read) also
-   *   refreshes last-known-good, unless a park commit landed first
-   *   (sequence-guarded, so concurrent parks always win). Waiter re-reads
-   *   return but never promote: their instant postdates the call. If recovery
+   *   success. Every usable dispatch refreshes last-known-good, including a
+   *   re-read after recovery or a park wait. Publication uses that dispatch's
+   *   ownership and snapshot sequence, never the call's earlier wait history.
+   *   Concurrent snapshot commits still win under the sequence guard. If recovery
    *   already installed a hot replacement and the verified old read differs
    *   from its dispatch fallback, save throws a serialization conflict rather
    *   than silently choosing a version. Disappearance of a document observed
@@ -292,6 +303,12 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *   consuming the engine budget. Ownership changes reject materialization,
    *   including forget: retrying a forgotten id would create it anew. Park
    *   waiters that have not begun materializing may follow replacements [I7].
+   * [I14 discarded cleanup] Cleanup of a rejected materialization is tracked
+   *   before dispatch, bound to its minter, and awaited only until completion,
+   *   ownership supersede, or minter loss. Loss releases the waiter and counts
+   *   once against that acquire's engine budget. Late completion only cleans
+   *   its original worker; it never changes registry state or touches a new
+   *   client's numeric handle. Every completion/abandon removes its record.
    */
   /**
    * Ownership generation per document id [I4].
@@ -537,6 +554,32 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     if (committed) emit({ type: 'parked', documentId, reason, recoverable: parked.has(documentId) });
   }
 
+  /** [I14] Registry-owned cleanup must not strand acquisition on a dead RPC. */
+  async function discardMaterialization(
+    document: RegisteredDocument,
+    handle: number,
+    client: unknown,
+  ): Promise<void> {
+    let abandon!: () => void;
+    const abandoned = new Promise<void>(resolve => { abandon = resolve; });
+    const cleanup = { documentId: document.id, engine: document.kind.engine, abandon };
+    materializationCleanups.add(cleanup);
+    // Caller checked the minter epoch immediately before this synchronous
+    // dispatch. Record first, so even loss during codec invocation releases it.
+    const work = (async () => {
+      try {
+        await document.kind.codec.free(handle, client);
+      } catch (error) {
+        console.error(`[ori-studio] failed to free stale hydration ${document.id}`, error);
+      }
+    })();
+    try {
+      await Promise.race([work, abandoned]);
+    } finally {
+      materializationCleanups.delete(cleanup);
+    }
+  }
+
   /**
    * A live handle for a document, hydrating from parked text if needed.
    *
@@ -643,12 +686,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       ) {
         // No await between the epoch check and dispatch: this client still
         // owns the discarded handle. Never resolve a replacement for cleanup.
-        try {
-          await document.kind.codec.free(handle, client);
-        } catch (error) {
-          console.error(`[ori-studio] failed to free stale hydration ${document.id}`, error);
-        }
+        await discardMaterialization(document, handle, client);
         assertOwnership();
+        if (engine !== null && engineEpoch(engine) !== epochAtResolution) noteEngineRecovery();
         continue;
       }
       const installed = { document, handle, touched: (clock += 1), engine, engineEpoch: epochAtResolution };
@@ -706,14 +746,8 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // live handle it was called on. Re-read after the wait either way: the
     // world moved while suspended.
     //
-    // `direct` tracks whether this call has yet to wait or re-read [I12]:
-    // only a read dispatched straight at the live document promotes its
-    // result to last-known-good. A waiter re-reading after a park, a loss, or
-    // a replacement answers a later instant than the one it was called on —
-    // returning that text is fine, but parking it would let post-replacement
-    // content silently become the recovery (and defeat `adoptHandle`'s
-    // deliberate drop of the replaced text).
-    let direct = true;
+    // Publication eligibility is per dispatch [I12]. Waiting or re-reading
+    // earlier in this call cannot disqualify a subsequently verified snapshot.
     // Only a document absent throughout this call is safe for the native-save
     // layer to omit. Losing a previously observed document is a save failure.
     let observedDocument = hot.has(document.id) || parked.has(document.id) || parksInFlight.has(document.id);
@@ -722,7 +756,6 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       const parking = parksInFlight.get(document.id);
       if (parking) {
         await parking.done;
-        direct = false;
         continue;
       }
       const entry = hot.get(document.id);
@@ -732,7 +765,6 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       // last parked text (or the honest `not registered` below).
       if (!isEntryCurrent(entry)) {
         hot.delete(document.id);
-        direct = false;
         continue;
       }
       // Bound to the minter's generation like `acquire` [I11]: the RPC runs on
@@ -746,7 +778,6 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       const connect = engine === null ? undefined : entry.document.kind.codec.resolveClient;
       const client = connect === undefined ? undefined : await connect();
       if (hot.get(document.id) !== entry) {
-        direct = false;
         continue;
       }
       // Ownership and parked sequence at dispatch [I12]: the RPC below is
@@ -774,7 +805,6 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
           // the live handle. A retry explicitly addresses current live state.
           throw new DocumentSerializationConflictError(document.id);
         }
-        direct = false;
         continue;
       }
       if (ownershipRevision(document.id) !== ownershipAtDispatch) {
@@ -797,10 +827,10 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       }
       // Verified [I12]: dispatched against the owning handle/client with
       // ownership intact — so a loss in between does not invalidate these
-      // bytes (they are text, not a handle). A direct read also publishes as
+      // bytes (they are text, not a handle). This dispatch also publishes as
       // last-known-good unless a park commit landed first: its sequence
       // moved, and the concurrent park's read always wins over this one.
-      if (direct && parkedSequence(document.id) === parkedSeqAtDispatch) {
+      if (parkedSequence(document.id) === parkedSeqAtDispatch) {
         setParked(document.id, text);
       }
       return text;
@@ -917,6 +947,11 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // instead of inserted, and a handle this drop somehow misses is still
     // refused at every later use.
     engineEpochs.set(engine, engineEpoch(engine) + 1);
+    for (const cleanup of materializationCleanups) {
+      if (cleanup.engine !== engine) continue;
+      materializationCleanups.delete(cleanup);
+      cleanup.abandon();
+    }
     // A park serializing on the dead engine can never finish: its worker is
     // gone, so the Comlink promise it awaits pends forever — along with every
     // `acquire()`/`serialize()`/`park()` waiting on the tracked entry. Abandon
