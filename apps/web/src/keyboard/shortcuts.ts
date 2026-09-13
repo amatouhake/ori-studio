@@ -328,7 +328,8 @@ const SIMULATOR_SHORTCUTS: ShortcutDefinition[] = [
   simulatorShortcut('simulator.foldBackward', 'Fold Backward', { key: 'arrowleft' }),
   simulatorShortcut('simulator.foldEnd', 'Jump To Folded', { shift: true, key: 'arrowright' }),
   simulatorShortcut('simulator.foldStart', 'Jump To Flat', { shift: true, key: 'arrowleft' }),
-  simulatorShortcut('simulator.replay', 'Replay From Flat', { key: 'r' }),
+  // The id predates the label: it is what saved overrides are keyed by.
+  simulatorShortcut('simulator.replay', 'Restart Simulation', { key: 'r' }),
   simulatorShortcut('simulator.resetView', 'Reset Simulator View', [
     { key: '0' },
     { key: 'home' },
