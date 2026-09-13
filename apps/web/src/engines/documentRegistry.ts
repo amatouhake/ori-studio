@@ -771,7 +771,18 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     throw new DocumentNotRegisteredError(document.id);
   }
 
-  /** Adopt a document the registry has not seen, from text (e.g. loading a file). */
+  /** Cleanup after synchronous ownership transfer; never touches registry state. */
+  async function freeRemovedEntry(entry: HotEntry): Promise<void> {
+    try {
+      const connect = entry.engine === null ? undefined : entry.document.kind.codec.resolveClient;
+      const client = connect === undefined ? undefined : await connect();
+      if (isEntryCurrent(entry)) await entry.document.kind.codec.free(entry.handle, client);
+    } catch (error) {
+      console.error(`[ori-studio] failed to free document ${entry.document.id}`, error);
+    }
+  }
+
+  /** Adopt serialized content, replacing any previous hot or parked document. */
   function adopt(documentId: string, text: string): void {
     // Invalidates any park serializing the previous occupant: its text must not
     // overwrite the adopted one when it finishes [I4]. Retire its waiter-visible
@@ -781,7 +792,11 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     bumpGeneration(documentId);
     bumpOwnership(documentId);
     retirePark(documentId);
+    const previous = hot.get(documentId);
+    hot.delete(documentId);
     setParked(documentId, text);
+    // Publication is synchronous; cleanup cannot delay adoption or later undo it.
+    if (previous) void freeRemovedEntry(previous);
   }
 
   /**
@@ -845,20 +860,10 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     bumpOwnership(documentId);
     retirePark(documentId);
     const entry = hot.get(documentId);
-    if (entry) {
-      hot.delete(documentId);
-      // Only while its minter is still live [I11]: past a loss the handle died
-      // with its worker, and freeing its number through the live client could
-      // kill an unrelated document reusing it. Checked after resolution, like
-      // every other cleanup — see `adoptHandle`.
-      const connectFree =
-        entry.engine === null ? undefined : entry.document.kind.codec.resolveClient;
-      const freeClient = connectFree === undefined ? undefined : await connectFree();
-      if (isEntryCurrent(entry)) {
-        await entry.document.kind.codec.free(entry.handle, freeClient);
-      }
-    }
+    hot.delete(documentId);
     deleteParked(documentId);
+    // No state writes after cleanup: a new adoption may already own this id.
+    if (entry) await freeRemovedEntry(entry);
   }
 
   /**
