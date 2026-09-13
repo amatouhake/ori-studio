@@ -285,19 +285,30 @@ fn fallback_rejects_exotic_grid() {
 
 #[test]
 fn fallback_rejects_empty_document() {
-    // With no edges the FOLD exporter substitutes a degenerate dummy segment,
-    // whose zero-height import bounds scale by infinity: the RAW decode is a
-    // single NaN crease. Refuse instead of emitting it.
+    // With no edges the FOLD exporter substitutes a degenerate dummy segment.
+    // Stacked with the revised #367 contract the dummy still cannot decode, so
+    // the fallback's own self-decode gate (mod.rs) refuses with a typed error
+    // before the semantic comparison runs. Refuse instead of emitting it.
     let (reason, _) = fallback_err(&doc(CreasePatternModel::default()));
-    assert_eq!(reason, "fallback produced non-finite geometry");
+    assert_eq!(reason, "fallback payload failed to decode");
 }
 
 #[test]
-fn fallback_rejects_degenerate_flat_document() {
-    // Every vertex on one horizontal line collapses the import bounds the same
-    // way: infinite scale, non-finite decode. Refuse instead of emitting it.
+fn fallback_preserves_single_flat_crease() {
+    // A single horizontal crease is degenerate on one axis but legitimate: the
+    // FOLD importer normalizes it finitely via the live axis (revised #367
+    // contract), so the RAW fallback carries it instead of refusing it.
     let mut model = CreasePatternModel::default();
     model.add_line_segment(seg(-200.0, 0.0, 200.0, 0.0, LineColor::Black0));
-    let (reason, _) = fallback_err(&doc(model));
-    assert_eq!(reason, "fallback produced non-finite geometry");
+    let back = fallback_roundtrip(&doc(model)).crease_pattern;
+    assert_eq!(back.line_segments.len(), 1);
+    let s = &back.line_segments[0];
+    for v in [s.a.x, s.a.y, s.b.x, s.b.y] {
+        assert!(v.is_finite(), "fallback must stay finite");
+    }
+    let span = (s.b.x - s.a.x).abs().max((s.b.y - s.a.y).abs());
+    assert!(
+        (span - 400.0).abs() < 1e-6,
+        "live axis must span the sheet, got {span}"
+    );
 }
