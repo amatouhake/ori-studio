@@ -99,17 +99,38 @@ The MCP `analyze_design(analysis: "checks")` runs, in order, `Check1`, `Check2`,
 
 Oriedita's own legend for cAMV (help text, `oriedita/src/main/resources/help.properties` `cAMVAction`): *triangle* = wrong (odd) number of lines / not enough mountain / not enough valley / wrong number of edge lines; *square* = wrong types (Maekawa) with the same colour sub-cases; *circle* = wrong angles (Kawasaki) with colour sub-cases or "only angles are incorrect"; *polygon* = correct number, types and angles but wrong order (big-little-big), with the offending sectors highlighted.
 
+**Precondition: assign every incident crease before reading assignment or
+angle diagnostics.** CAMV builds the angular fan at a vertex only from
+*folding lines* — `isFoldingLine()` is `BLACK_0 || RED_1 || BLUE_2`
+(`origami/.../element/LineColor.java:68-70`; port
+`geometry/line_color.rs:75-77`, used at `checks.rs:352,424`) — and counts
+M/V only over `RED_1`/`BLUE_2`. An unassigned (`None`) crease is therefore
+**absent from the fan and from the counts**: the vertex is judged as if that
+crease did not exist, so `NumberOfFolds`, `Angles`, `Maekawa` and
+`BigLittleBig` at a vertex with any `None` incident crease describe a partial
+fan and must not be acted on. `Check3` skips its Maekawa test in that case
+(`tss - tss_hojyo_kassen == tss_red + tss_blue`, `Check3.java`); `CheckCamv`
+does not. Use `inspect_design` to find `assignment: "unassigned"` creases at
+the reported `point`, `assign_creases` them, and re-run `checks`.
+
+**Payload note.** Only the `BigLittleBig` rule carries `big_little_big`.
+When Maekawa fails, `Check4.java` constructs a *new* violation
+`(p, rule, colour)` and discards the angle/BLB analysis it already did; the
+port does the same (`checks.rs:418-470`, `FlatFoldabilityViolation::new`).
+So a `Maekawa` diagnostic tells you the count is wrong and, via
+`violation_color`, in which direction — nothing about which crease.
+
 **Decision table (rule → what is wrong → which operation).** Repairs are
 Oriedita operations, not a normaliser (`workspace.capabilities.repair_policy`);
 re-run `checks` after each one and re-`inspect_design` because IDs change.
 
 | `rule` | What it means | First thing to try | Notes |
 | --- | --- | --- | --- |
-| `NumberOfFolds` | Odd number of creases at an interior vertex, or a vertex touching ≠ 0/2 boundary lines. | Look for a crease that should continue through the vertex (`add_creases`), a stray endpoint (`delete_creases`), or an unsplit T (`repair: intersections`). A vertex on the paper edge with 1 or 3 `Black0` lines is a boundary-drawing error. | Oriedita's "Draw flat foldable line" tool (`makeFlatFoldable`, "Select vertex with odd number of connecting lines…") is the interactive fix; in MCP it is `repair: angular_flat_foldability` with `points: [vertex, pick]` (see §1.4). |
-| `Angles` | Kawasaki fails: alternating sector sums ≠ 180°. | Geometry is wrong, not the assignment. Move an endpoint (`transform_creases` with `translate`), or add the missing crease with `repair: angular_flat_foldability`. Precision errors on 22.5° / box-pleat grids: `repair: snap` (FixInaccurate). | Never fix `Angles` by flipping M/V. |
-| `Maekawa` + `Equal` | M = V at the vertex. | Flip one crease (`assign_creases`). Use `big_little_big` sectors and the neighbours' assignments to choose. | |
-| `Maekawa` + `NotEnoughMountain` / `NotEnoughValley` | `|M − V| > 2` or off by the wrong sign. | Flip creases toward the reported colour. | Oriedita's colour verdict already accounts for the sign; follow it. |
-| `BigLittleBig` (+ `Correct` colour) | Counts and angles are right; the assignment order around the vertex is wrong. | Flip one of the two creases bounding a `violating` sector — never both, that preserves the count. | `big_little_big[].segment` gives the crease endpoints; find their IDs via `inspect_design`. |
+| `NumberOfFolds` | Odd number of folding lines at an interior vertex, or a vertex touching ≠ 0/2 boundary lines. | First rule out a partial fan (an `unassigned` crease at the point — see the precondition) and a missing vertex on a crease that should pass through (`repair: intersections` / `add_creases`) or a stray endpoint (`delete_creases`). A vertex on the paper edge with 1 or 3 `Black0` lines is a boundary-drawing error. | If the vertex genuinely needs one more crease, `repair: angular_flat_foldability` is Oriedita's *one-crease completion* for an odd-degree fan ("1. Select vertex with odd number of connecting lines. 2. Select flat foldable line. 3. Select a target line to extend to."; §1.4). It adds exactly one crease that makes the fan angularly flat-foldable; it is not a general repair. |
+| `Angles` | Kawasaki fails on a fully assigned, even-degree fan: alternating sector sums ≠ 180°. | Geometry is wrong, not the assignment. Move an endpoint (`transform_creases` with `translate`) or redraw the crease. Precision errors on 22.5° / box-pleat grids: `repair: snap` (FixInaccurate, only those two families). | Never fix `Angles` by flipping M/V. `repair: angular_flat_foldability` does **not** belong here: it completes an incomplete fan by adding a crease, it does not correct existing angles. |
+| `Maekawa` + `Equal` | M = V at the vertex (fully assigned fan). | Reassign so that `|M − V| = 2`. The diagnostic carries no per-crease payload (payload note above): choose candidates from the neighbouring vertices' own Maekawa/BLB constraints, apply one candidate with `assign_creases`, and re-run `checks` — the change must satisfy Maekawa *and* big-little-big at this vertex and Maekawa at the crease's other endpoint. | Treat it as a joint constraint problem over the fan, not as "flip one". |
+| `Maekawa` + `NotEnoughMountain` / `NotEnoughValley` | `|M − V| ≠ 2` on a fully assigned fan; the colour says which direction the count is off. | Same as above, moving the count toward the reported colour. | Oriedita's colour verdict already accounts for the sign; follow it. |
+| `BigLittleBig` (+ `Correct` colour) | Counts and angles are right; the M/V *order* around the vertex is wrong. | `big_little_big[]` lists the creases of the fan; entries with `violating: true` are the **crease segments** (not sectors) implicated by the smallest-angle reduction (`CommandDiagnosticBigLittleBigSegment { segment, violating }`, `lib.rs:385-388`). A valid reassignment must keep `|M − V| = 2` (Maekawa) while giving each strictly-smallest sector opposite-assigned bounding creases — a single flip changes the count by two and therefore breaks Maekawa unless paired with a compensating flip elsewhere in the same fan. Enumerate assignments of the flagged creases (and, if needed, their neighbours) that satisfy both, apply one with `assign_creases`, re-run `checks`. | Find crease IDs by matching `segment` endpoints in `inspect_design`. |
 | `SpatialClosure` / `SpatialUndecided` / `SpatialUnknowable` (`residual_degrees`) | Ori Studio extension: a vertex with non-180° creases does not close in 3D within the residual bar. | Change `angle` on the non-180° creases, or set them back to 180 (omit `angle`). | Not an Oriedita concept; Oriedita only knows classic creases. |
 | `SpatialInteriorBorder` (`severity: warning`) | A `Black0` line in the paper interior is being read as a border/cut. | Reassign it if it was meant as a crease. | `Black0` is overloaded (border, cut, join) — see `research/2026-08-31-holes-in-the-folding-pipeline.md` §5. |
 
@@ -117,11 +138,11 @@ re-run `checks` after each one and re-`inspect_design` because IDs change.
 
 | MCP `repair` | Kernel op | Upstream | What it actually does | Caveat |
 | --- | --- | --- | --- | --- |
-| `overlaps` | `Fix1` | `Fix1.apply` (`origami/.../foldlineset/Fix1.java`) | For the first parallel-equal pair found: give the survivor the second's colour and delete the duplicate, returning `true`. Other overlap kinds are only *selected*, not fixed. | **Ori Studio runs one pass** (`lib.rs:3301` → `arrangement::fix1`, returns after one merge). Oriedita's `fxO` button loops `Fix1` until it returns false, then runs `Fix2` (`CreasePattern_Worker_Impl.fix1`, `ActionRegistrationService` `fxOAction`). An agent must **repeat `overlaps` until `changed: false`, then run `intersections`** to reproduce the button. |
+| `overlaps` | `Fix1` | `Fix1.apply` (`origami/.../foldlineset/Fix1.java`) | Automatically fixes **only the `PARALLEL_EQUAL_31` case** (two segments with the same endpoints): the survivor takes the second's colour, the duplicate is deleted, and the pass returns `true` — **one merge per pass**. Every other Check1 case (`PARALLEL_*_CONTAINS_*`, one segment contained inside another, partial overlaps) is only marked `setSelected(2)`; nothing is removed. | **Ori Studio runs one pass** (`lib.rs:3301` → `arrangement::fix1`). Oriedita's `fxO` button loops `Fix1` until it returns false, then runs `Fix2` (`CreasePattern_Worker_Impl.fix1`, `ActionRegistrationService` `fxOAction`). To reproduce the button: **repeat `overlaps` until `changed: false`, then run `intersections`.** Contained/partial overlaps still reported by `Check1` afterwards must be resolved by hand (`delete_creases` of the redundant piece, or redraw); the selection state Fix1 sets is not returned through the MCP. |
 | `intersections` | `Fix2` | `Fix2.apply` | Splits each near-T-intersection at the projection of the endpoint onto the other segment (`applyLineSegmentDivide`); uses a quad tree. | Changes topology → renumbers IDs. |
 | `merge_vertices` | `DeleteExtraVertices` | `FoldLineSet.del_V_all` (`v_del_allAction` "Delete a vertex on a straight line of uniform color") | Merges collinear crease pairs meeting at a degree-2 vertex when both have the same colour. | `DeleteExtraVerticesIgnoreColor` (`v_del_all_ccAction`) exists in the kernel but is not in `REPAIRS`. |
 | `snap` | `FixInaccurate` | `MouseHandlerCreaseFixInaccurate` (`fixInaccurateAction`) | Snaps selected lines to the 22.5° family or the box-pleat grid; `precision` tunes the 22.5° algorithm. Help: "Only 22.5° and box-pleated crease patterns are currently supported." | Requires `line_ids`; pinned points are respected (`engines.ts:127`). |
-| `angular_flat_foldability` | `VertexMakeAngularlyFlatFoldable` | `makeFlatFoldableAction` / `foldableLineDrawAction`: "1. Select vertex with odd number of connecting lines. 2. Select flat foldable line. 3. Select a target line to extend to." | `points[0]` = the vertex, `points[1]` = pick among the kernel's candidate lines, `points[2..]` = optional destination (`lib.rs:2911-2923`, `operations/construction.rs`). Adds the crease that makes the vertex angularly flat-foldable (Kawasaki), coloured by the kernel's commit style. | Use `preview_construction`-style inspection first; the candidate is chosen by nearest pick, so a bad `points[1]` silently picks a different line. |
+| `angular_flat_foldability` | `VertexMakeAngularlyFlatFoldable` | `makeFlatFoldableAction` / `foldableLineDrawAction`: "1. Select vertex with odd number of connecting lines. 2. Select flat foldable line. 3. Select a target line to extend to." | `points[0]` = the vertex, `points[1]` = pick among the kernel's candidate lines, `points[2..]` = optional destination (`lib.rs:2911-2923`, `operations/construction.rs`). Adds **one** crease that makes an odd-degree / incomplete fan angularly flat-foldable, coloured by the kernel's commit style. It is a completion tool for the `NumberOfFolds` situation, not a general Kawasaki (`Angles`) repair: it never moves or re-angles existing creases. | The candidate is chosen by nearest pick, so a bad `points[1]` silently picks a different line; inspect the result. The added crease's colour still has to satisfy Maekawa/BLB — re-run `checks`. |
 
 ### 1.5 Layer ordering ("flat_fold") and what it proves
 
@@ -212,8 +233,10 @@ The upstream workflow (all from [TM-help:tutorial_1..3]):
 2. Optionally set a symmetry line and node/edge/path **conditions**.
 3. **Optimize Scale** ("Scale Everything"): maximizes `m`, moves leaf nodes.
 4. If some leaf node/edge is unpinned: select the unpinned nodes *and* edges
-   and run **Scale Selection** (edge optimization); or add a node/edge; or
-   split an edge and add a **stub**; or relieve strain.
+   and run **Scale Selection** (edge optimization). The tutorials also add a
+   node/edge, split an edge and add a **stub**, or **Relieve Strain** — all of
+   which change the tree's desired lengths or flap count (see the
+   semantic/heuristic column below; stubs are not ported).
 5. If conditions over-constrain: **Minimize Strain** with "same strain" pairs
    for symmetric edges.
 6. **Build Crease Pattern**; view in MVF colouring; choose the root node.
@@ -221,18 +244,29 @@ The upstream workflow (all from [TM-help:tutorial_1..3]):
 TreeMaker's own explanations when Build fails (`tmwxDoc_Action.cpp`, `Msg*`
 functions) map to the port's `CPStatus`
 (`crates/treemaker-core/src/lib.rs:394-424`), which `build_cp` returns as
-`report.cp_status_report`:
+`report.cp_status_report` together with the offending part IDs
+(`bad_edges`, `bad_polys`, `bad_vertices`, `bad_creases`, `bad_facets`;
+`lib.rs:425-429`).
 
-| `cp_status` | TreeMaker message (verbatim gist) | Action |
-| --- | --- | --- |
-| `has_full_cp` | — | Proceed to `derive_crease_pattern`. |
-| `edges_too_short` | "one or more edges are too short. This makes it impossible to distinguish hinge creases. Try absorbing the tiny edge(s)." | `absorb_edges` on `bad_edges`, or lengthen them. |
-| `polys_not_valid` | "wasn't able to construct all polygons, possibly because a polygon was nonconvex or contained one or more nodes in its interior. This is common with many-branched trees. Try selecting all unpinned edges, performing an edge optimization, then rebuilding." | `optimize_edges` (Scale Selection on unpinned parts); add a node or stub to break the polygon; re-`optimize_scale`. |
-| `polys_not_filled` | "some of the polygons did not have their interiors filled. Try rebuilding the crease pattern." | `build_cp` again; if persistent, treat as `polys_not_valid`. |
-| `polys_multiple_ibps` | "at least one of the polygons contains two or more inactive paths on its boundary. Try selecting unpinned edges, performing an edge optimization, and rebuilding." | Violates well-formed condition (2) [LD06 §2.1]. `optimize_edges`, or `path_active` conditions on the hull paths, then rebuild. |
-| `vertices_lack_depth` | "wasn't able to compute the depth for all vertices … probably because the tree isn't fully optimized … you can make some of the edges longer at the current scale. Try selecting all unpinned edges, performing an edge optimization." | `optimize_edges`; `relieve_all_strain`; rebuild. |
-| `facets_not_valid` | "wasn't able to fully construct the facets … usually due to numerical roundoff issues resulting in the formation of 'sliver' facets. The crease pattern will fold into the base, but you will have to find the crease assignment by hand." | Nudge a node, quantize path angles, or accept an unassigned CP and assign by hand after `derive_crease_pattern`. |
-| `not_local_root_connectable` | (no user message in 5.0.1; port-level status) | Change the root (`make_root`) or add hinge-creating nodes. |
+The table keeps two kinds of advice apart. **Upstream remedy** is what the
+TreeMaker 5.0.1 message itself tells the user to do, translated to MCP
+operations; it never changes the *design intent* (desired flap lengths,
+conditions). **Agent heuristic / semantic fallback** is anything beyond that:
+it either changes the design (marked *semantic, opt-in* — do it only when the
+user accepts a different base), depends on a port capability that is missing
+(marked *unavailable*), or is design lore from the tutorials rather than the
+failure message (marked *heuristic*).
+
+| `cp_status` | TreeMaker message (verbatim gist) | Upstream remedy (MCP) | Agent heuristic / semantic fallback |
+| --- | --- | --- | --- |
+| `has_full_cp` | — | Proceed to `derive_crease_pattern`. | — |
+| `edges_too_short` | "one or more edges are too short. This makes it impossible to distinguish hinge creases. Try absorbing the tiny edge(s)." | `absorb_edges` on `bad_edges` (Edit→Absorb). | *Semantic, opt-in:* `update_edge`/`set_edge_lengths` to lengthen the tiny edge changes the flap proportions the user asked for. |
+| `polys_not_valid` | "wasn't able to construct all polygons, possibly because a polygon was nonconvex or contained one or more nodes in its interior. This is common with many-branched trees. Try selecting all unpinned edges, performing an edge optimization, then rebuilding the polygons and/or crease pattern." | `optimize_edges` (the port's edge optimization runs on all unpinned parts; there is no selection argument), then `build_cp`. | *Heuristic (tutorials):* break the polygon by adding a node/edge and re-optimizing [TM-help:tips_1], or `split_edge` + `add_node` + `optimize_edges` [TM-help:tips_4] — both add a flap the tree did not have (*semantic*). *Unavailable:* stubs / Triangulate Tree (`AddLargestStub*` → `UnsupportedOperation`). *Heuristic:* re-`optimize_scale` from a different initial layout (`move_node` on leaves) [TM-help:tutorial_3]. |
+| `polys_not_filled` | "some of the polygons did not have their interiors filled. Try rebuilding the crease pattern by selecting Action->Build Crease Pattern." | `build_cp` again. | *Heuristic:* if it persists, treat as `polys_not_valid` (`bad_polys` names the polygons). |
+| `polys_multiple_ibps` | "at least one of the polygons contains two or more inactive paths on its boundary. Try selecting unpinned edges, performing an edge optimization, and rebuilding the crease pattern." | `optimize_edges`, then `build_cp`. (This is well-formed condition (2) failing [LD06 §2.1].) | *Heuristic, not the message's remedy:* `add_condition {kind: path_active}` on the hull paths of `bad_polys` and re-`optimize_scale` — a new constraint, which can lower the scale or over-constrain [TM-help:tutorial_3]. |
+| `vertices_lack_depth` | "wasn't able to compute the depth for all vertices and thus can't construct the folded form … probably because the tree isn't fully optimized. That is, you can make some of the edges of the tree longer at the current scale. Try selecting all unpinned edges, performing an edge optimization, then rebuilding." | `optimize_edges`, then `build_cp`. | *Semantic, opt-in:* `relieve_all_strain` / `relieve_strain` **bake the optimizer's strain into the desired edge lengths** ("absorbs length changes due to strain into the edge itself and resets the strain to zero" [TM-help:tutorial_3]); the flaps are then permanently longer than requested. Only with the user's consent, and never as a silent step. |
+| `facets_not_valid` | "wasn't able to fully construct the facets and thus can't construct the facet ordering or crease assignment. This is usually due to numerical roundoff issues resulting in the formation of 'sliver' facets. The crease pattern will fold into the base, but you will have to find the crease assignment by hand. The offending vertices and creases have been selected." | None prescribed beyond hand assignment: `derive_crease_pattern` gives an Oriedita CP whose creases at `bad_vertices`/`bad_facets` are unassigned or wrong; assign them with `assign_creases` and verify with `checks` + `flat_fold`. | *Heuristic (tutorials):* nudge a leaf node (`move_node`) and re-optimize, or `path_angle_quant` conditions [TM-help:tips_5] to move vertices off near-degenerate positions — both change the packing (*semantic*). |
+| `not_local_root_connectable` | "wasn't able to fully compute the facet ordering because there were multiple zero-depth local root networks or a local root network was not connectable to lower-depth root networks. This means that the direct algorithm for facet ordering and crease assignment won't work. While you may still be able to find a flat-foldable crease assignment, this usually means that the initial configuration was far from optimal. Try moving some leaf nodes so that the disconnected parts of the corridor wall formed by the selected vertices and creases will be forced closer together and re-optimize." | `move_node` on leaf nodes near the corridor-wall parts identified by `bad_vertices` / `bad_creases` so those parts are forced closer together, then `optimize_scale` and `build_cp` again. | *Heuristic:* `make_root` on a different node changes which corridors are local roots [LD06 §3.2] and may sidestep the disconnection, but it is not the upstream remedy and yields a different folded form. Hand assignment after `derive_crease_pattern` remains possible ("you may still be able to find a flat-foldable crease assignment"). |
 
 ### 2.3 MCP mapping
 
@@ -246,7 +280,7 @@ functions) map to the port's `CPStatus`
 | `set_edge_lengths`, `scale_edge_lengths` | Edit→Edges→Set/Scale Lengths | |
 | `split_edge {edge, distance}` | Edit→Split→Selected Edge | Prerequisite for a stub [TM-help:tips_4]. |
 | `absorb_nodes`, `absorb_redundant_nodes`, `absorb_edges` | Edit→Absorb | Redundant node = degree 2. |
-| `remove_strain`, `relieve_strain`, `remove_all_strain`, `relieve_all_strain` | Edit→Strain | Relieve bakes strain into length. |
+| `remove_strain`, `relieve_strain`, `remove_all_strain`, `relieve_all_strain` | Edit→Strain | **Relieve is semantic, opt-in:** it bakes the optimizer's strain into the *desired* edge length ("absorbs length changes due to strain into the edge itself" [TM-help:tutorial_3]), permanently changing the flap the user asked for. Remove zeroes strain without changing lengths. |
 | `update_paper {width, height, scale}` | Tree Inspector | Rectangles allowed. |
 | `set_symmetry {has_symmetry, sym_loc, sym_angle}` | Tree Inspector "Symmetry" (book = point (0.5,0.5), 90°; diag = 45°) | Symmetry conditions are inert without a symmetry line. |
 | `add_condition {kind}` / `update_condition` / `delete_condition` | Condition menu | Kinds: `node_on_corner`, `node_on_edge`, `node_symmetric`, `nodes_paired`, `nodes_collinear`, `edge_length_fixed`, `edges_same_strain`, `node_fixed {x_fixed, y_fixed, …}`, `path_active`, `path_angle_fixed`, `path_angle_quant {quant, quant_offset}` — each is a direct port of `tmCondition*::CalcFeasibility()` (`PORTING.md`). Conditions on branch nodes are ignored upstream. Avoid redundant conditions (they slow or prevent convergence) [TM-help:tutorial_3]. |
@@ -367,6 +401,8 @@ angles and unassigned creases; TMD5/BPS keep the source trees
 | G8 | BP `packing` returns at most one error string (first violation). | `oristudio-bp-wasm/src/lib.rs:845-850` | Iterate: fix, re-check. |
 | G9 | The MCP sees the live document only as counts (`workspace.live.crease_pattern` summary) and publishes CP by whole-document replacement. | `service.ts:150-156`, `commit_design` | "Assist the user" flows must clone with `begin_design {source: "active"}` and commit the whole CP. |
 | G10 | ORH import deliberately diverges from Oriedita (trailing default row dropped, #368); OBJ empty import returns an empty model rather than Oriedita's phantom origin crease. | `PORTING.md`; `upstream/issue-368-orh-roundtrip`, `upstream/obj-import-validation` | Counts differ from Oriedita by one on those files. |
+| G11 | CAMV excludes `None` (unassigned) and `Cyan3` creases from the vertex fan and from the M/V counts, and nothing in the response says a fan was partial. | `LineColor.java:68-70`; `checks.rs:352,424` | Assign every incident crease before trusting `NumberOfFolds` / `Angles` / `Maekawa` / `BigLittleBig` (§1.3 precondition). |
+| G12 | `Maekawa` diagnostics carry no `big_little_big` payload (discarded when the Maekawa violation is constructed); only `BigLittleBig` does, and its `violating` flags mark segments. | `Check4.java`; `checks.rs:418-470`; `lib.rs:385-388` | Reassignment is a joint Maekawa + BLB search with `checks` as the oracle, not a payload-driven flip. |
 
 ---
 
