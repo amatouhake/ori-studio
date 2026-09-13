@@ -130,6 +130,7 @@ const api = {
 vi.mock('../../engines/engineHost', () => ({
   connectEngine: async () => api,
   isEngineConnected: () => true,
+  getEngineGeneration: () => 0,
 }));
 
 vi.mock('../../engine/oristudioCpGeometry', () => ({

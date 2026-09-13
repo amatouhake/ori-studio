@@ -99,6 +99,26 @@ interface LiveEngine {
 
 const live = new Map<EngineId, LiveEngine>();
 
+/**
+ * Monotonic generation per engine, bumped every time its handles are
+ * invalidated (crash or deliberate reset).
+ *
+ * A handle is only valid on the generation that created it: workers reuse
+ * small integer ids, so generation N+1 can hand out the same number for a
+ * different document (ABA). Callers must never pair a handle with a client
+ * from another generation — re-fetch the client after any await that may
+ * have reconnected, and retry when the generation moved under the acquire.
+ */
+const generations = new Map<EngineId, number>();
+
+/** The current generation for an engine; 0 before its first loss. */
+export function getEngineGeneration(id: EngineId): number {
+  return generations.get(id) ?? 0;
+}
+
+function bumpGeneration(id: EngineId): void {
+  generations.set(id, (generations.get(id) ?? 0) + 1);
+}
 export interface EngineLoss {
   engine: EngineId;
   /** Absent when the engine was reset deliberately rather than lost. */
@@ -136,6 +156,9 @@ function drop(id: EngineId): LiveEngine | null {
   if (!engine) return null;
   live.delete(id);
   engine.detachDiagnostics();
+  // Handles die with the worker: the next client is a new generation even
+  // though it may reuse the same numeric ids.
+  bumpGeneration(id);
   return engine;
 }
 

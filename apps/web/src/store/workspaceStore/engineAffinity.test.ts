@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const hoisted = vi.hoisted(() => ({
   lossListeners: new Set<(loss: { engine: string }) => void>(),
   mockConnect: null as null | (() => Promise<unknown>),
+  generation: 0,
 }));
 
 vi.mock('../../engines/engineHost', () => ({
@@ -30,6 +31,7 @@ vi.mock('../../engines/engineHost', () => ({
       hoisted.lossListeners.delete(listener);
     };
   },
+  getEngineGeneration: (_engine: unknown) => hoisted.generation,
 }));
 
 import { registerActiveDesignSource } from './activeDesignSource';
@@ -143,12 +145,21 @@ function announceLoss(engine = 'treemaker') {
   for (const listener of [...hoisted.lossListeners]) listener({ engine });
 }
 
+// Mirror the host: dropping the worker bumps the generation, then announces.
+// Tests must bump on every simulated loss — distinct clients without a bump
+// would model two generations as one, hiding the pairing bug.
+function simulateLoss(engine = 'treemaker') {
+  hoisted.generation += 1;
+  announceLoss(engine);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   // Do NOT clear hoisted.lossListeners: the document registry subscribes once
   // at import; clearing would detach it and announceLoss would stop dropping
   // hot handles (which is what makes the repeated-loss test hydrate again).
   hoisted.mockConnect = () => Promise.reject(new Error('mockConnect not set'));
+  hoisted.generation = 0;
 });
 
 describe('engine affinity across loss/recovery', () => {
@@ -177,9 +188,9 @@ describe('engine affinity across loss/recovery', () => {
     expect(calls).toBe(2);
 
     // E1 lost; recovery reconnects. Hydration now runs on E2.
+    simulateLoss('treemaker');
     releaseToE2!(E2.api);
     const result = await pending;
-
     // The handle was hydrated on E2 …
     expect(E2.calls.loadTmd).toEqual(['A-PARKED-TEXT']);
     // … so the client must be E2 as well — never the pre-loss E1.
@@ -223,6 +234,7 @@ describe('engine affinity across loss/recovery', () => {
 
     const pending = ensureTreeHandle(docId);
     await tick();
+    simulateLoss('treemaker');
     releaseToE2!(E2.api);
     await pending;
 
@@ -255,31 +267,19 @@ describe('engine affinity across loss/recovery', () => {
     };
     const first = ensureTreeHandle(docId);
     await tick();
+    expect(calls).toBe(2);
+    simulateLoss('treemaker');
     release!(E2.api);
     const r1 = await first;
     expect(r1.api).toBe(E2.api);
 
     // The crash drops the hot handle; the parked text stands.
-    announceLoss('treemaker');
+    simulateLoss('treemaker');
 
-    // Second cycle: E2 -> E3. The next ensure captures the pre-loss E2, then
-    // hydrates on E3.
-    let calls2 = 0;
-    let release2: ((client: unknown) => void) | null = null;
-    const gated2 = new Promise<unknown>((resolve) => {
-      release2 = resolve;
-    });
-    hoisted.mockConnect = async () => {
-      calls2 += 1;
-      if (calls2 === 1) return E2.api;
-      if (calls2 === 2) return gated2;
-      return E3.api;
-    };
-    const second = ensureTreeHandle(docId);
-    await tick();
-    expect(calls2).toBe(2);
-    release2!(E3.api);
-    const r2 = await second;
+    // Second cycle: clean recovery on E3 (hot was dropped, so this hydrates
+    // without an in-window loss).
+    hoisted.mockConnect = async () => E3.api;
+    const r2 = await ensureTreeHandle(docId);
 
     expect(E3.calls.loadTmd).toEqual(['R-TEXT']);
     expect(r2.api).toBe(E3.api);
@@ -331,6 +331,7 @@ describe('engine affinity across loss/recovery', () => {
     await tick();
     expect(calls).toBe(2);
     // Loss + recovery while the undo's acquisition is in flight.
+    simulateLoss('treemaker');
     releaseToE2!(E2.api);
 
     const settled = await Promise.race([undoPromise.then(() => 'SETTLED'), timeoutValue(500)]);

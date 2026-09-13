@@ -1,5 +1,5 @@
 import type { Remote } from 'comlink';
-import { connectEngine, isEngineConnected } from '../../engines/engineHost';
+import { connectEngine, getEngineGeneration, isEngineConnected } from '../../engines/engineHost';
 import { acquireDesignHandle, adoptDesignHandle } from '../../engines/designHandles';
 import { readActiveDesign, type ActiveDesignRef } from './activeDesignSource';
 import {
@@ -31,8 +31,33 @@ export type EngineClient = Remote<TreemakerWorkerApi>;
 // reach `ensureTreeHandle` for an export). Once a design is active, its handle
 // comes from `engines/designHandles`, which is what makes two TreeMaker tabs two
 // trees rather than one.
+//
+// The fallback is tagged with the engine generation that owns it. Workers reuse
+// small integer ids, so generation N+1 can hand out the same number for a
+// different document — a stale fallback must never be snapshotted or freed on
+// the new generation. It is dropped (never freed there) as soon as the
+// generation moves.
 let handle: number | null = null;
+let handleGeneration: number | null = null;
 let blankPromise: Promise<TreeSnapshot> | null = null;
+let blankPromiseGeneration: number | null = null;
+
+/** Bounded retries for an acquire window that a loss interrupted. */
+export const MAX_ENGINE_RECOVERY_ATTEMPTS = 3;
+
+/**
+ * The engine was lost in the middle of binding a client to a handle, too many
+ * times in a row to have a live pair. Thrown so callers fail explicitly —
+ * history undo/redo catch it into `historyBusy: false` + error — instead of
+ * hanging on a dead client or looping forever.
+ */
+export class EngineRecoveryError extends Error {
+  readonly code = 'engine-recovery';
+  constructor(message = 'Engine was lost during recovery; retry the action') {
+    super(message);
+    this.name = 'EngineRecoveryError';
+  }
+}
 
 export function engineError(error: unknown): WasmErrorEnvelope {
   if (
@@ -58,15 +83,30 @@ export async function getEngine(): Promise<EngineClient> {
   return connectEngine('treemaker');
 }
 
-async function replaceHandle(nextHandle: number) {
-  if (handle !== null && isEngineConnected('treemaker')) {
-    // Guarded on the engine being connected rather than on a local client
-    // reference: with the host owning the worker, a crash drops the client and
-    // every handle it held, so there is nothing left to free.
+async function replaceHandle(nextHandle: number, ownerGeneration?: number) {
+  const current = getEngineGeneration('treemaker');
+  const generation = ownerGeneration ?? current;
+  // Created before a loss: dead, and its number may already be live for a
+  // different document on the new generation. Never install it as current,
+  // and never free the new generation's same number (ABA).
+  if (generation !== current) return;
+  if (handle !== null && handleGeneration === current && isEngineConnected('treemaker')) {
+    // Guarded on the generation as well as the connection: with the host
+    // owning the worker, a crash drops the client and every handle it held,
+    // so there is nothing left to free — and freeing the same number on the
+    // replacement would free someone else's tree.
     const api = await connectEngine('treemaker');
+    // A loss during the fetch above moves the generation: both the old handle
+    // and the handle being installed are now stale. Free neither, install
+    // nothing.
+    if (getEngineGeneration('treemaker') !== current) return;
     await api.freeTree(handle).catch(() => undefined);
+    if (getEngineGeneration('treemaker') !== current) return;
+  } else if (handle !== null) {
+    // Stale or disconnected: dead either way. Never freed on the new engine.
   }
   handle = nextHandle;
+  handleGeneration = current;
 }
 
 /**
@@ -165,20 +205,46 @@ export async function loadTreeFromText(
  * would hand a blank tree to a tab that has not decided what it is.
  */
 export async function initializeBlankTree(api: EngineClient): Promise<TreeSnapshot> {
+  const generation = getEngineGeneration('treemaker');
+  // Drop a fallback from before a loss without touching the new engine: its
+  // number may already be live for a different document there (ABA).
+  if (handle !== null && handleGeneration !== generation) {
+    handle = null;
+    handleGeneration = null;
+  }
   if (handle !== null) return api.snapshot(handle);
-  blankPromise ??= (async () => {
-    const nextHandle = await api.newDesign({ paper_width: 1, paper_height: 1 });
-    try {
-      const snapshot = await api.snapshot(nextHandle);
-      await replaceHandle(nextHandle);
-      return snapshot;
-    } catch (error) {
-      await api.freeTree(nextHandle).catch(() => undefined);
-      throw error;
-    }
-  })().finally(() => {
+  if (blankPromise !== null && blankPromiseGeneration !== generation) {
     blankPromise = null;
-  });
+    blankPromiseGeneration = null;
+  }
+  if (blankPromise === null) {
+    blankPromiseGeneration = generation;
+    blankPromise = (async () => {
+      const nextHandle = await api.newDesign({ paper_width: 1, paper_height: 1 });
+      // Created across a loss: dead. Never install it as current (ABA) — fail
+      // explicitly so the caller retries on the new generation.
+      if (getEngineGeneration('treemaker') !== generation) {
+        throw new EngineRecoveryError('Engine was lost while creating the fallback tree');
+      }
+      try {
+        const snapshot = await api.snapshot(nextHandle);
+        if (getEngineGeneration('treemaker') !== generation) {
+          throw new EngineRecoveryError('Engine was lost while creating the fallback tree');
+        }
+        await replaceHandle(nextHandle, generation);
+        return snapshot;
+      } catch (error) {
+        if (error instanceof EngineRecoveryError) throw error;
+        await api.freeTree(nextHandle).catch(() => undefined);
+        throw error;
+      }
+    })().finally(() => {
+      if (blankPromiseGeneration === generation) {
+        blankPromise = null;
+        blankPromiseGeneration = null;
+      }
+    });
+  }
   return blankPromise;
 }
 
@@ -187,41 +253,62 @@ export async function ensureTreeHandle(designId?: string): Promise<{
   treeHandle: number;
   initializedSnapshot?: TreeSnapshot;
 }> {
-  const preAcquireApi = await getEngine();
+  for (let attempt = 0; attempt < MAX_ENGINE_RECOVERY_ATTEMPTS; attempt++) {
+    try {
+      const generation = getEngineGeneration('treemaker');
+      const preAcquireApi = await getEngine();
+      // Loss during the fetch leaves the client suspect.
+      if (getEngineGeneration('treemaker') !== generation) continue;
 
-  // A TreeMaker design is active: its handle belongs to it, not to the module.
-  // This is what stops two tabs sharing one tree — and it hydrates a design the
-  // LRU had parked, transparently to every caller.
-  //
-  // An explicit id pins the lookup to the design that asked for it. Undo/redo
-  // capture theirs before their first await; resolving the live tab after this
-  // await would hand back the sibling's handle on a mid-flight switch. Omitted,
-  // the lookup stays live, as before.
-  const active: ActiveDesignRef | null =
-    designId !== undefined ? { id: designId, kind: 'treemaker' } : readActiveDesign();
-  if (active && active.kind === 'treemaker') {
-    const designHandle = await acquireDesignHandle(active.id, 'treemaker');
-    if (designHandle !== null) {
-      // Re-bind after the acquisition: hydrating a parked design reconnects a
-      // lost engine, so the handle above is on the new generation. Returning
-      // the pre-acquisition client would pair a dead client with a live
-      // handle and hang the next RPC on the wrong worker. Loss after this
-      // binding is still a direct-RPC loss, as before.
-      const api = await getEngine();
-      return { api, treeHandle: designHandle };
+      // A TreeMaker design is active: its handle belongs to it, not to the module.
+      // This is what stops two tabs sharing one tree — and it hydrates a design the
+      // LRU had parked, transparently to every caller.
+      //
+      // An explicit id pins the lookup to the design that asked for it. Undo/redo
+      // capture theirs before their first await; resolving the live tab after this
+      // await would hand back the sibling's handle on a mid-flight switch. Omitted,
+      // the lookup stays live, as before.
+      const active: ActiveDesignRef | null =
+        designId !== undefined ? { id: designId, kind: 'treemaker' } : readActiveDesign();
+      if (active && active.kind === 'treemaker') {
+        const designHandle = await acquireDesignHandle(active.id, 'treemaker');
+        if (designHandle !== null) {
+          // A hot-hit performs zero RPCs yet still races loss: the registry
+          // drops the entry synchronously on announce, so a loss between the
+          // hit and this check leaves a dead number. Only a stable generation
+          // proves the pre-acquire client and the handle match — return it
+          // directly (no second fetch, no new window). A moved generation
+          // means unknown provenance: retry, never pair across it. ABA reuse
+          // could otherwise turn the old hang into silent wrong-document use.
+          if (getEngineGeneration('treemaker') !== generation) continue;
+          return { api: preAcquireApi, treeHandle: designHandle };
+        }
+        // No handle (unregistered kind): the client may still have gone stale
+        // during the acquire await above.
+        if (getEngineGeneration('treemaker') !== generation) continue;
+      }
+
+      // No design has claimed a tree (cold boot, or an Edit-only flow reaching here
+      // for an export). Fall back to the module's own blank tree.
+      if (handle !== null && handleGeneration !== getEngineGeneration('treemaker')) {
+        handle = null;
+        handleGeneration = null;
+      }
+      let initializedSnapshot: TreeSnapshot | undefined;
+      if (handle === null) {
+        initializedSnapshot = await initializeBlankTree(preAcquireApi);
+      }
+      if (getEngineGeneration('treemaker') !== generation) continue;
+      if (handle === null) {
+        throw new EngineRecoveryError('Engine did not create a tree handle');
+      }
+      return { api: preAcquireApi, treeHandle: handle, initializedSnapshot };
+    } catch (error) {
+      if (error instanceof EngineRecoveryError && attempt + 1 < MAX_ENGINE_RECOVERY_ATTEMPTS) continue;
+      throw error;
     }
   }
-
-  // No design has claimed a tree (cold boot, or an Edit-only flow reaching here
-  // for an export). Fall back to the module's own blank tree.
-  let initializedSnapshot: TreeSnapshot | undefined;
-  if (handle === null) {
-    initializedSnapshot = await initializeBlankTree(preAcquireApi);
-  }
-  if (handle === null) {
-    throw new Error('Engine did not create a tree handle');
-  }
-  return { api: preAcquireApi, treeHandle: handle, initializedSnapshot };
+  throw new EngineRecoveryError('Engine was lost repeatedly during recovery; retry the action');
 }
 
 export function statusAfterEdit(snapshot: TreeSnapshot): AppStatus {

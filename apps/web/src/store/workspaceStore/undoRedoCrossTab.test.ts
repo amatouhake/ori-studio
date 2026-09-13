@@ -22,6 +22,7 @@ vi.mock('../../engines/engineHost', () => ({
   connectEngine: (..._args: unknown[]) => mockConnect(),
   isEngineConnected: () => true,
   onEngineLost: () => () => undefined,
+  getEngineGeneration: () => 0,
 }));
 
 // Set by each test before the (hoisted) mock module is used.
