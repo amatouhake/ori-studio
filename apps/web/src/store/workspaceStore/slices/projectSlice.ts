@@ -3351,7 +3351,16 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
       if (!source || source.kind === null) return;
       // Through the codec, which is the same serialize/hydrate pair that saves a
       // file and that eviction uses — so a duplicate is exactly a round trip.
-      const text = await serializeDesign(source.id, source.kind);
+      // `serializeDesign` throws on an explicit failure (only "never
+      // materialized" is null): report it rather than rejecting into the
+      // caller unhandled.
+      let text: string | null;
+      try {
+        text = await serializeDesign(source.id, source.kind);
+      } catch (error) {
+        set({ status: 'error', error: engineError(error) });
+        return;
+      }
       if (text === null) return;
       const copy = createDesignTab(tabs, {
         kind: source.kind,

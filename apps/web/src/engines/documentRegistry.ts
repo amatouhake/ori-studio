@@ -43,6 +43,16 @@ export interface DocumentRegistryOptions {
    */
   hotLimit?: number;
   /**
+   * How many engine-generation recoveries one `acquire()` survives before it
+   * fails loudly [I12]. A recovery is a dropped dead-generation handle or an
+   * abandoned create/hydrate whose RPC straddled a loss — never a park-settle
+   * wait or a plain re-read. Three by default: one transient loss recovers on
+   * the first retry, a flaky restart on the second, and an engine that cannot
+   * stay up for a single RPC surfaces instead of hanging its caller (and its
+   * caller's `historyBusy`) forever.
+   */
+  maxEngineRecoveryAttempts?: number;
+  /**
    * Where engine-loss notifications come from. Defaults to the real host.
    *
    * Injected for the same reason the codecs take their client that way: a
@@ -67,6 +77,56 @@ interface HotEntry {
   engine: EngineId | null;
   engineEpoch: number;
 }
+export const DEFAULT_MAX_ENGINE_RECOVERY_ATTEMPTS = 3;
+
+/**
+ * `serialize()` found neither a live handle nor parked text: the design was
+ * never materialized under this id. The save pipeline maps exactly this to
+ * "skip it" — every other failure propagates.
+ */
+export class DocumentNotRegisteredError extends Error {
+  readonly documentId: string;
+  constructor(documentId: string) {
+    super(`Document ${documentId} is not registered`);
+    this.name = 'DocumentNotRegisteredError';
+    this.documentId = documentId;
+  }
+}
+
+/**
+ * A `serialize()` RPC answered, but the document's semantic ownership moved
+ * while it pended (`adopt`, `adoptHandle`, `forget`) — so the bytes describe
+ * a document that no longer exists. Thrown instead of answering from older
+ * parked text (a silent downgrade) or from the replacement (masking the
+ * race): the caller re-addresses the current document.
+ */
+export class DocumentOwnershipChangedError extends Error {
+  readonly documentId: string;
+  constructor(documentId: string) {
+    super(
+      `Document ${documentId} changed ownership while serializing; the in-flight read was discarded`
+    );
+    this.name = 'DocumentOwnershipChangedError';
+    this.documentId = documentId;
+  }
+}
+
+/**
+ * One `acquire()` observed more engine generations die than
+ * {@link DocumentRegistryOptions.maxEngineRecoveryAttempts} allows. Thrown so
+ * an operation under engine churn (an undo holding `historyBusy`) fails
+ * loudly instead of reconnecting forever.
+ */
+export class EngineRecoveryExhaustedError extends Error {
+  readonly documentId: string;
+  readonly attempts: number;
+  constructor(documentId: string, attempts: number) {
+    super(`Engine recovery exhausted after ${attempts} attempts (document ${documentId})`);
+    this.name = 'EngineRecoveryExhaustedError';
+    this.documentId = documentId;
+    this.attempts = attempts;
+  }
+}
 
 export const DEFAULT_HOT_LIMIT = 3;
 
@@ -89,9 +149,41 @@ export type DocumentRegistryEvent =
 
 export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
   const hotLimit = options.hotLimit ?? DEFAULT_HOT_LIMIT;
+  const maxEngineRecoveryAttempts =
+    options.maxEngineRecoveryAttempts ?? DEFAULT_MAX_ENGINE_RECOVERY_ATTEMPTS;
   const hot = new Map<string, HotEntry>();
   /** Serialized text for every document the registry has parked. */
   const parked = new Map<string, string>();
+  /**
+   * Semantic ownership revision per document id [I12].
+   *
+   * Bumped only when the document itself is replaced — `adopt`, `adoptHandle`,
+   * `forget` — never on a park, an acquisition, or a mere engine death. It is
+   * what lets `serialize` tell "my worker died under a valid read" (usable)
+   * from "the document I read no longer exists" (failure): the coarse
+   * `generations` clock moves on both, this one only on the second.
+   */
+  const ownershipRevisions = new Map<string, number>();
+  const ownershipRevision = (documentId: string): number =>
+    ownershipRevisions.get(documentId) ?? 0;
+  const bumpOwnership = (documentId: string): void => {
+    ownershipRevisions.set(documentId, ownershipRevision(documentId) + 1);
+  };
+  /**
+   * Write sequence per document id, bumped on every `parked` store. A verified
+   * `serialize` refreshes last-known-good only while the sequence it saw at
+   * dispatch still holds — so a park commit racing the read always wins.
+   */
+  const parkedSequences = new Map<string, number>();
+  const parkedSequence = (documentId: string): number => parkedSequences.get(documentId) ?? 0;
+  const setParked = (documentId: string, text: string): void => {
+    parked.set(documentId, text);
+    parkedSequences.set(documentId, parkedSequence(documentId) + 1);
+  };
+  const deleteParked = (documentId: string): void => {
+    parked.delete(documentId);
+    parkedSequences.delete(documentId);
+  };
   /**
    * Outstanding pins per document id.
    *
@@ -111,8 +203,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *   `adoptHandle`'s direct free) — never zero, never two. A dead generation
    *   discharges the duty by abandon instead [I11].
    * [I2 parked snapshot] `parked` holds the freshest text whose generation is
-   *   current. Only a current-epoch park commit or `adopt` overwrites it; only
-   *   `adoptHandle` / `forget` delete it. Nothing resurrects deleted text.
+   *   current. A current-epoch park commit, `adopt`, or a verified `serialize`
+   *   refresh overwrites it; only `adoptHandle` / `forget` delete it. Nothing
+   *   resurrects deleted text.
    * [I3 in-flight park] A park whose hot entry is gone but whose text is not
    *   parked yet is recorded in `parksInFlight` — at most one waiter-visible
    *   record per document. Waiters await `done`, never a worker RPC directly.
@@ -155,10 +248,26 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *   generation still implies the same engine (generations advance on every
    *   replacement while the client stays memoized), so a post-resolution
    *   capture that still matches at completion proves the result came from the
-   *   live engine: `acquire` inserts it, `serialize` returns it, cleanups run
-   *   it. A mismatch means the RPC spanned a loss — abandon without cleanup
-   *   and recover (retry the acquisition, re-read the document, skip the
-   *   free). Hot hits need no RPC and validate the stamp directly.
+   *   live engine: `acquire` inserts it, cleanups run it. A mismatch means the
+   *   RPC spanned a loss — abandon without cleanup and recover (retry the
+   *   acquisition, skip the free). Hot hits need no RPC and validate the stamp
+   *   directly. `serialize` is the exception that proves the rule [I12]: its
+   *   result is text, not a handle, so a read dispatched against the correct
+   *   owner stays usable past a loss while ownership holds.
+   * [I12 semantic ownership] The per-document ownership revision moves only on
+   *   a semantic replacement — `adopt`, `adoptHandle`, `forget` — never on a
+   *   park, an acquisition, or a mere engine death. A `serialize` result is
+   *   usable iff (i) its RPC was dispatched while its hot entry was still
+   *   installed (so the bound client is the minter's, never the replacement's)
+   *   and (ii) the ownership revision is unchanged at completion. Otherwise it
+   *   throws `DocumentOwnershipChangedError` — never older parked text as
+   *   success. A usable result from a direct read (no wait, no re-read) also
+   *   refreshes last-known-good, unless a park commit landed first
+   *   (sequence-guarded, so concurrent parks always win). Waiter re-reads
+   *   return but never promote: their instant postdates the call.
+   *   `acquire` counts actual engine-generation recoveries against
+   *   `maxEngineRecoveryAttempts` and throws `EngineRecoveryExhaustedError`
+   *   past it — park-settle waits and plain re-reads are not recoveries.
    */
   /**
    * Ownership generation per document id [I4].
@@ -353,7 +462,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       // whichever lands last among this commit, `adopt`, `adoptHandle`, or
       // `forget` still wins, because each of those bumps first (see [I4]).
       if (text !== undefined && generations.get(documentId) === epoch) {
-        parked.set(documentId, text);
+        setParked(documentId, text);
       }
       // Resolved once for the cleanup, checked after the resolution it
       // authorizes [I1, I10, I11]: this handle was removed from the hot set
@@ -375,7 +484,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
         }
       }
       if (generations.get(documentId) !== epoch) return;
-      if (text !== undefined) parked.set(documentId, text);
+      if (text !== undefined) setParked(documentId, text);
       committed = true;
     })();
     // Waiters settle on `done`, not on `work`: when the engine dies, `work`
@@ -415,6 +524,16 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * overwrite the replacement [I11].
    */
   async function acquire(document: RegisteredDocument): Promise<number> {
+    // Recoveries observed by THIS call [I12]: each engine generation that dies
+    // under it is one retry. Park-settle waits and plain re-reads below are
+    // not recoveries and never touch this count.
+    let recoveryAttempts = 0;
+    const noteEngineRecovery = (): void => {
+      recoveryAttempts += 1;
+      if (recoveryAttempts > maxEngineRecoveryAttempts) {
+        throw new EngineRecoveryExhaustedError(document.id, recoveryAttempts);
+      }
+    };
     for (;;) {
       const existing = hot.get(document.id);
       if (existing) {
@@ -426,6 +545,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
         // have reused for another document. Drop it without cleanup — freeing
         // through the live client could kill that document — and recover below.
         hot.delete(document.id);
+        noteEngineRecovery();
         continue;
       }
       // A park is serializing this document: its hot entry is already gone but
@@ -465,7 +585,8 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       if (engine !== null && engineEpoch(engine) !== epochAtResolution) {
         // Straddled a loss: abandon without cleanup (never hot.set, never
         // free — the number may name another document on the live engine)
-        // and retry on the current generation.
+        // and retry on the current generation, within budget.
+        noteEngineRecovery();
         continue;
       }
 
@@ -516,10 +637,20 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // the race and this read the old parked text (or threw) instead of the
     // live handle it was called on. Re-read after the wait either way: the
     // world moved while suspended.
+    //
+    // `direct` tracks whether this call has yet to wait or re-read [I12]:
+    // only a read dispatched straight at the live document promotes its
+    // result to last-known-good. A waiter re-reading after a park, a loss, or
+    // a replacement answers a later instant than the one it was called on —
+    // returning that text is fine, but parking it would let post-replacement
+    // content silently become the recovery (and defeat `adoptHandle`'s
+    // deliberate drop of the replaced text).
+    let direct = true;
     for (;;) {
       const parking = parksInFlight.get(document.id);
       if (parking) {
         await parking.done;
+        direct = false;
         continue;
       }
       const entry = hot.get(document.id);
@@ -529,37 +660,61 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       // last parked text (or the honest `not registered` below).
       if (!isEntryCurrent(entry)) {
         hot.delete(document.id);
+        direct = false;
         continue;
       }
       // Bound to the minter's generation like `acquire` [I11]: the RPC runs on
-      // the client this resolution returned, so a client resolving across a
-      // loss reads the replacement's number space, not this handle's — and the
-      // verify below discards those bytes. No hop when there is nothing to
-      // resolve (same-drain synchronous codecs keep their exact waiter timing).
+      // the client this resolution returned, so the entry must still be
+      // installed when it is sent — a loss, park start, `adoptHandle`, or
+      // `forget` during the resolution moved it, and this handle's number
+      // through the replacement's client would read a foreign document.
+      // Re-read instead, never send. No hop when there is nothing to resolve
+      // (same-drain synchronous codecs keep their exact waiter timing).
       const engine = entry.engine;
       const connect = engine === null ? undefined : entry.document.kind.codec.resolveClient;
       const client = connect === undefined ? undefined : await connect();
-      // RPC failures propagate unchanged: only an engine loss discards a
-      // successful read, never an engine error.
-      const text = await entry.document.kind.codec.serialize(entry.handle, client);
-      // Still the minting generation: a loss in between dropped this entry,
-      // and its number may already name another document on the replacement —
-      // so these bytes are not this document's. Delete only if Old itself is
-      // still installed: a concurrent acquire may have installed New for this
-      // id while the dead RPC pended, and deleting by id would remove live
-      // New (orphaning its handle) and answer from stale parked text instead
-      // of re-reading New. Free nothing either way — Old died with its
-      // worker, and New, if present, is live. A supersede without a loss keeps
-      // the generation and keeps the old answer-first behavior, unchanged.
-      if (!isEntryCurrent(entry)) {
-        if (hot.get(document.id) === entry) hot.delete(document.id);
+      if (hot.get(document.id) !== entry) {
+        direct = false;
         continue;
+      }
+      // Ownership and parked sequence at dispatch [I12]: the RPC below is
+      // addressed to this document generation.
+      const ownershipAtDispatch = ownershipRevision(document.id);
+      const parkedSeqAtDispatch = parkedSequence(document.id);
+      // RPC failures propagate unchanged: only a superseded document discards
+      // a successful read, never an engine error.
+      const text = await entry.document.kind.codec.serialize(entry.handle, client);
+      const current = hot.get(document.id);
+      if (current !== undefined && current !== entry) {
+        // Another handle was installed for this id while the read pended. A
+        // pure engine recovery rehydrated New from the same ownership: answer
+        // from it. A semantic replacement (`adoptHandle`) changed ownership:
+        // the bytes describe a superseded document — fail, never answer.
+        if (ownershipRevision(document.id) !== ownershipAtDispatch) {
+          throw new DocumentOwnershipChangedError(document.id);
+        }
+        direct = false;
+        continue;
+      }
+      if (ownershipRevision(document.id) !== ownershipAtDispatch) {
+        // `adopt` replaced the text, or `forget` deleted the document, while
+        // the read pended. The bytes are not this document's: fail rather
+        // than resurrecting them or answering older parked text as success.
+        throw new DocumentOwnershipChangedError(document.id);
+      }
+      // Verified [I12]: dispatched against the owning handle/client with
+      // ownership intact — so a loss in between does not invalidate these
+      // bytes (they are text, not a handle). A direct read also publishes as
+      // last-known-good unless a park commit landed first: its sequence
+      // moved, and the concurrent park's read always wins over this one.
+      if (direct && parkedSequence(document.id) === parkedSeqAtDispatch) {
+        setParked(document.id, text);
       }
       return text;
     }
     const text = parked.get(document.id);
     if (text !== undefined) return text;
-    throw new Error(`Document ${document.id} is not registered`);
+    throw new DocumentNotRegisteredError(document.id);
   }
 
   /** Adopt a document the registry has not seen, from text (e.g. loading a file). */
@@ -570,8 +725,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // waiter observes a half-moved document and no overwritten record is left
     // for a later loss to miss.
     bumpGeneration(documentId);
+    bumpOwnership(documentId);
     retirePark(documentId);
-    parked.set(documentId, text);
+    setParked(documentId, text);
   }
 
   /**
@@ -595,6 +751,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // [I7, I9]: waiters migrate to the replacement on wake instead of hanging
     // on a record the next park would otherwise overwrite out from under them.
     bumpGeneration(document.id);
+    bumpOwnership(document.id);
     retirePark(document.id);
     const existing = hot.get(document.id);
     // Stamped with the adopting generation [I11]: the caller proved the minter
@@ -604,7 +761,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // later loss stays honest about it.
     const engine = document.kind.engine;
     hot.set(document.id, { document, handle, touched: (clock += 1), engine, engineEpoch: engineEpoch(engine) });
-    parked.delete(document.id);
+    deleteParked(document.id);
     // The previous handle only while its own minter is still live: past a loss
     // it died with its worker, and freeing its number through the live client
     // could kill an unrelated document reusing it. Resolved before the check,
@@ -631,6 +788,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // waiters wake into the re-read loop and observe the deletion instead of
     // hanging on a record nothing will ever settle.
     bumpGeneration(documentId);
+    bumpOwnership(documentId);
     retirePark(documentId);
     const entry = hot.get(documentId);
     if (entry) {
@@ -646,7 +804,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
         await entry.document.kind.codec.free(entry.handle, freeClient);
       }
     }
-    parked.delete(documentId);
+    deleteParked(documentId);
   }
 
   /**
