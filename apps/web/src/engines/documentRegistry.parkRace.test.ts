@@ -423,3 +423,67 @@ describe('engine loss during an in-flight park', () => {
     registry.dispose();
   });
 });
+
+describe('serialize-before-park ordering', () => {
+  /**
+   * `await` on no park at all still yields a microtask, so a `park()` landing
+   * synchronously after `serialize()` used to win the race: the save then read
+   * the old parked text — or threw `not registered` when nothing was parked —
+   * instead of the live handle it was called on.
+   */
+  it('serialize called before a synchronous park reads live state, not old parked text', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'v1');
+    await registry.park('a');
+
+    const h2 = await registry.acquire(document);
+    fake.edit(h2, 'v2 live');
+
+    // serialize starts first; the park lands synchronously, before
+    // serialize's continuation resumes. The save must see the live text.
+    const saving = registry.serialize(document);
+    const parking = registry.park('a');
+    const [text] = await Promise.all([saving, parking]);
+
+    expect(text).toBe('v2 live');
+    // …and the park captured that same live text, not the older snapshot.
+    await expect(registry.serialize(document)).resolves.toBe('v2 live');
+    registry.dispose();
+  });
+
+  it('serialize called before a synchronous park does not throw when nothing was ever parked', async () => {
+    // The workspace-save shape: a hot, edited document with no snapshot yet.
+    // Pre-fix this threw `not registered` — which `serializeDesign` catches
+    // into null, silently dropping a background tab from the saved file.
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'live work');
+
+    const saving = registry.serialize(document);
+    const parking = registry.park('a');
+    const [text] = await Promise.all([saving, parking]);
+
+    expect(text).toBe('live work');
+    registry.dispose();
+  });
+
+  it('park-before-serialize still returns the parked text', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'v1');
+    await registry.park('a');
+
+    await expect(registry.serialize(document)).resolves.toBe('v1');
+    registry.dispose();
+  });
+});

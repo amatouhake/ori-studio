@@ -313,8 +313,17 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // A park in flight means the hot entry is gone but its replacement text is
     // not parked yet: answering now would return the stale text being replaced
     // — or throw when nothing was ever parked — while the fresh text lands a
-    // moment later. Wait for it instead.
-    await parksInFlight.get(document.id)?.done;
+    // moment later. Wait for it instead — but only when one is actually in
+    // flight: awaiting unconditionally yields a microtask even with no park
+    // present, so a `park()` landing synchronously after this call used to win
+    // the race and this read the old parked text (or threw) instead of the
+    // live handle it was called on. Re-read after the wait either way: the
+    // world moved while suspended.
+    const parking = parksInFlight.get(document.id);
+    if (parking) {
+      await parking.done;
+      return serialize(document);
+    }
     const entry = hot.get(document.id);
     if (entry) return entry.document.kind.codec.serialize(entry.handle);
     const text = parked.get(document.id);
