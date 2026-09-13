@@ -176,6 +176,6 @@ silent step; presenting any of them as "the fix".
 
 - `cargo test -p ori-studio --lib mcp` — 7 passed (3 new)
 - `cargo fmt --check -p ori-studio`, `cargo clippy -p ori-studio --all-targets -- -D warnings` — clean (pre-existing unknown-lint warning only)
-- `npx vitest run src/automation` (apps/web) — 12 files / 89 tests passed (agentGuides.test.ts incl. consent-boundary and spatial-rule coverage, workspace guidance test new)
+- `npx vitest run src/automation` (apps/web) — 12 files / 105 tests passed (agentGuides.test.ts incl. consent-boundary, authoring/transcription and spatial-rule coverage, workspace guidance test new)
 - `node --check scripts/mcp/call.mjs`
 - `git diff --check`

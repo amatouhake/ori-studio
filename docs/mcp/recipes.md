@@ -112,13 +112,22 @@ to the user.
 
 1. `workspace`; `begin_design {source: "new", kind: "treemaker", title}` (or
    `source: "import", format: "tmd5", content`).
-2. Author the tree with `edit_tree` (KB §2.3): `add_node` (first node has no
-   `connect_to`; then `connect_to` an existing ID with `edge_length`);
-   `inspect_design` after each batch to learn the new 1-based IDs;
-   `update_edge {id, length}` for desired flap lengths; optional
-   `set_symmetry` + `add_condition` (`nodes_paired`, `node_symmetric`,
-   `node_on_corner`, …). Branch-node positions do not matter; conditions on
+2. Transcribe the tree the user described with `edit_tree` (KB §2.3) —
+   **user-supplied structure and values only**: `add_node` for each flap
+   the user named (first node has no `connect_to`; then `connect_to` an
+   existing ID with `edge_length`); `inspect_design` after each batch to
+   learn the new 1-based IDs; `update_edge {id, length}` with the lengths
+   the user gave; `set_symmetry` + `add_condition` (`nodes_paired`,
+   `node_symmetric`, `node_on_corner`, …) only for symmetry or placement
+   the user stated. Branch-node positions do not matter; conditions on
    branch nodes are ignored [F]; avoid redundant conditions [U].
+   **[H]** Anything the user did not specify — a flap length, an extra
+   node or edge, a symmetry line, any condition — is a design choice the
+   agent must not invent: ask for the value, or proceed only under a
+   delegation that names that class ("choose the lengths yourself"). A
+   broad "design a base for this stick figure" delegates running steps
+   3–7 on the tree *as given*, not inventing lengths or constraints (KB
+   §0.1).
 3. `analyze_design {analysis: "optimize_scale"}` → `job_status`. Read
    `result.report`: `converged`, `is_feasible`, `new_scale`. If
    `is_feasible: false`, report it; **[H]** changing the initial layout
@@ -126,11 +135,12 @@ to the user.
    (e.g. "a different starting layout may give a larger scale",
    KB §2.1) and re-run only with agreement. If conditions over-constrain the
    tree (the optimizer reports no solution), the upstream step is
-   `analyze_design {analysis: "optimize_strain"}` after pairing symmetric
-   edges with `edges_same_strain` conditions [U]; it strains edges (their
-   effective lengths change), so say so before running it. When the report
-   shows unpinned parts, `analyze_design {analysis: "optimize_edges"}`
-   lengthens them (Scale Selection) [U].
+   `analyze_design {analysis: "optimize_strain"}` [U]; it strains edges
+   (their effective lengths change), so say so before running it. **[H]**
+   The `edges_same_strain` pairing the tutorial adds first is a new
+   condition: add it only for pairs the user's stated symmetry implies, or
+   with agreement. When the report shows unpinned parts, `analyze_design
+   {analysis: "optimize_edges"}` lengthens them (Scale Selection) [U].
 4. `analyze_design {analysis: "build_cp"}` → `job_status` →
    `result.report.cp_status_report.status`. Follow `diagnostics.md §7`:
    default actions (`absorb_edges`, `optimize_edges`, `build_cp` again,
@@ -156,10 +166,19 @@ to the user.
 
 1. `workspace`; `begin_design {source: "new", kind: "box_pleat", title}` (or
    `format: "bps"` import).
-2. `edit_box_pleat` `initialize_tree {root, leaves: [{loc, length}, …]}` (root
-   ID 0, leaves 1..n), then `add_leaf {parent, length}` and `edge_length
-   {node1, node2, length}`; `sheet {grid, width, height}` (integers);
-   `move_flap` / `resize_flap` with integer grid coordinates.
+2. Transcribe the tree and sheet the user described with `edit_box_pleat`
+   — **user-supplied structure and values only**: `initialize_tree {root,
+   leaves: [{loc, length}, …]}` (root ID 0, leaves 1..n), then `add_leaf
+   {parent, length}` and `edge_length {node1, node2, length}` with the
+   flaps and river lengths the user gave; `sheet {grid, width, height}`
+   (integers) with the sheet the user asked for; `resize_flap {id, width,
+   height}` only to the dimensions the user specified. Flap placement
+   (`move_flap`) is what a packing request delegates (step 3).
+   **[H]** Any length, flap size, sheet size or extra leaf the user did not
+   specify is a design choice: ask, or proceed only under a delegation
+   naming it. A broad "design this by box pleating" delegates flap
+   placement, packing and derivation on the tree *as given*, not inventing
+   dimensions (KB §0.1).
 3. `analyze_design {analysis: "packing"}` → `job_status` →
    `result.packing.valid`. If `false`, act on `packing.errors[0]` (only the
    first violation is reported, `diagnostics.md §8`): **[H, delegated by the

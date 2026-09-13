@@ -81,12 +81,24 @@ fact does not determine:**
 | Box Pleating: stepping `stretch_config` / `stretch_pattern`. | No source states a preference; each alternative is a different CP (U1). | §3.2 |
 | Any BP `move_flap` that the user did not delegate (below). | Flap placement is the design activity BP Studio hands to the user [F]. | §3.1 |
 
+**Transcription is not a decision.** Writing values or structure the user
+supplied — the flaps of a stick figure, the lengths they stated, a symmetry
+or placement condition they asked for, a sheet size, flap dimensions they
+gave — with `add_node`, `update_edge`, `add_condition`, `initialize_tree`,
+`add_leaf`, `edge_length`, `sheet`, `resize_flap`, `add_creases` and the
+like is transcription and needs no consent. The same operations become
+**[H]** the moment the agent supplies a value or structure the user did
+not: an invented length, an extra node or leaf, a condition, a flap size.
+
 **Scoped delegation.** A user's request defines which design decisions are
 delegated to the agent for that task: "pack these flaps" delegates flap
 *positions* (`move_flap`) but not sizes; "fix the assignments so it folds
 flat" delegates `assign_creases` on the creases that fail, but not moving
 vertices; "design a base for this stick figure" delegates the TreeMaker
-workflow steps but not lengthening the user's edges. An [H] action inside
+workflow steps (optimize, build, derive, validate, export) on the tree as
+given, but not lengthening the user's edges, adding nodes, or adding
+conditions; "design this by box pleating" likewise delegates placement,
+packing and derivation, not flap dimensions or river lengths. An [H] action inside
 the delegated scope needs no per-step consent; one outside it does. When
 the scope is unclear, the agent asks before applying, and applies nothing
 [H] "to see what happens": proposals are computed from `inspect_design`

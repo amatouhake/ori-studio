@@ -20,11 +20,27 @@ const guides = { prompt, diagnostics, recipes };
 const knowledgeBase = readFileSync(resolve(process.cwd(), '../../docs/origami-design-knowledge.md'), 'utf8');
 const skill = readFileSync(resolve(process.cwd(), '../../.agents/skills/ori-studio-origami-agent/SKILL.md'), 'utf8');
 
-/** Paragraphs (blank-line separated blocks; a table row is its own block) mentioning `needle`. */
-const blocksWith = (text: string, needle: string) =>
-  text.split(/\n\s*\n/).flatMap(block => block.split('\n').filter(line => line.startsWith('|')).length > 1
-    ? block.split('\n').filter(line => line.includes(needle))
-    : block.includes(needle) ? [block] : []);
+/**
+ * Split a guide into the smallest units an instruction lives in: one table row,
+ * one list item (with its indented continuation lines, but not nested items,
+ * which are their own units), or one paragraph. A tag later in a multi-step
+ * list therefore cannot cover an earlier untagged step.
+ */
+const LIST_ITEM = /^\s*(\d+\.|[-*])\s/;
+function units(text: string): string[] {
+  const out: string[] = [];
+  let current: string[] = [];
+  const flush = () => { if (current.length) out.push(current.join('\n')); current = []; };
+  for (const line of text.split('\n')) {
+    if (!line.trim()) { flush(); continue; }
+    if (line.startsWith('|')) { flush(); out.push(line); continue; }
+    if (LIST_ITEM.test(line) || (current.length && !/^\s/.test(line) && LIST_ITEM.test(current[0]))) { flush(); current.push(line); continue; }
+    current.push(line);
+  }
+  flush();
+  return out;
+}
+const unitsWith = (text: string, needle: string) => units(text).filter(unit => unit.includes(needle));
 
 const toolNames = new Set(TOOLS.map(t => t.name));
 const analyses = (TOOLS.find(t => t.name === 'analyze_design')!.inputSchema.properties as Record<string, { enum?: string[] }>).analysis.enum!;
@@ -120,18 +136,53 @@ describe('action/consent boundary (KB §0.1)', () => {
     for (const text of [diagnostics, recipes, skill]) expect(text).toContain('§0.1');
   });
 
-  // Every mention of a design-changing operation in the guides sits in a block tagged [H].
-  const semantic = ['transform_creases', 'delete_creases', 'assign_creases', 'resize_flap', 'stretch_config', 'stretch_pattern', 'relieve_all_strain', 'relieve_strain', 'make_root', 'split_edge', 'path_active', 'path_angle_quant'];
-  it.each(semantic)('%s is only ever an [H] step in diagnostics and recipes', op => {
+  // Every unit that mentions a design-changing operation is either tagged [H],
+  // limited to transcribing user-supplied values, or a prohibition. A [U] or a
+  // delegation note is additionally acceptable for the two placement operations.
+  const designChanging = ['transform_creases', 'delete_creases', 'assign_creases', 'add_creases', 'resize_flap', 'stretch_config', 'stretch_pattern',
+    'relieve_all_strain', 'relieve_strain', 'make_root', 'split_edge', 'path_active', 'path_angle_quant', 'add_node', 'add_edge', 'update_edge',
+    'add_condition', 'set_symmetry', 'edges_same_strain', 'add_leaf', 'edge_length', 'initialize_tree', 'set_edge_lengths', 'scale_edge_lengths'];
+  const placement = ['move_node', 'move_flap'];
+  const guarded = /\[H\]|user-supplied|Do \*\*not\*\*|never|forbidden/i;
+  it.each(designChanging)('%s appears only in [H]-tagged, user-supplied or prohibitive units', op => {
     for (const [name, text] of [['diagnostics', diagnostics], ['recipes', recipes]] as const) {
-      const blocks = blocksWith(text, `\`${op}`);
-      for (const block of blocks) {
-        // Table header/legend rows and "Do not" cells are not actions; every action cell must carry [H].
-        if (/^\| `(kind|repair|cp_status|Field|Rule|Step)`? ?/.test(block) && block.includes('---')) continue;
-        expect(block, `${name}: ${block.slice(0, 120)}`).toMatch(/\[H\]|Do \*\*not\*\*|never|forbidden|Forbidden/i);
+      const found = unitsWith(text, `\`${op}`);
+      for (const unit of found) {
+        if (unit.startsWith('|') && unit.includes('---')) continue; // table separator
+        if (/^\| `?(kind|repair|cp_status|Field|Rule|Step|MCP op|Action)/.test(unit) && !/\| [^|]*\| [^|]*\|/.test(unit.slice(1))) continue; // header row
+        expect(unit, `${name}: ${unit.slice(0, 140)}`).toMatch(guarded);
       }
-      expect(blocks.length, `${name} never mentions ${op}`).toBeGreaterThan(0);
     }
+  });
+  it.each(placement)('%s appears only in [U]/[H]/delegated/prohibitive units', op => {
+    for (const [name, text] of [['diagnostics', diagnostics], ['recipes', recipes]] as const) {
+      for (const unit of unitsWith(text, `\`${op}`)) {
+        if (unit.startsWith('|') && unit.includes('---')) continue;
+        expect(unit, `${name}: ${unit.slice(0, 140)}`).toMatch(/\[H\]|\[U\]|delegat|user-supplied|Do \*\*not\*\*|never|forbidden/i);
+      }
+    }
+  });
+
+  it('R4 transcribes user-supplied tree values and treats invented ones and edges_same_strain as [H]', () => {
+    const r4 = recipes.slice(recipes.indexOf('## R4'), recipes.indexOf('## R5'));
+    const step2 = units(r4).find(unit => /^2\. /.test(unit))!;
+    expect(step2).toMatch(/user-supplied structure and values only/);
+    expect(step2).toMatch(/\*\*\[H\]\*\* Anything the user did not specify/);
+    expect(step2).toMatch(/not inventing lengths or constraints/);
+    const step3 = units(r4).find(unit => /^3\. /.test(unit))!;
+    expect(step3).toMatch(/\*\*\[H\]\*\*\s+The `edges_same_strain` pairing/);
+    expect(step3).not.toMatch(/after pairing symmetric\s+edges with `edges_same_strain` conditions \[U\]/);
+    expect(knowledgeBase).toMatch(/\*\*Transcription is not a decision\.\*\*/);
+  });
+
+  it('R5 transcribes user-supplied BP values, resizes only to specified dimensions, and delegates placement only', () => {
+    const r5 = recipes.slice(recipes.indexOf('## R5'), recipes.indexOf('## R6'));
+    const step2 = units(r5).find(unit => /^2\. /.test(unit))!;
+    expect(step2).toMatch(/user-supplied structure and values only/);
+    expect(step2).toMatch(/`resize_flap \{id, width,\s+height\}` only to the dimensions the user specified/);
+    expect(step2).not.toMatch(/`move_flap` \/ `resize_flap` with integer/);
+    expect(step2).toMatch(/\*\*\[H\]\*\* Any length, flap size, sheet size or extra leaf/);
+    expect(step2).toMatch(/not inventing\s+dimensions/);
   });
 
   it('R3 does not let the agent move geometry for Angles without agreement', () => {

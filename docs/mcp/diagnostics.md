@@ -138,8 +138,9 @@ collision-freedom nor global foldability.
 `OptimizationReport` from `optimize_scale` / `optimize_edges` /
 `optimize_strain`: `converged`, `is_feasible`, `old_scale`, `new_scale`,
 `message`. `is_feasible: false` after `optimize_scale` means the path
-inequalities are violated at the current scale: change the layout
-(`move_node`) or the constraints (§2.2).
+inequalities are violated at the current scale; [H] changing the initial
+layout (`move_node` on leaf nodes) or the constraints is a design choice —
+propose, apply with agreement (KB §2.2, §0.1).
 
 ## 8. Box Pleating `packing` / `layout`
 
