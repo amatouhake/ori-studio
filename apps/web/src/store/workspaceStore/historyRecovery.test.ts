@@ -105,7 +105,7 @@ describe('undo under engine-recovery exhaustion', () => {
       treeHandle: 1,
     });
     await store().undo();
-    expect(engineMocks.loadTreeFromText).toHaveBeenCalledWith(expect.anything(), 'crane before');
+    expect(engineMocks.loadTreeFromText).toHaveBeenCalledWith(expect.anything(), 'crane before', store().activeDesignId);
     expect(store().historyBusy).toBe(false);
   });
 });
