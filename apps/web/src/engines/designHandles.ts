@@ -1,6 +1,10 @@
 import { designKind } from '../designKinds';
 import type { DesignKindId } from '../designKinds';
-import { createDocumentRegistry, type RegisteredDocument } from './documentRegistry';
+import {
+  createDocumentRegistry,
+  DocumentNotRegisteredError,
+  type RegisteredDocument,
+} from './documentRegistry';
 
 /**
  * The bridge between design tabs and engine handles.
@@ -65,10 +69,13 @@ export async function serializeDesign(designId: string, kind: DesignKindId): Pro
   if (!document) return null;
   try {
     return await registry.serialize(document);
-  } catch {
-    // Not registered: the design has never been materialized, so there is
-    // nothing to serialize and the caller's `.osf` writer should skip it.
-    return null;
+  } catch (error) {
+    // Only "never materialized" is a skip: the design has no handle and no
+    // parked text, so the caller's `.osf` writer omits it. Anything else — a
+    // codec failure, an ownership race, an exhausted recovery — is an explicit
+    // save failure and must reach the caller, never a silent omission.
+    if (error instanceof DocumentNotRegisteredError) return null;
+    throw error;
   }
 }
 
