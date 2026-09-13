@@ -36,16 +36,15 @@ pub fn import_orh_str(input: &str) -> Result<CreasePatternDocument> {
         ..CreasePatternDocument::default()
     };
 
-    let num_lines = count_orh_lines(&lines)?;
-    document.crease_pattern.line_segments = vec![LineSegment::default(); num_lines + 1];
-    document.crease_pattern.circles = vec![Circle::default(); num_lines + 1];
+    let (num_segments, num_circles) = count_orh_sections(&lines);
+    document.crease_pattern.line_segments = vec![LineSegment::default(); num_segments + 1];
+    document.crease_pattern.circles = vec![Circle::default(); num_circles + 1];
     // Slots actually declared by a `番号` row in their section. The preallocation
-    // above over-sizes by one (and the circle vec is sized by the segment count),
-    // so unfilled trailing slots are trimmed after the read loop; otherwise every
-    // import carries a phantom segment+circle that export writes back as real and
-    // the next import grows by one again (#368).
-    let mut segment_declared = vec![false; num_lines + 1];
-    let mut circle_declared = vec![false; num_lines + 1];
+    // above over-sizes by one per section, so unfilled trailing slots are trimmed
+    // after the read loop; otherwise every import carries a phantom segment+circle
+    // that export writes back as real and the next import grows by one again (#368).
+    let mut segment_declared = vec![false; num_segments + 1];
+    let mut circle_declared = vec![false; num_circles + 1];
 
     let mut reading_flag = 0;
     let mut number = 0usize;
@@ -368,9 +367,10 @@ impl OrhFoldedFigureColors {
     }
 }
 
-fn count_orh_lines(lines: &[&str]) -> Result<usize> {
+fn count_orh_sections(lines: &[&str]) -> (usize, usize) {
     let mut reading_flag = 0;
-    let mut count = 0;
+    let mut segments = 0;
+    let mut circles = 0;
 
     for line in lines {
         let tokens = csv_tokens(line);
@@ -383,12 +383,19 @@ fn count_orh_lines(lines: &[&str]) -> Result<usize> {
         if *token == "<円集合>" {
             reading_flag = 3;
         }
-        if reading_flag == 1 && *token == "番号" {
-            count += 1;
+        // Each section is sized by its own `番号` rows: both sections spell the
+        // index row `番号`, so counting only the segment section starves circle
+        // storage whenever a document carries more circles than segments (#368).
+        if *token == "番号" {
+            if reading_flag == 1 {
+                segments += 1;
+            } else if reading_flag == 3 {
+                circles += 1;
+            }
         }
     }
 
-    Ok(count)
+    (segments, circles)
 }
 
 fn parse_one_based_index(value: Option<&&str>, line: usize) -> Result<usize> {
