@@ -307,8 +307,13 @@ describe('pinning', () => {
     const running = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const work = registry.pinned(doc('a', fake.kind), async () => running);
-    await Promise.resolve();
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const work = registry.pinned(doc('a', fake.kind), async () => {
+      entered();
+      await running;
+    });
+    await started;
 
     await registry.park('a');
     expect(registry.isHot('a')).toBe(true);

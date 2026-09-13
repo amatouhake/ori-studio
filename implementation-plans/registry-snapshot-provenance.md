@@ -71,8 +71,26 @@ Goal: every successful serialization dispatch protects the text it returns, even
 after earlier waits/re-reads; discarded materialization cleanup cannot strand
 recovery after its engine dies.
 
-- [ ] Reproduce both findings with explicit gates
-- [ ] Publish per dispatch and abandon cleanup waits on owning-generation loss
-- [ ] Focused tests, including exact recovery budget and native-save propagation
-- [ ] Fresh read-only Astra `codex exec` review (no session self-review/subagents)
+- [x] Reproduce both findings with explicit gates
+- [x] Publish per dispatch and abandon cleanup waits on owning-generation loss
+- [x] Focused tests, including exact recovery budget and native-save propagation
+- [x] Fresh read-only Astra `codex exec` review (no session self-review/subagents)
 - [ ] Full web tests, TypeScript, ESLint, diff-check; branch and local handoff updates
+
+
+Fresh CLI review 1 identified two additional P2s: a never-returning
+create/hydrate prevented acquisition from observing loss, and ownership supersede
+before cleanup registration missed abandonment. Both reproduced with explicit
+gates. The correction registers materialization waits before dispatch, releases
+acquisition on loss/supersede, and frees late handles only through a still-current
+minter. Already-superseded acquisition never waits for cleanup. One existing
+pinning test now gates on work entry rather than assuming one microtask.
+
+Fresh CLI review 2 found no actionable scoped P1/P2 after source/test inspection
+and 48 in-memory boundary probes. Both reviewers were separate ephemeral
+`codex exec` processes using the locally verified `gpt-6-astra` model (high),
+read-only sandbox, and approval never; apps/plugins/delegation/hooks disabled.
+No session self-review or session subagent review was used for this follow-up.
+Reviewer outputs are local: `/tmp/ori-pass8-review-1.txt` and
+`/tmp/ori-pass8-review-2.txt`. Focused validation: 7 files / 132 tests passed;
+TypeScript and full ESLint passed on the owning branch.
