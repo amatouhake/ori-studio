@@ -544,11 +544,15 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       const text = await entry.document.kind.codec.serialize(entry.handle, client);
       // Still the minting generation: a loss in between dropped this entry,
       // and its number may already name another document on the replacement —
-      // so these bytes are not this document's. Re-read (parked text stands)
-      // instead of returning them. A supersede without a loss keeps the
-      // generation and keeps the old answer-first behavior, unchanged.
+      // so these bytes are not this document's. Delete only if Old itself is
+      // still installed: a concurrent acquire may have installed New for this
+      // id while the dead RPC pended, and deleting by id would remove live
+      // New (orphaning its handle) and answer from stale parked text instead
+      // of re-reading New. Free nothing either way — Old died with its
+      // worker, and New, if present, is live. A supersede without a loss keeps
+      // the generation and keeps the old answer-first behavior, unchanged.
       if (!isEntryCurrent(entry)) {
-        hot.delete(document.id);
+        if (hot.get(document.id) === entry) hot.delete(document.id);
         continue;
       }
       return text;
