@@ -64,4 +64,4 @@ the worker-side carry-over was enough for it and not for Refresh.
 - [x] i18n extract, translate the new/reworded strings in 8 locales, stamp
 - [x] Tests: runtime reload re-push; panel Restart branches; capability test
 - [x] Validation: lint, typecheck, i18n check, web unit tests
-- [ ] Draft PR against `main`
+- [x] Draft PR against `main` — #374
