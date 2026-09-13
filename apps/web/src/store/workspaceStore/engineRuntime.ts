@@ -187,7 +187,7 @@ export async function ensureTreeHandle(designId?: string): Promise<{
   treeHandle: number;
   initializedSnapshot?: TreeSnapshot;
 }> {
-  const api = await getEngine();
+  const preAcquireApi = await getEngine();
 
   // A TreeMaker design is active: its handle belongs to it, not to the module.
   // This is what stops two tabs sharing one tree — and it hydrates a design the
@@ -201,19 +201,27 @@ export async function ensureTreeHandle(designId?: string): Promise<{
     designId !== undefined ? { id: designId, kind: 'treemaker' } : readActiveDesign();
   if (active && active.kind === 'treemaker') {
     const designHandle = await acquireDesignHandle(active.id, 'treemaker');
-    if (designHandle !== null) return { api, treeHandle: designHandle };
+    if (designHandle !== null) {
+      // Re-bind after the acquisition: hydrating a parked design reconnects a
+      // lost engine, so the handle above is on the new generation. Returning
+      // the pre-acquisition client would pair a dead client with a live
+      // handle and hang the next RPC on the wrong worker. Loss after this
+      // binding is still a direct-RPC loss, as before.
+      const api = await getEngine();
+      return { api, treeHandle: designHandle };
+    }
   }
 
   // No design has claimed a tree (cold boot, or an Edit-only flow reaching here
   // for an export). Fall back to the module's own blank tree.
   let initializedSnapshot: TreeSnapshot | undefined;
   if (handle === null) {
-    initializedSnapshot = await initializeBlankTree(api);
+    initializedSnapshot = await initializeBlankTree(preAcquireApi);
   }
   if (handle === null) {
     throw new Error('Engine did not create a tree handle');
   }
-  return { api, treeHandle: handle, initializedSnapshot };
+  return { api: preAcquireApi, treeHandle: handle, initializedSnapshot };
 }
 
 export function statusAfterEdit(snapshot: TreeSnapshot): AppStatus {
