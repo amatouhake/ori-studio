@@ -206,8 +206,7 @@ The new fixes are:
    frames as if they described the current design.
 3. FOLD import guards select the same geometry as native `loadFoldFile`: usable
    root first, otherwise the best embedded frame (creasePattern class, faces,
-   earliest tie). Frame-only files work; all-negative-y and zero-height selected
-   geometry still return the #366/#367 exclusion. The preview importer's distinct
+   earliest tie). Frame-only files work. The preview importer's distinct
    inheritance rules are not substituted for the native importer's policy.
 4. BP active clones retain the existing native `viewState.symmetry` representation.
    OSF export and new-tab publication preserve enabled state, explicit pairs and
@@ -293,9 +292,10 @@ have been deleted or rewritten.
   previously erased supported text. The same supplied-text fix applies to full
   FOLD export. Rich formatting/box information still requires explicit loss
   acknowledgement; plain text is preserved instead of discarded wholesale.
-- **Quarantine:** selected-frame Y bounds now use only edge-referenced vertices.
-  Unused positive/negative outliers cannot disguise #366/#367, and valid
-  frame-only files still work. The excluded upstream issues remain untouched.
+- **Import guard:** structural validation of the selected frame uses only
+  edge-referenced vertices, so unused metadata vertices cannot disqualify a
+  valid frame-only file. All-negative-y and single-axis FOLD geometry are no
+  longer quarantined: the importer normalizes both (#366, #367).
 
 Focused regressions include close parallel creases, split/merged contributors,
 numeric perturbation, missing/ambiguous lineage, input immutability, BP ID reuse,

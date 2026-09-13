@@ -35,28 +35,23 @@ describe('semantic MCP contracts', () => {
     expect(tree.operations.items.oneOf.length).toBeGreaterThan(20);
     expect(CAPABILITIES.operations.edit_tree.find(op => op.type === 'move_node')).toMatchObject({ required: ['id', 'loc'], fields: { loc: 'x, y' } });
   });
-  it('uses only edge-referenced vertices for quarantine bounds', () => {
-    const check = (vertices_coords: number[][]) => () => engines.guardFoldImport(JSON.stringify({ vertices_coords, edges_vertices: [[0, 1]] }));
-    expect(check([[0, -2], [1, -1], [0, 100]])).toThrow('#366');
-    expect(check([[0, 2], [1, 2], [0, -100], [0, 100]])).toThrow('#367');
-    expect(check([[0, 0], [1, 1], [0, -100], [0, 100]])).not.toThrow();
-    expect(() => engines.guardFoldImport(JSON.stringify({ file_frames: [{ vertices_coords: [[0, 0], [1, 1], [0, -100]], edges_vertices: [[0, 1]] }] }))).not.toThrow();
-  });
-  it('guards the native importer-selected geometry, including frame-only files', () => {
+  it('selects the native importer geometry, including frame-only files', () => {
     const good = { vertices_coords: [[0, 0], [1, 1]], edges_vertices: [[0, 1]], frame_classes: ['creasePattern'] };
-    const negative = { ...good, vertices_coords: [[0, -2], [1, -1]] };
-    const flat = { ...good, vertices_coords: [[0, 2], [1, 2]] };
     const guard = (value: unknown) => () => engines.guardFoldImport(JSON.stringify(value));
-    expect(guard({ file_frames: [{ ...negative, frame_classes: ['foldedForm'] }, good] })).not.toThrow();
-    expect(guard({ file_frames: [negative, good] })).toThrow('#366');
-    expect(guard({ file_frames: [flat] })).toThrow('#367');
-    expect(guard({ ...negative, file_frames: [good] })).toThrow('#366');
-    expect(guard({ ...good, file_frames: [negative] })).not.toThrow();
+    expect(guard({ file_frames: [{ ...good, frame_classes: ['foldedForm'] }, good] })).not.toThrow();
+    expect(guard({ ...good, file_frames: [{ ...good, vertices_coords: [] }] })).not.toThrow();
+    expect(guard({ file_frames: [{ vertices_coords: [[0, 0], [1, 1], [0, -100]], edges_vertices: [[0, 1]] }] })).not.toThrow();
   });
-  it('refuses the excluded FOLD hazards without rewriting importer behavior', () => {
-    expect(() => engines.guardFoldImport('{"edges_vertices":[[0,1]],"vertices_coords":[[0,0],[1,0]]}')).toThrow('#367');
-    expect(() => engines.guardFoldImport('{"edges_vertices":[[0,1]],"vertices_coords":[[0,-2],[1,-1]]}')).toThrow('#366');
+  it('passes negative-y and single-axis FOLD through to the importer', () => {
+    // The importer normalizes both (#366, #367); the guard only rejects structurally unusable files.
+    expect(() => engines.guardFoldImport('{"edges_vertices":[[0,1]],"vertices_coords":[[0,0],[1,0]]}')).not.toThrow();
+    expect(() => engines.guardFoldImport('{"edges_vertices":[[0,1]],"vertices_coords":[[0,-2],[1,-1]]}')).not.toThrow();
     expect(() => engines.guardFoldImport('{"edges_vertices":[[0,1]],"vertices_coords":[[0,0],[1,1]]}')).not.toThrow();
+  });
+  it('refuses structurally unusable FOLD before import', () => {
+    expect(() => engines.guardFoldImport('{"edges_vertices":[[0,1]],"vertices_coords":[[0,0]]}')).toThrow('valid vertices');
+    expect(() => engines.guardFoldImport('{"edges_vertices":[],"vertices_coords":[[0,0],[1,1]]}')).toThrow('finite vertices');
+    expect(() => engines.guardFoldImport('{"edges_vertices":[[0,1]],"vertices_coords":[[0,0],[1,null]]}')).toThrow('finite vertices');
   });
 });
 

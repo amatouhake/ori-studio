@@ -130,12 +130,11 @@ cross-platform runtime validation remains a follow-up.
   distinct analysis. Standard-base generators retain upstream assignment behavior.
 - MCP imports CP/ORI/FOLD/TMD5/BPS; OSF is exported and reopened through the normal
   application Open flow. Interchange formats omit unsupported canvas metadata.
-- The three excluded upstream issues remain untouched: [#366](https://github.com/zacharyfmarion/ori-studio/issues/366)
-  (all-negative-y FOLD normalization), [#367](https://github.com/zacharyfmarion/ori-studio/issues/367)
-  (zero-height FOLD), and [#368](https://github.com/zacharyfmarion/ori-studio/issues/368)
-  (empty ORH geometry). The first two inputs are refused with actionable errors;
-  ORH import is not advertised. CP/ORI provide a workaround without altering the
-  upstream behavior.
+- FOLD import relies on the importer's normalization of all-negative-y and
+  single-axis geometry ([#366](https://github.com/zacharyfmarion/ori-studio/issues/366),
+  [#367](https://github.com/zacharyfmarion/ori-studio/issues/367)); the MCP guard
+  only rejects structurally unusable files. ORH import is not advertised
+  ([#368](https://github.com/zacharyfmarion/ori-studio/issues/368)).
 
 The [architecture document](architecture.md) describes ownership, security,
 lifetimes, transaction guards and extension points. The

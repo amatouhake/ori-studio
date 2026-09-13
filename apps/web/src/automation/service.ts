@@ -153,7 +153,6 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       drafts: [...drafts.values()].map(describe), limits: LIMITS,
       construction_inputs: CONSTRUCTION_INPUTS, capabilities: CAPABILITIES,
       workflow: 'begin_design → inspect_design → edit → analyze/simulate → job_status → render_view → repair → export_design → commit_design',
-      excluded_issues: [366, 367, 368],
     });
     if (name === 'workspace_history') {
       if (!workspaceOperationsIdle()) throw new AutomationError('workspace_busy', 'An application action is running');

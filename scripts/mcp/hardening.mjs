@@ -90,9 +90,14 @@ try {
     await mutate('discard_design', addr());
   }
   evidence.push({ full_fold_roundtrip: { generations: 2, frame_only_import: true, metadata_and_embedded_frames_preserved: true } });
+  // All-negative-y and single-axis geometry are normalized by the importer (#366, #367).
   for (const ys of [[-2, -1, -1, -2], [1, 1, 1, 1]]) {
-    const hazardous = { ...original, file_frames: [{ ...frame, vertices_coords: frame.vertices_coords.map((p, i) => [p[0], ys[i]]) }] };
-    await call('begin_design', { request_id: randomUUID(), source: 'import', kind: 'crease_pattern', format: 'fold', content: JSON.stringify(hazardous) }, 'upstream_import_limit');
+    const normalized = { ...original, file_frames: [{ ...frame, vertices_coords: frame.vertices_coords.map((p, i) => [p[0], ys[i]]) }] };
+    draft = await mutate('begin_design', { source: 'import', kind: 'crease_pattern', format: 'fold', content: JSON.stringify(normalized) });
+    const imported = await call('inspect_design', addr());
+    assert(imported.lines.every(l => [l.a.x, l.a.y, l.b.x, l.b.y].every(Number.isFinite)));
+    evidence.push({ normalized_fold_import: { ys, line_count: imported.lines.length } });
+    await mutate('discard_design', addr());
   }
   draft = await mutate('begin_design', { source: 'new', kind: 'crease_pattern', title: 'Dangling mountain coverage' });
   draft = await mutate('edit_creases', { ...addr(), operations: [{ type: 'add_creases', creases: [{ a: { x: -80, y: -70 }, b: { x: -40, y: -30 }, assignment: 'mountain' }] }] });
@@ -109,10 +114,12 @@ try {
   assert(Math.max(...ys) - Math.min(...ys) < 1e-4);
   await writeFile(resolve(out, 'dangling-flat.obj'), flatObj.content);
   await mutate('discard_design', addr());
-  // Metadata vertices are not part of the native imported crease geometry.
+  // Unreferenced metadata vertices are not part of the native imported crease geometry.
   for (const vertices_coords of [[[0, -2], [1, -1], [0, 100]], [[0, 2], [1, 2], [0, -100]]]) {
-    await call('begin_design', { request_id: randomUUID(), source: 'import', kind: 'crease_pattern', format: 'fold',
-      content: JSON.stringify({ file_frames: [{ vertices_coords, edges_vertices: [[0, 1]], edges_assignment: ['M'] }] }) }, 'upstream_import_limit');
+    draft = await mutate('begin_design', { source: 'import', kind: 'crease_pattern', format: 'fold',
+      content: JSON.stringify({ file_frames: [{ vertices_coords, edges_vertices: [[0, 1]], edges_assignment: ['M'] }] }) });
+    assert.equal((await call('inspect_design', addr())).lines.length, 1);
+    await mutate('discard_design', addr());
   }
   draft = await mutate('begin_design', { source: 'import', kind: 'crease_pattern', format: 'fold', content: JSON.stringify({ ...original, file_frames: [{ ...frame, vertices_coords: [...frame.vertices_coords, [0, -999]] }],
     'oriedita:texts_coords': [[2, 3]], 'oriedita:texts_text': ['root metadata note'] }) });

@@ -37,7 +37,7 @@ export async function newDesign(kind: DesignKind, title: string): Promise<Design
   try { return { kind, text: await api.exportSessionBps(h) }; } finally { await api.freeProject(h); }
 }
 
-/** Refuse the two known FOLD import hazards, without changing upstream import semantics. */
+/** Refuse structurally unusable FOLD before it reaches the importer, without changing import semantics. */
 export function guardFoldImport(text: string): void {
   type Frame = { vertices_coords?: number[][]; edges_vertices?: number[][]; faces_vertices?: number[][]; frame_classes?: string[]; file_frames?: Frame[] };
   const fold = JSON.parse(text) as Frame;
@@ -50,12 +50,8 @@ export function guardFoldImport(text: string): void {
   const selected = usable(fold) ? fold : fold.file_frames?.filter(usable).sort((a, b) => score(b) - score(a))[0];
   const points = selected?.vertices_coords;
   if (!points?.length || points.some(p => p.length < 2 || !p.every(Number.isFinite))) throw new AutomationError('invalid_geometry', 'FOLD needs finite vertices_coords');
-  let minY = Infinity, maxY = -Infinity;
   const referenced = new Set(selected?.edges_vertices?.flat());
   if (!referenced.size || [...referenced].some(i => !Number.isInteger(i) || i < 0 || !points[i])) throw new AutomationError('invalid_geometry', 'FOLD edges must reference valid vertices');
-  for (const index of referenced) { const p = points[index]; minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]); }
-  if (maxY === minY) throw new AutomationError('upstream_import_limit', 'Zero-height FOLD import is excluded until #367 is resolved. Supply CP or ORI geometry.');
-  if (maxY < 0) throw new AutomationError('upstream_import_limit', 'Entirely negative-y FOLD import is excluded until #366 is resolved. Translate the supplied FOLD to nonnegative y, or use CP.');
 }
 
 export async function importDesign(kind: DesignKind, format: string, text: string, title: string): Promise<DesignData> {

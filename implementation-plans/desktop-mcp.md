@@ -16,8 +16,9 @@ state. No arbitrary execution, paths, store setters, or UI scripting are tools.
 Use OpenSCAD Studio's desktop request/renderer bridge as a design reference,
 with a different mutation model for structured origami documents. Reuse CP,
 TreeMaker, BP, simulator, export, and history abstractions. Leave upstream
-algorithms unchanged. Issues #366 (negative-y FOLD), #367 (zero-height FOLD),
-and #368 (empty ORH) are excluded; guard affected automation inputs.
+algorithms unchanged. FOLD import depends on the importer fixes for #366
+(negative-y FOLD) and #367 (zero-height FOLD); #368 (empty ORH) stays out of
+scope because ORH import is not advertised.
 
 ## Affected Areas
 - Desktop transport, authentication, lifecycle and settings
