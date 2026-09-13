@@ -207,15 +207,16 @@ pub fn raw_fallback_preserves(
     Ok(())
 }
 
+/// Bit-tuple key for transported per-crease semantics (see below).
+type TransportedSegmentKey = (u64, u64, u64, u64, i32, u32, u8, bool, (u8, u8, u8));
+
 /// Transported per-crease semantics: everything FOLD carries for an edge.
 ///
 /// Inactive custom-colour RGB canonicalizes to zero — neither FOLD nor the
 /// compact grammar transports it, so comparing the stored field would fail a
 /// document the fallback reproduces exactly (the C1 trap). `customized` itself
 /// compares as presence: FOLD only round-trips the `== 1` spelling.
-fn transported_segment_key(
-    s: &LineSegment,
-) -> (u64, u64, u64, u64, i32, u32, u8, bool, (u8, u8, u8)) {
+fn transported_segment_key(s: &LineSegment) -> TransportedSegmentKey {
     let (a, b) = if (s.a.x, s.a.y) <= (s.b.x, s.b.y) {
         (s.a, s.b)
     } else {
