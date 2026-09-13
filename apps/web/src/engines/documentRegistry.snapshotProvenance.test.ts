@@ -402,3 +402,35 @@ describe('materialization boundary controls', () => {
   });
 });
 
+describe('focused review: synchronous ownership transfer', () => {
+  it('adopt over hot content immediately replaces it for saves and recovery', async () => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'OLD');
+    const old = await r.registry.acquire(a);
+    r.active().write(old, 'OLD EDIT');
+    r.registry.adopt('a', 'NEW');
+    await expect(r.registry.serialize(a)).resolves.toBe('NEW');
+    expect(r.active().read(await r.registry.acquire(a))).toBe('NEW');
+    r.losses.lose('treemaker'); r.failover();
+    expect(r.active().read(await r.registry.acquire(a))).toBe('NEW');
+    r.registry.dispose();
+  });
+
+  it('forget removes parked text before gated cleanup; late cleanup cannot delete an adoption', async () => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'OLD');
+    await r.registry.acquire(a);
+    const gate = r.holdFree();
+    const forgetting = r.registry.forget('a');
+    await gate.entered;
+    const duringCleanup = await r.registry.serialize(a).catch((error: Error) => error);
+    r.registry.adopt('a', 'NEW');
+    gate.release();
+    await forgetting;
+    expect(duringCleanup).toMatchObject({ name: 'DocumentNotRegisteredError' });
+    await expect(r.registry.serialize(a)).resolves.toBe('NEW');
+    r.registry.dispose();
+  });
+});
