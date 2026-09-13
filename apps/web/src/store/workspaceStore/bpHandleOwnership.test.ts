@@ -47,6 +47,7 @@ vi.mock('../../engines/engineHost', () => ({
   resetEngine: vi.fn(),
   isEngineConnected: vi.fn(() => true),
   onEngineLost: vi.fn(() => () => undefined),
+  getEngineGeneration: vi.fn(() => 0),
 }));
 
 // The snapshot mapper is a pure translation of engine output; these tests are
