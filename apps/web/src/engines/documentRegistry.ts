@@ -128,6 +128,16 @@ export class EngineRecoveryExhaustedError extends Error {
   }
 }
 
+/** A save cannot choose between live recovery and unique pre-loss edits. */
+export class DocumentSerializationConflictError extends Error {
+  readonly documentId: string;
+  constructor(documentId: string) {
+    super(`Document ${documentId} changed during serialization; retry the save`);
+    this.name = 'DocumentSerializationConflictError';
+    this.documentId = documentId;
+  }
+}
+
 export const DEFAULT_HOT_LIMIT = 3;
 
 export type DocumentRegistryEvent =
@@ -266,7 +276,11 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *   success. A usable result from a direct read (no wait, no re-read) also
    *   refreshes last-known-good, unless a park commit landed first
    *   (sequence-guarded, so concurrent parks always win). Waiter re-reads
-   *   return but never promote: their instant postdates the call.
+   *   return but never promote: their instant postdates the call. If recovery
+   *   already installed a hot replacement and the verified old read differs
+   *   from its dispatch fallback, save throws a serialization conflict rather
+   *   than silently choosing a version. Disappearance of a document observed
+   *   by a save is also a conflict, never a never-registered omission.
    *   `acquire` counts actual engine-generation recoveries against
    *   `maxEngineRecoveryAttempts` and throws `EngineRecoveryExhaustedError`
    *   past it — park-settle waits and plain re-reads are not recoveries.
@@ -700,7 +714,11 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // content silently become the recovery (and defeat `adoptHandle`'s
     // deliberate drop of the replaced text).
     let direct = true;
+    // Only a document absent throughout this call is safe for the native-save
+    // layer to omit. Losing a previously observed document is a save failure.
+    let observedDocument = hot.has(document.id) || parked.has(document.id) || parksInFlight.has(document.id);
     for (;;) {
+      observedDocument ||= hot.has(document.id) || parked.has(document.id) || parksInFlight.has(document.id);
       const parking = parksInFlight.get(document.id);
       if (parking) {
         await parking.done;
@@ -735,6 +753,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       // addressed to this document generation.
       const ownershipAtDispatch = ownershipRevision(document.id);
       const parkedSeqAtDispatch = parkedSequence(document.id);
+      const fallbackAtDispatch = parked.get(document.id);
       // RPC failures propagate unchanged: only a superseded document discards
       // a successful read, never an engine error.
       const text = await entry.document.kind.codec.serialize(entry.handle, client);
@@ -747,6 +766,14 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
         if (ownershipRevision(document.id) !== ownershipAtDispatch) {
           throw new DocumentOwnershipChangedError(document.id);
         }
+        if (text !== fallbackAtDispatch) {
+          // Recovery finished before this verified response. The old read has
+          // edits beyond the fallback, and the replacement may have edits too.
+          // Neither version may be reported as the successful save of the
+          // other: fail loudly without overwriting either registry snapshot or
+          // the live handle. A retry explicitly addresses current live state.
+          throw new DocumentSerializationConflictError(document.id);
+        }
         direct = false;
         continue;
       }
@@ -755,6 +782,18 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
         // the read pended. The bytes are not this document's: fail rather
         // than resurrecting them or answering older parked text as success.
         throw new DocumentOwnershipChangedError(document.id);
+      }
+      if (!isEntryCurrent(entry) && parksInFlight.has(document.id) && text !== fallbackAtDispatch) {
+        // A recovery handle may already be parking, with hot removed but its
+        // snapshot sequence not advanced yet. It can still publish divergent
+        // fallback text after this response: do not claim a successful save.
+        throw new DocumentSerializationConflictError(document.id);
+      }
+      if (parkedSequence(document.id) !== parkedSeqAtDispatch && parked.get(document.id) !== text) {
+        // The competing recovery may already have been parked again. Its
+        // publication still wins, but differing old bytes cannot be reported
+        // as a successful save and then silently replaced on the next save.
+        throw new DocumentSerializationConflictError(document.id);
       }
       // Verified [I12]: dispatched against the owning handle/client with
       // ownership intact — so a loss in between does not invalidate these
@@ -768,6 +807,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     }
     const text = parked.get(document.id);
     if (text !== undefined) return text;
+    if (observedDocument) throw new DocumentSerializationConflictError(document.id);
     throw new DocumentNotRegisteredError(document.id);
   }
 
