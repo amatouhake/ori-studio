@@ -257,3 +257,169 @@ describe('stale park overwrite', () => {
     registry.dispose();
   });
 });
+
+describe('engine loss during an in-flight park', () => {
+  /**
+   * Stand-in for the engine host's loss channel: the fake codecs answer without
+   * a worker, so the loss source is injected and driven directly — exactly like
+   * the main registry suite's helper.
+   */
+  function lossChannel() {
+    const listeners = new Set<(loss: { engine: EngineId }) => void>();
+    return {
+      subscribe: (listener: (loss: { engine: EngineId }) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      lose: (engine: EngineId) => {
+        for (const listener of [...listeners]) listener({ engine });
+      },
+    };
+  }
+
+  /**
+   * A waiter stranded on a dead worker's promise pends forever, which would hang
+   * the test until the framework timeout. Fail fast instead: anything still
+   * pending after 500ms (the fixed paths settle in microtasks) is the bug.
+   */
+  function mustSettle<T>(promise: Promise<T>, what: string, ms = 500): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`hung: ${what}`)), ms)),
+    ]);
+  }
+
+  it('acquire recovers from the last parked snapshot instead of hanging', async () => {
+    const fake = gatedKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'v1');
+    await registry.park('a');
+
+    // A newer park is serializing when the worker dies: its Comlink promise
+    // never settles, and the hot entry is already gone.
+    const h2 = await registry.acquire(document);
+    fake.edit(h2, 'v2 fresh');
+    fake.holdSerialize();
+    registry.park('a');
+
+    engines.lose('treemaker');
+
+    // Must not hang on the dead park: the last parked text stands, and the
+    // document is acquirable again on the replacement engine.
+    const h3 = await mustSettle(registry.acquire(document), 'acquire after engine loss');
+    expect(fake.read(h3)).toBe('v1');
+    expect(registry.isHot('a')).toBe(true);
+    registry.dispose();
+  });
+
+  it('serialize does not hang on a dead park', async () => {
+    const fake = gatedKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'v1');
+    await registry.park('a');
+
+    const h2 = await registry.acquire(document);
+    fake.edit(h2, 'v2 fresh');
+    fake.holdSerialize();
+    registry.park('a');
+
+    engines.lose('treemaker');
+
+    await expect(mustSettle(registry.serialize(document), 'serialize after engine loss')).resolves.toBe(
+      'v1'
+    );
+    registry.dispose();
+  });
+
+  it('the in-flight park caller is released by engine loss', async () => {
+    const fake = gatedKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'v1');
+    await registry.park('a');
+
+    const h2 = await registry.acquire(document);
+    fake.edit(h2, 'v2 fresh');
+    fake.holdSerialize();
+    const parking = registry.park('a');
+
+    engines.lose('treemaker');
+
+    // The park caller must not wait on the terminated worker's promise.
+    await mustSettle(parking, 'in-flight park after engine loss');
+    registry.dispose();
+  });
+
+  it('a stale completion released later does not overwrite recovered state', async () => {
+    const fake = gatedKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'v1');
+    await registry.park('a');
+
+    const h2 = await registry.acquire(document);
+    fake.edit(h2, 'v2 fresh');
+    const release = fake.holdSerialize();
+    const parking = registry.park('a');
+
+    engines.lose('treemaker');
+
+    // Recover on the replacement engine and keep working there.
+    const h3 = await mustSettle(registry.acquire(document), 'acquire after engine loss');
+    expect(fake.read(h3)).toBe('v1');
+    fake.edit(h3, 'REPLACEMENT');
+
+    // The dead worker's serialize "answers" anyway (a late Comlink settlement).
+    // Let its whole chain — serialize, free, generation check — drain: every
+    // step is microtasks, so one macrotask flushes it deterministically.
+    release();
+    await parking;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // The replacement's park must win over the stale text, whatever the order.
+    await registry.park('a');
+    await expect(registry.serialize(document)).resolves.toBe('REPLACEMENT');
+    // …while the stale handle is still freed exactly once: the epoch guard
+    // drops the write, never the cleanup (h1, h2, h3 each freed once).
+    expect(fake.calls.free).toBe(3);
+    registry.dispose();
+  });
+
+  it('no prior snapshot: loss stays unrecoverable and never invents data', async () => {
+    const fake = gatedKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    // Created and never parked: the first park is still serializing when the
+    // worker dies, so there is no text to fall back to.
+    await registry.acquire(document);
+    fake.holdSerialize();
+    registry.park('a');
+
+    engines.lose('treemaker');
+
+    // Still unrecoverable — but responsive, and inventing nothing.
+    await expect(
+      mustSettle(registry.serialize(document), 'serialize after engine loss')
+    ).rejects.toThrow('not registered');
+    const h2 = await mustSettle(registry.acquire(document), 'acquire after engine loss');
+    expect(fake.read(h2)).toBe('new');
+    expect(fake.calls.hydrate).toBe(0);
+    registry.dispose();
+  });
+});

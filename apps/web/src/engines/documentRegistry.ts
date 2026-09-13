@@ -109,13 +109,30 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     return next;
   };
   /**
+   * A park currently serializing a document whose hot entry is already gone.
+   *
+   * Waiters await `done`, never the worker RPC directly: if the engine dies
+   * mid-serialize, its Comlink promise pends forever, and `handleEngineLost`
+   * settles `done` via `abandon()` instead so `acquire()`/`serialize()`/`park()`
+   * proceed from the last parked text. A late settlement of the original work
+   * still runs its generation check, so it can free but never commit.
+   */
+  interface InFlightPark {
+    /** Settles when the park commits — or when an engine loss abandons it. */
+    done: Promise<void>;
+    /** Release waiters without waiting for the worker. Resolving twice is a no-op. */
+    abandon: () => void;
+    /** Engine whose death strands this park; null when the kind has no engine. */
+    engine: EngineId | null;
+  }
+  /**
    * Parks currently serializing, by document id.
    *
    * Keyed by id and held *outside* the hot entry on purpose, like `pins`: the
    * entry is already gone while a park is in flight, so there is nowhere else
    * to record that the parked text is about to be replaced.
    */
-  const parksInFlight = new Map<string, Promise<void>>();
+  const parksInFlight = new Map<string, InFlightPark>();
   const listeners = new Set<(event: DocumentRegistryEvent) => void>();
   let clock = 0;
 
@@ -163,7 +180,8 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       // A park is already serializing this document: waiting for it is what
       // makes `await park()` mean the text is safely parked, instead of
       // resolving while the earlier park is still mid-window.
-      await parksInFlight.get(documentId);
+      const parking = parksInFlight.get(documentId);
+      if (parking) await parking.done;
       return;
     }
     // Engine work is in flight. Serializing would capture a torn intermediate
@@ -202,11 +220,26 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       if (text !== undefined) parked.set(documentId, text);
       committed = true;
     })();
-    parksInFlight.set(documentId, work);
+    // Waiters settle on `done`, not on `work`: when the engine dies, `work`
+    // pends forever on the terminated worker, and the loss path settles `done`
+    // via `abandon()` instead. Racing (rather than replacing) keeps the normal
+    // path's outcome — including a `free` failure — while a late settlement
+    // after abandon still runs the generation check above, so it frees but
+    // never commits over the replacement.
+    let releaseWaiters!: () => void;
+    const abandoned = new Promise<void>((resolve) => {
+      releaseWaiters = resolve;
+    });
+    const inFlight: InFlightPark = {
+      done: Promise.race([work, abandoned]),
+      abandon: () => releaseWaiters(),
+      engine: entry.document.kind.engine ?? null,
+    };
+    parksInFlight.set(documentId, inFlight);
     try {
-      await work;
+      await inFlight.done;
     } finally {
-      if (parksInFlight.get(documentId) === work) parksInFlight.delete(documentId);
+      if (parksInFlight.get(documentId) === inFlight) parksInFlight.delete(documentId);
     }
     if (committed) emit({ type: 'parked', documentId, reason, recoverable: parked.has(documentId) });
   }
@@ -230,7 +263,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // prefers over the fresh text until the next park makes it permanent.
     const parking = parksInFlight.get(document.id);
     if (parking) {
-      await parking;
+      await parking.done;
       return acquire(document);
     }
 
@@ -281,7 +314,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // not parked yet: answering now would return the stale text being replaced
     // — or throw when nothing was ever parked — while the fresh text lands a
     // moment later. Wait for it instead.
-    await parksInFlight.get(document.id);
+    await parksInFlight.get(document.id)?.done;
     const entry = hot.get(document.id);
     if (entry) return entry.document.kind.codec.serialize(entry.handle);
     const text = parked.get(document.id);
@@ -344,6 +377,30 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * last parked text so the documents can be rehydrated once it respawns.
    */
   const handleEngineLost = (engine: EngineId) => {
+    // A park serializing on the dead engine can never finish: its worker is
+    // gone, so the Comlink promise it awaits pends forever — along with every
+    // `acquire()`/`serialize()`/`park()` waiting on the tracked entry. Abandon
+    // those entries synchronously so waiters proceed from the last parked text
+    // without depending on the terminated worker answering. The bump keeps a
+    // late settlement from committing over the replacement, exactly like any
+    // other ownership change mid-park.
+    for (const [documentId, inFlight] of [...parksInFlight]) {
+      if (inFlight.engine === null || inFlight.engine !== engine) continue;
+      bumpGeneration(documentId);
+      parksInFlight.delete(documentId);
+      inFlight.abandon();
+      // Documents with a live handle are reported by the loop below; report
+      // here only the ones it cannot see — their hot entry is already gone.
+      const live = hot.get(documentId);
+      if (!live || live.document.kind.engine !== engine) {
+        emit({
+          type: 'parked',
+          documentId,
+          reason: 'engine-lost',
+          recoverable: parked.has(documentId),
+        });
+      }
+    }
     for (const entry of [...hot.values()]) {
       // A kind with no engine has no engine death to survive.
       if (entry.document.kind.engine === null || entry.document.kind.engine !== engine) continue;
