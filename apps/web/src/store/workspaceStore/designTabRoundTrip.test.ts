@@ -429,3 +429,19 @@ describe('saving while the user switches tabs', () => {
     expect(docOf(other.id)?.dirty).toBe(true);
   });
 });
+
+
+it('native save reports a background recovery conflict and writes no partial project', async () => {
+  const ids = threeDesigns();
+  const fileService = recordingFileService();
+  const { DocumentSerializationConflictError } = await import('../../engines/documentRegistry');
+  handles.serializeDesign.mockImplementation(async (id: string) => {
+    if (id === ids.crane) throw new DocumentSerializationConflictError(id);
+    return `serialized:${id}`;
+  });
+  await expect(store().saveProjectAs(fileService)).resolves.toBe(false);
+  expect(fileService.saveTextFile).not.toHaveBeenCalled();
+  expect(fileService.written).toBeNull();
+  expect(store().error?.message).toContain('retry the save');
+  expect(store().designTabs).toHaveLength(3);
+});

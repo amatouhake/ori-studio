@@ -434,3 +434,79 @@ describe('focused review: synchronous ownership transfer', () => {
     r.registry.dispose();
   });
 });
+
+describe('focused review: save vs completed recovery', () => {
+  it.each([false, true])('completed fallback recovery cannot downgrade a verified save (recovery edited: %s)', async (edited) => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v2');
+    const old = await r.registry.acquire(a);
+    r.active().write(old, 'v3');
+    const gate = r.holdSerialize();
+    const saving = r.registry.serialize(a).catch((error: Error) => error);
+    await gate.entered;
+    r.losses.lose('treemaker'); r.failover();
+    const recovered = await r.registry.acquire(a);
+    if (edited) r.active().write(recovered, 'RECOVERY EDIT');
+    gate.release();
+    // Once a recovered handle has escaped, choosing either version could
+    // discard unique edits. Fail explicitly, preserving current live content.
+    expect(await saving).toMatchObject({ name: 'DocumentSerializationConflictError' });
+    expect(r.registry.handleFor('a')).toBe(recovered);
+    expect(r.active().read(recovered)).toBe(edited ? 'RECOVERY EDIT' : 'v2');
+    r.registry.dispose();
+  });
+
+  it('loss during client resolution cannot silently omit a previously live unsaved document', async () => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    await r.registry.acquire(a); // deliberately no parked snapshot
+    const gate = r.holdConnect();
+    const saving = r.registry.serialize(a).catch((error: Error) => error);
+    await gate.entered;
+    r.losses.lose('treemaker'); r.failover();
+    gate.release();
+    expect(await saving).toMatchObject({ name: 'DocumentSerializationConflictError' });
+    expect(r.calls.serialize).toBe(0);
+    r.registry.dispose();
+  });
+});
+
+it('completed recovery parked again cannot hide a verified divergent pre-loss save', async () => {
+  const r = rig();
+  const a = doc('a', r.kind);
+  r.registry.adopt('a', 'v2');
+  const old = await r.registry.acquire(a);
+  r.active().write(old, 'v3');
+  const gate = r.holdSerialize();
+  const saving = r.registry.serialize(a).catch((error: Error) => error);
+  await gate.entered;
+  r.losses.lose('treemaker'); r.failover();
+  await r.registry.acquire(a);
+  await r.registry.park('a');
+  gate.release();
+  expect(await saving).toMatchObject({ name: 'DocumentSerializationConflictError' });
+  r.registry.dispose();
+});
+
+it('pending recovery park cannot overwrite a successful divergent pre-loss save', async () => {
+  const r = rig();
+  const a = doc('a', r.kind);
+  r.registry.adopt('a', 'v2');
+  const old = await r.registry.acquire(a);
+  r.active().write(old, 'v3');
+  const saveGate = r.holdSerialize();
+  const saving = r.registry.serialize(a).catch((error: Error) => error);
+  await saveGate.entered;
+  r.losses.lose('treemaker'); r.failover();
+  await r.registry.acquire(a);
+  const parkGate = r.holdSerialize();
+  const parking = r.registry.park('a');
+  await parkGate.entered;
+  saveGate.release();
+  const result = await saving;
+  parkGate.release();
+  await parking;
+  expect(result).toMatchObject({ name: 'DocumentSerializationConflictError' });
+  r.registry.dispose();
+});

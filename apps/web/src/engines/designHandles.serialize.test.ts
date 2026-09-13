@@ -162,3 +162,36 @@ describe('serializeDesign (native-save read path)', () => {
     }
   });
 });
+
+
+it('completed recovery conflict propagates through native-save serialization, never null or stale success', async () => {
+  const id = 'save-recovery-conflict';
+  const kind = 'save-fake' as unknown as DesignKindId;
+  const owner = makeEngine();
+  live = owner;
+  handles.adoptDesign(id, 'v2');
+  const old = (await handles.acquireDesignHandle(id, kind))!;
+  owner.write(old, 'v3');
+  let release!: () => void;
+  let started!: () => void;
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const original = fakeDescriptor.codec.serialize;
+  fakeDescriptor.codec.serialize = async (handle, client) => {
+    started();
+    await gate;
+    return original(handle, client);
+  };
+  try {
+    const saving = handles.serializeDesign(id, kind).catch((error: Error) => error);
+    await entered;
+    for (const listener of [...lossListeners]) listener({ engine: 'treemaker' });
+    live = makeEngine();
+    await handles.acquireDesignHandle(id, kind);
+    release();
+    expect(await saving).toMatchObject({ name: 'DocumentSerializationConflictError' });
+  } finally {
+    release();
+    fakeDescriptor.codec.serialize = original;
+  }
+});
