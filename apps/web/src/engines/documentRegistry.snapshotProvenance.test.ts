@@ -1,0 +1,404 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { DesignKindDescriptor } from '../designKinds/types';
+import { createDocumentRegistry, type RegisteredDocument } from './documentRegistry';
+import type { EngineId } from './engineHost';
+
+interface SplitEngine {
+  contents: Map<number, string>;
+  freed: number[];
+  alloc(text: string): number;
+  read(handle: number): string;
+  write(handle: number, text: string): void;
+  free(handle: number): void;
+}
+
+function makeEngine(): SplitEngine {
+  const contents = new Map<number, string>();
+  const freed: number[] = [];
+  let nextHandle = 42;
+  return {
+    contents,
+    freed,
+    alloc(text: string) {
+      const handle = nextHandle++;
+      contents.set(handle, text);
+      return handle;
+    },
+    read(handle: number) {
+      const text = contents.get(handle);
+      if (text === undefined) throw new Error(`read on dead handle ${handle}`);
+      return text;
+    },
+    write(handle: number, text: string) {
+      if (!contents.has(handle)) throw new Error(`write on dead handle ${handle}`);
+      contents.set(handle, text);
+    },
+    free(handle: number) {
+      freed.push(handle);
+      contents.delete(handle);
+    },
+  };
+}
+
+/**
+ * A kind whose codec answers from the *active* engine, like the host swapping
+ * workers under a stable client factory. RPC gates capture the owner when the
+ * RPC is *sent*: a late settlement carries the dead worker's data.
+ */
+function splitKind(engine: EngineId, engineCount = 12) {
+  const engines = Array.from({ length: engineCount }, makeEngine);
+  let activeIdx = 0;
+  const calls = { create: 0, hydrate: 0, serialize: 0, free: 0, connect: 0 };
+  const createGates: Array<Promise<void>> = [];
+  const hydrateGates: Array<Promise<void>> = [];
+  const serializeGates: Array<Promise<void>> = [];
+  const freeGates: Array<Promise<void>> = [];
+  const connectGates: Array<Promise<void>> = [];
+  const hold = (queue: Array<Promise<void>>) => {
+    let release!: () => void;
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => { started = resolve; });
+    const promise = new Promise<void>((resolve) => { release = resolve; });
+    Object.assign(promise, { started });
+    queue.push(promise);
+    return { entered, release };
+  };
+
+  const getClient = async (): Promise<SplitEngine> => {
+    calls.connect += 1;
+    const gate = connectGates.shift();
+    if (gate) {
+      (gate as Promise<void> & { started: () => void }).started();
+      await gate;
+    }
+    return engines[activeIdx]!;
+  };
+
+  const kind = {
+    id: 'split-fake',
+    engine,
+    codec: {
+      resolveClient: () => getClient(),
+      create: vi.fn(async (client?: unknown) => {
+        calls.create += 1;
+        const owner = (client as SplitEngine | undefined) ?? (await getClient());
+        const gate = createGates.shift();
+        if (gate) {
+          (gate as Promise<void> & { started: () => void }).started();
+          await gate;
+        }
+        return owner.alloc('new');
+      }),
+      hydrate: vi.fn(async (text: string, client?: unknown) => {
+        calls.hydrate += 1;
+        const owner = (client as SplitEngine | undefined) ?? (await getClient());
+        const gate = hydrateGates.shift();
+        if (gate) {
+          (gate as Promise<void> & { started: () => void }).started();
+          await gate;
+        }
+        return owner.alloc(text);
+      }),
+      serialize: vi.fn(async (handle: number, client?: unknown) => {
+        calls.serialize += 1;
+        const owner = (client as SplitEngine | undefined) ?? (await getClient());
+        const gate = serializeGates.shift();
+        if (gate) {
+          (gate as Promise<void> & { started: () => void }).started();
+          await gate;
+        }
+        return owner.read(handle);
+      }),
+      free: vi.fn(async (handle: number, client?: unknown) => {
+        calls.free += 1;
+        const owner = (client as SplitEngine | undefined) ?? (await getClient());
+        const gate = freeGates.shift();
+        if (gate) {
+          (gate as Promise<void> & { started: () => void }).started();
+          await gate;
+        }
+        owner.free(handle);
+      }),
+    },
+  } as unknown as DesignKindDescriptor;
+
+  return {
+    kind,
+    calls,
+    engines,
+    active: () => engines[activeIdx]!,
+    failover: () => {
+      activeIdx = (activeIdx + 1) % engines.length;
+    },
+    holdSerialize: () => hold(serializeGates),
+    holdFree: () => hold(freeGates),
+    holdConnect: () => hold(connectGates),
+    holdCreate: () => hold(createGates),
+    holdHydrate: () => hold(hydrateGates),
+  };
+}
+
+function lossChannel() {
+  const listeners = new Set<(loss: { engine: EngineId }) => void>();
+  return {
+    subscribe: (listener: (loss: { engine: EngineId }) => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    lose: (engine: EngineId) => {
+      for (const listener of [...listeners]) listener({ engine });
+    },
+  };
+}
+
+const doc = (id: string, kind: DesignKindDescriptor): RegisteredDocument => ({ id, kind });
+
+function rig(engine: EngineId = 'treemaker', options: Parameters<typeof createDocumentRegistry>[0] = {}) {
+  const split = splitKind(engine);
+  const losses = lossChannel();
+  const registry = createDocumentRegistry({
+    subscribeToEngineLoss: losses.subscribe,
+    ...options,
+  });
+  return { ...split, losses, registry };
+}
+
+
+describe('snapshot materialization provenance', () => {
+  it('primary P1: a successful v3 save cannot be downgraded by pending v2 recovery', async () => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v2');
+    const old = await r.registry.acquire(a);
+    r.engines[0]!.write(old, 'v3');
+    const saveGate = r.holdSerialize();
+    const saving = r.registry.serialize(a);
+    await saveGate.entered;
+    r.losses.lose('treemaker');
+    r.failover();
+    const hydrateGate = r.holdHydrate();
+    const recovering = r.registry.acquire(a);
+    await hydrateGate.entered;
+    expect(r.kind.codec.hydrate).toHaveBeenLastCalledWith('v2', r.active());
+    saveGate.release();
+    await expect(saving).resolves.toBe('v3');
+    await expect(r.registry.serialize(a)).resolves.toBe('v3');
+    hydrateGate.release();
+    const recovered = await recovering;
+    // The old code installs v2 and the next save silently re-publishes v2.
+    await expect(r.registry.serialize(a)).resolves.toBe('v3');
+    expect(r.active().read(recovered)).toBe('v3');
+    expect(r.active().freed).toEqual([42]);
+    expect(r.engines[0]!.freed).toEqual([]);
+    r.registry.dispose();
+  });
+
+  it('ordinary hydration installs once and a hot hit does no RPC', async () => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v1');
+    const handle = await r.registry.acquire(a);
+    const calls = { ...r.calls };
+    expect(await r.registry.acquire(a)).toBe(handle);
+    expect(r.calls).toEqual(calls);
+    expect(r.active().read(handle)).toBe('v1');
+    expect(r.calls.hydrate).toBe(1);
+    expect(r.active().freed).toEqual([]);
+    r.registry.dispose();
+  });
+
+  it.each(['adopt', 'adoptHandle', 'forget'] as const)('%s supersedes a pending hydration', async (action) => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'OLD');
+    const gate = r.holdHydrate();
+    const acquiring = r.registry.acquire(a);
+    const outcome = acquiring.then(value => ({ value, error: undefined }), error => ({ value: undefined, error }));
+    await gate.entered;
+    let replacement: number | undefined;
+    if (action === 'adopt') r.registry.adopt('a', 'NEW');
+    if (action === 'adoptHandle') {
+      replacement = r.active().alloc('NEW');
+      await r.registry.adoptHandle(a, replacement);
+    }
+    if (action === 'forget') await r.registry.forget('a');
+    gate.release();
+    expect((await outcome).error?.name).toBe('DocumentOwnershipChangedError');
+    if (action === 'forget') {
+      expect(r.registry.isHot('a')).toBe(false);
+      await expect(r.registry.serialize(a)).rejects.toThrow('not registered');
+    } else {
+      await expect(r.registry.serialize(a)).resolves.toBe('NEW');
+      const current = await r.registry.acquire(a);
+      expect(r.active().read(current)).toBe('NEW');
+      if (replacement !== undefined) expect(current).toBe(replacement);
+    }
+    r.registry.dispose();
+  });
+
+  it('multiple verified advances retry the latest snapshot without using the engine budget', async () => {
+    const r = rig('treemaker', { maxEngineRecoveryAttempts: 0 });
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v1');
+    const e1 = r.active();
+    const old = await r.registry.acquire(a);
+    const save2Gate = r.holdSerialize();
+    const save2 = r.registry.serialize(a);
+    await save2Gate.entered;
+    r.losses.lose('treemaker');
+    r.failover();
+    // E2 also dispatches a verified save before dying, with the same ownership.
+    const e2 = r.active();
+    const second = await r.registry.acquire(a);
+    const save3Gate = r.holdSerialize();
+    const save3 = r.registry.serialize(a);
+    await save3Gate.entered;
+    r.losses.lose('treemaker');
+    r.failover();
+    const hydration = r.holdHydrate();
+    const acquiring = r.registry.acquire(a);
+    await hydration.entered;
+    e1.write(old, 'v2');
+    save2Gate.release();
+    await expect(save2).resolves.toBe('v2');
+    // Concurrent direct saves share the same dispatch sequence; only the first
+    // promotes. Use a current handle for the second authoritative publication.
+    const fresh = await r.registry.acquire(a);
+    r.active().write(fresh, 'v3');
+    await expect(r.registry.serialize(a)).resolves.toBe('v3');
+    await r.registry.park('a');
+    e2.write(second, 'v3');
+    save3Gate.release();
+    await expect(save3).resolves.toBe('v3');
+    hydration.release();
+    expect(r.active().read(await acquiring)).toBe('v3');
+    await expect(r.registry.serialize(a)).resolves.toBe('v3');
+    r.registry.dispose();
+  });
+
+  it('snapshot staleness plus engine loss abandons ABA numbers and charges exactly one recovery', async () => {
+    const r = rig('treemaker', { maxEngineRecoveryAttempts: 1 });
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v2');
+    const old = await r.registry.acquire(a);
+    r.active().write(old, 'v3');
+    const saveGate = r.holdSerialize();
+    const saving = r.registry.serialize(a);
+    await saveGate.entered;
+    r.losses.lose('treemaker'); r.failover();
+    const hydrateGate = r.holdHydrate();
+    const acquiring = r.registry.acquire(a);
+    await hydrateGate.entered;
+    saveGate.release();
+    await expect(saving).resolves.toBe('v3');
+    r.losses.lose('treemaker'); r.failover();
+    const b = doc('b', r.kind);
+    const neighbor = await r.registry.acquire(b);
+    expect(neighbor).toBe(42);
+    r.active().write(neighbor, 'B');
+    hydrateGate.release();
+    expect(r.active().read(await acquiring)).toBe('v3');
+    expect(r.active().read(neighbor)).toBe('B');
+    expect(r.engines.flatMap(engine => engine.freed)).toEqual([]);
+    r.registry.dispose();
+  });
+});
+
+describe('materialization boundary controls', () => {
+  it.each(['adopt', 'adoptHandle', 'forget'] as const)('%s supersedes pending create', async (action) => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    const gate = r.holdCreate();
+    const result = r.registry.acquire(a).catch((error: Error) => error);
+    await gate.entered;
+    if (action === 'adopt') r.registry.adopt('a', 'NEW');
+    if (action === 'adoptHandle') await r.registry.adoptHandle(a, r.active().alloc('NEW'));
+    if (action === 'forget') await r.registry.forget('a');
+    gate.release();
+    expect(await result).toMatchObject({ name: 'DocumentOwnershipChangedError' });
+    if (action === 'forget') {
+      expect(r.registry.isHot('a')).toBe(false);
+      await expect(r.registry.serialize(a)).rejects.toThrow('not registered');
+    } else await expect(r.registry.serialize(a)).resolves.toBe('NEW');
+    r.registry.dispose();
+  });
+
+  it('a concurrent hydration winner and its live edits survive the late loser', async () => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v1');
+    const gate = r.holdHydrate();
+    const first = r.registry.acquire(a);
+    await gate.entered;
+    const winner = await r.registry.acquire(a);
+    r.active().write(winner, 'EDIT');
+    gate.release();
+    expect(await first).toBe(winner);
+    await expect(r.registry.serialize(a)).resolves.toBe('EDIT');
+    expect(r.active().contents.size).toBe(1);
+    r.registry.dispose();
+  });
+
+  it('client resolution rechecks concurrent winners before dispatching hydration', async () => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v1');
+    const gate = r.holdConnect();
+    const first = r.registry.acquire(a);
+    await gate.entered;
+    const winner = await r.registry.acquire(a);
+    r.active().write(winner, 'EDIT');
+    gate.release();
+    expect(await first).toBe(winner);
+    expect(r.calls.hydrate).toBe(1);
+    r.registry.dispose();
+  });
+
+  it('forget while client resolution is pending cannot create a blank replacement', async () => {
+    const r = rig();
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v1');
+    const gate = r.holdConnect();
+    const result = r.registry.acquire(a).catch((error: Error) => error);
+    await gate.entered;
+    await r.registry.forget('a');
+    gate.release();
+    expect(await result).toMatchObject({ name: 'DocumentOwnershipChangedError' });
+    expect(r.calls.create + r.calls.hydrate).toBe(0);
+    r.registry.dispose();
+  });
+
+  it('snapshot retry does not reset or consume the exact engine recovery budget', async () => {
+    const r = rig('treemaker', { maxEngineRecoveryAttempts: 1 });
+    const a = doc('a', r.kind);
+    r.registry.adopt('a', 'v2');
+    const old = await r.registry.acquire(a);
+    r.active().write(old, 'v3');
+    const saveGate = r.holdSerialize();
+    const saving = r.registry.serialize(a);
+    await saveGate.entered;
+    r.losses.lose('treemaker'); r.failover();
+    const stale = r.holdHydrate();
+    const retry1 = r.holdHydrate();
+    const retry2 = r.holdHydrate();
+    const result = r.registry.acquire(a).catch((error: Error) => error);
+    await stale.entered;
+    saveGate.release();
+    await expect(saving).resolves.toBe('v3');
+    stale.release();
+    await retry1.entered;
+    expect(r.kind.codec.hydrate).toHaveBeenLastCalledWith('v3', r.active());
+    r.losses.lose('treemaker'); r.failover();
+    retry1.release();
+    await retry2.entered;
+    r.losses.lose('treemaker'); r.failover();
+    retry2.release();
+    expect(await result).toMatchObject({ name: 'EngineRecoveryExhaustedError', attempts: 2 });
+    expect(r.calls.hydrate).toBe(4); // setup + stale snapshot + two lost attempts
+    expect(r.engines[1]!.freed).toEqual([42]);
+    expect(r.engines[2]!.freed).toEqual([]);
+    expect(r.engines[3]!.freed).toEqual([]);
+    r.registry.dispose();
+  });
+});
+
