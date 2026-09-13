@@ -151,11 +151,13 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * Waiters await `done`, never the worker RPC directly: if the engine dies
    * mid-serialize, its Comlink promise pends forever, and `handleEngineLost`
    * settles `done` via `abandon()` instead so `acquire()`/`serialize()`/`park()`
-   * proceed from the last parked text. A late settlement of the original work
-   * still runs its generation check, so it can free but never commit.
+   * proceed from the last parked text. A supersede (`adopt`, `adoptHandle`,
+   * `forget`, a newer park) retires the record the same way [I7]. A late
+   * settlement of the original work still runs its generation checks, so it
+   * can free but never commit.
    */
   interface InFlightPark {
-    /** Settles when the park commits — or when an engine loss abandons it. */
+    /** Settles when the park commits — or when supersede / engine loss abandons it. */
     done: Promise<void>;
     /** Release waiters without waiting for the worker. Resolving twice is a no-op. */
     abandon: () => void;
@@ -170,6 +172,21 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * to record that the parked text is about to be replaced.
    */
   const parksInFlight = new Map<string, InFlightPark>();
+  /**
+   * Retire the waiter-visible park for a document whose ownership just moved
+   * on [I7, I9]: abandon its waiters and drop the record so a newer park can
+   * never be mistaken for it — and it can never strand waiters once
+   * overwritten. The retired worker RPCs keep running untracked in the
+   * background, where the generation checks still force free-but-never-commit.
+   * No extra generation bump here: the caller already bumped for the ownership
+   * change this retires against.
+   */
+  const retirePark = (documentId: string): void => {
+    const inFlight = parksInFlight.get(documentId);
+    if (!inFlight) return;
+    parksInFlight.delete(documentId);
+    inFlight.abandon();
+  };
   const listeners = new Set<(event: DocumentRegistryEvent) => void>();
   let clock = 0;
 
@@ -212,14 +229,19 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     documentId: string,
     reason: 'evicted' | 'released' = 'released'
   ): Promise<void> {
-    const entry = hot.get(documentId);
-    if (!entry) {
-      // A park is already serializing this document: waiting for it is what
-      // makes `await park()` mean the text is safely parked, instead of
-      // resolving while the earlier park is still mid-window.
+    // Wait-and-re-read [I6]: a second `park` racing an in-flight one waits for
+    // it — that wait is what makes `await park()` mean the text is safely
+    // parked. Re-read after the wait: an abandon (supersede [I7] or engine
+    // loss [I8]) can release this wait WITHOUT committing — a replacement may
+    // be hot (fall through and park it) or a newer park in flight (wait on
+    // that one instead). Each wake observes a settled-or-removed record, so
+    // the loop always makes progress toward quiescence.
+    let entry = hot.get(documentId);
+    while (!entry) {
       const parking = parksInFlight.get(documentId);
-      if (parking) await parking.done;
-      return;
+      if (!parking) return;
+      await parking.done;
+      entry = hot.get(documentId);
     }
     // Engine work is in flight. Serializing would capture a torn intermediate
     // state, and freeing would pull the handle out from under it. The caller
@@ -233,6 +255,13 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // bumps the generation, and this park must then free but never commit.
     // Its text describes the document as it was when the park started.
     const epoch = bumpGeneration(documentId);
+    // Retire-then-install [I7]: with synchronous retire on every ownership
+    // change this slot is empty here, but a stale record must never be
+    // orphaned by overwrite — its waiters would hang outside every loss and
+    // abandon path. Retiring first keeps at most one live waiter record per
+    // document, and the identity check in `finally` below still spares newer
+    // records [I10].
+    retirePark(documentId);
     // Marked before the awaits, alongside the removal: an `acquire` landing in
     // the serialize/free window must wait for this park and hydrate from the
     // text it stores — not mint a blank handle from nothing parked yet, or a
@@ -387,8 +416,12 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
   /** Adopt a document the registry has not seen, from text (e.g. loading a file). */
   function adopt(documentId: string, text: string): void {
     // Invalidates any park serializing the previous occupant: its text must not
-    // overwrite the adopted one when it finishes.
+    // overwrite the adopted one when it finishes [I4]. Retire its waiter-visible
+    // record too [I7, I9] — synchronously, before the map updates below, so no
+    // waiter observes a half-moved document and no overwritten record is left
+    // for a later loss to miss.
     bumpGeneration(documentId);
+    retirePark(documentId);
     parked.set(documentId, text);
   }
 
@@ -408,8 +441,12 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    */
   async function adoptHandle(document: RegisteredDocument, handle: number): Promise<void> {
     // First, synchronously: an in-flight park for the previous occupant is stale
-    // from here on — it may still free its own handle, but never commit.
+    // from here on — it may still free its own handle, but never commit [I4].
+    // Retire its waiter-visible record as well [I7, I9]: waiters migrate to the
+    // replacement on wake instead of hanging on a record the next park would
+    // otherwise overwrite out from under them.
     bumpGeneration(document.id);
+    retirePark(document.id);
     const existing = hot.get(document.id);
     hot.set(document.id, { document, handle, touched: (clock += 1) });
     parked.delete(document.id);
@@ -423,8 +460,12 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
   /** Drop a document entirely — closing its tab. Frees any live handle. */
   async function forget(documentId: string): Promise<void> {
     // First, synchronously: an in-flight park for this document is stale from
-    // here on — it may still free its own handle, but must not resurrect text.
+    // here on — it may still free its own handle, but must not resurrect text
+    // [I4]. Retire its waiter-visible record as well [I7, I9]: second-park
+    // waiters wake into the re-read loop and observe the deletion instead of
+    // hanging on a record nothing will ever settle.
     bumpGeneration(documentId);
+    retirePark(documentId);
     const entry = hot.get(documentId);
     if (entry) {
       hot.delete(documentId);
@@ -445,7 +486,10 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // those entries synchronously so waiters proceed from the last parked text
     // without depending on the terminated worker answering. The bump keeps a
     // late settlement from committing over the replacement, exactly like any
-    // other ownership change mid-park.
+    // other ownership change mid-park. Every live waiter record is tracked here
+    // [I7]: superseded records were already retired at the transition that
+    // replaced them, so iterating the map abandons each outstanding waiter set
+    // exactly once and no orphaned record can survive this loop.
     for (const [documentId, inFlight] of [...parksInFlight]) {
       if (inFlight.engine === null || inFlight.engine !== engine) continue;
       bumpGeneration(documentId);

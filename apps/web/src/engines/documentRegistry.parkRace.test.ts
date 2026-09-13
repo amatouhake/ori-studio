@@ -750,3 +750,311 @@ describe('park commit-before-cleanup matrix (A: [I5] + [I10])', () => {
     registry.dispose();
   });
 });
+
+describe('park supersede-retire matrix (B: [I7] + [I6])', () => {
+  /**
+   * Boundary matrix for superseded parks. `parksInFlight` holds one record per
+   * document; a supersede (`adopt` / `adoptHandle` / `forget` / a newer park)
+   * used to overwrite-or-ignore that record, leaving the previous
+   * record's waiters (`serialize`, `acquire`, second `park`) unreachable: an
+   * engine loss then abandoned only the tracked record, so the orphaned
+   * waiters hung forever. The invariant is retire-on-supersede [I7]: every
+   * ownership transition synchronously abandons the obsolete record, so at
+   * most one live waiter record exists per document and the loss path sees
+   * every outstanding waiter set.
+   *
+   * Each test parks with `serialize` held on a gate that is NEVER released
+   * before the release assertions: the only thing that can settle the waiters
+   * is the retire itself. `mustSettle` is only a fail-fast hang detector.
+   */
+  function lossChannel() {
+    const listeners = new Set<(loss: { engine: EngineId }) => void>();
+    return {
+      subscribe: (listener: (loss: { engine: EngineId }) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      lose: (engine: EngineId) => {
+        for (const listener of [...listeners]) listener({ engine });
+      },
+    };
+  }
+
+  function mustSettle<T>(promise: Promise<T>, what: string, ms = 500): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`hung: ${what}`)), ms)),
+    ]);
+  }
+
+  it('B1: park -> adopt releases a serialize waiter with the adopted text (OLD snapshot present)', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h0 = await registry.acquire(document);
+    fake.edit(h0, 'OLD');
+    await registry.park('a');
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'UNSAVED');
+
+    // Gate never released: only the adopt's retire can settle what follows.
+    fake.holdSerialize();
+    const parkingOld = registry.park('a');
+    const waiting = registry.serialize(document);
+
+    registry.adopt('a', 'NEW FROM FILE');
+
+    await expect(mustSettle(waiting, 'serialize waiter retired by adopt')).resolves.toBe(
+      'NEW FROM FILE'
+    );
+    await mustSettle(parkingOld, 'superseded park caller retired by adopt');
+    await expect(registry.serialize(document)).resolves.toBe('NEW FROM FILE');
+    registry.dispose();
+  });
+
+  it('B2: park -> adoptHandle releases a serialize waiter onto the live replacement', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+
+    const releaseOld = fake.holdSerialize();
+    const parkingOld = registry.park('a');
+    const waiting = registry.serialize(document);
+
+    const h2 = await fake.kind.codec.create();
+    fake.edit(h2, 'NEW');
+    await registry.adoptHandle(document, h2);
+
+    // The waiter wakes into the replacement instead of the orphaned record.
+    await expect(mustSettle(waiting, 'serialize waiter retired by adoptHandle')).resolves.toBe(
+      'NEW'
+    );
+    await mustSettle(parkingOld, 'superseded park caller retired by adoptHandle');
+    expect(registry.handleFor('a')).toBe(h2);
+    // The stranded serialize drains harmlessly: stale, so it frees H1 but
+    // never commits over the replacement.
+    releaseOld();
+    await parkingOld;
+    await expect(registry.serialize(document)).resolves.toBe('NEW');
+    expect(fake.calls.free).toBe(1);
+    registry.dispose();
+  });
+
+  it('B3: park -> forget releases serialize and second-park waiters without resurrecting', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+
+    fake.holdSerialize();
+    const parkingOld = registry.park('a');
+    const waiting = registry.serialize(document);
+    const parkingSecond = registry.park('a');
+
+    await registry.forget('a');
+
+    await mustSettle(parkingSecond, 'second park waiter retired by forget');
+    await mustSettle(parkingOld, 'superseded park caller retired by forget');
+    await expect(mustSettle(waiting, 'serialize waiter retired by forget')).rejects.toThrow(
+      'not registered'
+    );
+    expect(registry.isHot('a')).toBe(false);
+    registry.dispose();
+  });
+
+  it('B4: park -> adoptHandle -> park migrates the H1 waiter and commits only NEW', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+
+    const releaseOld = fake.holdSerialize();
+    const parkingOld = registry.park('a');
+    const waitingH1 = registry.serialize(document);
+
+    const h2 = await fake.kind.codec.create();
+    fake.edit(h2, 'NEW');
+    await registry.adoptHandle(document, h2);
+
+    const releaseNew = fake.holdSerialize();
+    const parkingNew = registry.park('a');
+    const waitingH2 = registry.serialize(document);
+
+    // Retired at adoptHandle: the H1 waiter reads the live replacement even
+    // though its record was overwritten by the newer park.
+    await expect(mustSettle(waitingH1, 'H1 waiter migrated by retire')).resolves.toBe('NEW');
+    await mustSettle(parkingOld, 'superseded park caller retired by adoptHandle');
+
+    // Newest-first drain: the replacement commits, the stale park only cleans up.
+    releaseNew();
+    await parkingNew;
+    await expect(
+      mustSettle(waitingH2, 'H2 waiter settled by its own park')
+    ).resolves.toBe('NEW');
+    releaseOld();
+    await parkingOld;
+    await expect(registry.serialize(document)).resolves.toBe('NEW');
+    expect(fake.calls.free).toBe(2);
+    registry.dispose();
+  });
+
+  it('B5: park -> adoptHandle -> park -> engine loss releases every waiter direction', async () => {
+    const fake = gatedKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+
+    const releaseOld = fake.holdSerialize();
+    const parkingOld = registry.park('a');
+    // Three waiter directions attach to H1's record: serialize, acquire, and
+    // (below) a second park on the newer record.
+    const waitingSerializeH1 = registry.serialize(document);
+    const waitingAcquireH1 = registry.acquire(document);
+
+    const h2 = await fake.kind.codec.create();
+    fake.edit(h2, 'NEW');
+    await registry.adoptHandle(document, h2);
+    // Retire already migrated the H1 waiters onto the live replacement.
+    await expect(mustSettle(waitingSerializeH1, 'H1 serialize waiter pre-loss')).resolves.toBe(
+      'NEW'
+    );
+    await expect(mustSettle(waitingAcquireH1, 'H1 acquire waiter pre-loss')).resolves.toBe(h2);
+
+    const releaseNew = fake.holdSerialize();
+    const parkingNew = registry.park('a');
+    // …and the newer park has its own waiter set.
+    const waitingSerializeH2 = registry.serialize(document);
+    const parkingSecond = registry.park('a');
+
+    engines.lose('treemaker');
+
+    // The tracked record is abandoned: its waiters proceed without the worker.
+    // Nothing was ever parked for the replacement, so serialize reports that
+    // honestly instead of inventing content.
+    await expect(
+      mustSettle(waitingSerializeH2, 'H2 serialize waiter after loss')
+    ).rejects.toThrow('not registered');
+    await mustSettle(parkingNew, 'newer park caller after loss');
+    await mustSettle(parkingSecond, 'second park waiter after loss');
+    await mustSettle(parkingOld, 'superseded park caller');
+    // Post-loss recovery invents nothing and stays usable.
+    const h3 = await mustSettle(registry.acquire(document), 'acquire after loss');
+    expect(fake.read(h3)).toBe('new');
+    // The stranded serializes drain without committing over the recovered live
+    // handle: neither the superseded OLD nor the unparked NEW may win.
+    releaseOld();
+    releaseNew();
+    await parkingOld;
+    await parkingNew;
+    expect(registry.handleFor('a')).toBe(h3);
+    await expect(registry.serialize(document)).resolves.toBe('new');
+    registry.dispose();
+  });
+
+  it('B6: repeated supersede-loss cycles leave no residue', async () => {
+    const fake = gatedKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    for (const label of ['cycle 1', 'cycle 2']) {
+      const h1 = await registry.acquire(document);
+      fake.edit(h1, `${label} OLD`);
+      const releaseOld = fake.holdSerialize();
+      const parkingOld = registry.park('a');
+
+      const h2 = await fake.kind.codec.create();
+      fake.edit(h2, `${label} NEW`);
+      await registry.adoptHandle(document, h2);
+      const releaseNew = fake.holdSerialize();
+      const parkingNew = registry.park('a');
+
+      engines.lose('treemaker');
+
+      // No waiter may survive a cycle: a leaked record would hang the next one.
+      await mustSettle(parkingOld, `superseded park caller (${label})`);
+      await mustSettle(parkingNew, `newer park caller (${label})`);
+      releaseOld();
+      releaseNew();
+      await parkingOld;
+      await parkingNew;
+      await expect(registry.serialize(document)).rejects.toThrow('not registered');
+    }
+
+    // The registry is fully functional afterwards: an identical third cycle
+    // behaves the same way, so no live waiter records accumulated.
+    const h = await registry.acquire(document);
+    fake.edit(h, 'FINAL');
+    await registry.park('a');
+    await expect(registry.serialize(document)).resolves.toBe('FINAL');
+    registry.dispose();
+  });
+
+  it('B7: an older finalization never deletes a newer record', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+    const releaseOld = fake.holdSerialize();
+    const parkingOld = registry.park('a');
+
+    const h2 = await fake.kind.codec.create();
+    fake.edit(h2, 'NEW');
+    await registry.adoptHandle(document, h2);
+    const releaseNew = fake.holdSerialize();
+    const parkingNew = registry.park('a');
+    const waitingH2 = registry.serialize(document);
+
+    // Newest settles first; the older `finally` must spare its record.
+    releaseNew();
+    await parkingNew;
+    await expect(mustSettle(waitingH2, 'H2 waiter settled by its own park')).resolves.toBe(
+      'NEW'
+    );
+    releaseOld();
+    await parkingOld;
+    await expect(registry.serialize(document)).resolves.toBe('NEW');
+    expect(fake.calls.free).toBe(2);
+    registry.dispose();
+  });
+
+  it('B8: park -> adopt -> engine loss keeps the adopted text', async () => {
+    const fake = gatedKind();
+    const engines = lossChannel();
+    const registry = createDocumentRegistry({ subscribeToEngineLoss: engines.subscribe });
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+
+    fake.holdSerialize();
+    const parkingOld = registry.park('a');
+    const waiting = registry.serialize(document);
+
+    registry.adopt('a', 'ADOPTED');
+
+    // Released by the retire itself — before any loss is even delivered.
+    await expect(mustSettle(waiting, 'serialize waiter retired by adopt')).resolves.toBe(
+      'ADOPTED'
+    );
+    await mustSettle(parkingOld, 'superseded park caller retired by adopt');
+
+    engines.lose('treemaker');
+
+    await expect(registry.serialize(document)).resolves.toBe('ADOPTED');
+    registry.dispose();
+  });
+});
