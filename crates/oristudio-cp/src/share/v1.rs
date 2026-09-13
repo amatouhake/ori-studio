@@ -853,6 +853,12 @@ pub fn decode(body: &[u8]) -> Result<Decoded> {
             TAG_AUX => {
                 let mut c = Cursor::new(payload);
                 model.aux_line_segments = read_block(&mut c)?.segments;
+                if !c.is_empty() {
+                    return Err(ShareError::MalformedExtension {
+                        tag: TAG_AUX,
+                        reason: "trailing bytes in aux payload",
+                    });
+                }
             }
             TAG_CIRCLES => {
                 let mut c = Cursor::new(payload);
@@ -935,6 +941,12 @@ pub fn decode(body: &[u8]) -> Result<Decoded> {
                         green: rgb[1],
                         blue: rgb[2],
                     };
+                }
+                if !c.is_empty() {
+                    return Err(ShareError::MalformedExtension {
+                        tag: TAG_CUSTOM_COLOUR,
+                        reason: "trailing bytes in custom colour payload",
+                    });
                 }
             }
             other if other >= CRITICAL_TAG_FLOOR => {
@@ -1113,6 +1125,12 @@ fn decode_fold_magnitudes(payload: &[u8], model: &mut CreasePatternModel) -> Res
             }
             model.line_segments[i].fold_magnitude = Some(alphabet[code]);
         }
+    }
+    if !c.is_empty() {
+        return Err(ShareError::MalformedExtension {
+            tag: TAG_FOLD_MAGNITUDE,
+            reason: "trailing bytes in fold magnitude payload",
+        });
     }
     Ok(())
 }
