@@ -863,9 +863,9 @@ describe('park supersede-retire matrix (B: [I7] + [I6])', () => {
 
     await mustSettle(parkingSecond, 'second park waiter retired by forget');
     await mustSettle(parkingOld, 'superseded park caller retired by forget');
-    await expect(mustSettle(waiting, 'serialize waiter retired by forget')).rejects.toThrow(
-      'not registered'
-    );
+    await expect(mustSettle(waiting, 'serialize waiter retired by forget')).rejects.toMatchObject({
+      name: 'DocumentSerializationConflictError',
+    });
     expect(registry.isHot('a')).toBe(false);
     registry.dispose();
   });
@@ -946,7 +946,7 @@ describe('park supersede-retire matrix (B: [I7] + [I6])', () => {
     // honestly instead of inventing content.
     await expect(
       mustSettle(waitingSerializeH2, 'H2 serialize waiter after loss')
-    ).rejects.toThrow('not registered');
+    ).rejects.toMatchObject({ name: 'DocumentSerializationConflictError' });
     await mustSettle(parkingNew, 'newer park caller after loss');
     await mustSettle(parkingSecond, 'second park waiter after loss');
     await mustSettle(parkingOld, 'superseded park caller');
