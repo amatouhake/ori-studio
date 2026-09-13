@@ -95,6 +95,7 @@ import {
 import {
   engineError,
   ensureTreeHandle,
+  getEngine,
   syncTreemakerProject,
   type EngineClient,
 } from '../engineRuntime';
@@ -1245,12 +1246,19 @@ export const createCreasePatternSlice: WorkspaceSliceCreator<CreasePatternSlice>
     // 'optimize.scale' -> 'scale'. Also the analytics `kind`.
     const kind = capabilityId.replace('optimize.', '');
     try {
-      const { api } = await requireActiveTree();
+      // Ensure a tree exists (cold-boot blank if needed). The client is
+      // deliberately not captured here: `withDesignHandle` hydrates below and
+      // a loss in that await would reconnect, leaving a pre-acquisition
+      // client paired with a recovered handle — the same stale pairing
+      // `ensureTreeHandle` re-binds against. Loss after the binding inside
+      // stays a direct-RPC loss, as before.
+      await requireActiveTree();
       // **Pinned** for the whole run. Switching tabs parks the outgoing design,
       // and parking serializes and *frees* its handle — pulling it out from under
       // the optimizer mid-call. The registry refuses to park or evict a pinned
       // document, which is what this API was built for; nothing had called it.
       const result = await withDesignHandle(designId, 'treemaker', async (treeHandle) => {
+        const api = await getEngine();
         const report = await optimize(api, treeHandle);
         return { report, snapshot: await api.snapshot(treeHandle) };
       });
