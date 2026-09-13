@@ -512,4 +512,47 @@ describe('late acquisition after engine loss (P1 handle provenance)', () => {
     expect(e2.freed).toEqual([]);
     registry.dispose();
   });
+
+  it('11. serialize stale-delete spares a concurrently rehydrated New', async () => {
+    // A serialize RPC sent pre-loss pends while the loss plus a concurrent
+    // acquire installs New for the same id. The dead result must not delete
+    // New by id (orphaning a live handle) nor answer from stale parked text —
+    // the recovery re-reads New.
+    const { kind, e1, e2, engines, registry, useE2, holdSerialize } = rig();
+    const documentA = doc('a', kind);
+
+    registry.adopt('a', 'A-text');
+    const hOld = await registry.acquire(documentA);
+    expect(hOld).toBe(42);
+    e1.write(hOld, 'A-text');
+
+    // The serialize RPC is sent on E1; the gate holds it open.
+    const releaseSerialize = holdSerialize();
+    const reading = registry.serialize(documentA);
+    // The connect settles pre-loss (same drain in production); the serialize
+    // gate below holds the *sent* RPC open while the loss lands during it.
+    await settleConnect();
+
+    // Loss drops Old; a concurrent acquire rehydrates New on E2 and edits it,
+    // so parked text and the live document observably differ.
+    engines.lose('treemaker');
+    useE2();
+    const hNew = await registry.acquire(documentA);
+    expect(hNew).toBe(42);
+    e2.write(hNew, 'A-FRESH');
+
+    // The dead worker answers with its own 42.
+    releaseSerialize();
+    // Re-reads New instead of deleting it by id and falling back to parked.
+    await expect(reading).resolves.toBe('A-FRESH');
+    expect(registry.handleFor('a')).toBe(hNew);
+    expect(registry.isHot('a')).toBe(true);
+    // No orphan: New is still the live handle (a fresh acquire hits it, mints
+    // nothing), and nothing was freed through either client for this.
+    expect(await registry.acquire(documentA)).toBe(hNew);
+    expect(e2.contents.size).toBe(1);
+    expect(e1.freed).toEqual([]);
+    expect(e2.freed).toEqual([]);
+    registry.dispose();
+  });
 });
