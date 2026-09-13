@@ -147,3 +147,113 @@ describe('park-vs-acquire race', () => {
     registry.dispose();
   });
 });
+
+describe('stale park overwrite', () => {
+  it('a stale park finishing last does not overwrite newer parked text', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+
+    const releaseOld = fake.holdSerialize();
+    const parkingOld = registry.park('a');
+
+    const h2 = await fake.kind.codec.create();
+    fake.edit(h2, 'NEW');
+    await registry.adoptHandle(document, h2);
+
+    const releaseNew = fake.holdSerialize();
+    const parkingNew = registry.park('a');
+
+    // New park lands first; the stale park finishes last and must not win.
+    releaseNew();
+    await parkingNew;
+    await expect(registry.serialize(document)).resolves.toBe('NEW');
+
+    releaseOld();
+    await parkingOld;
+
+    await expect(registry.serialize(document)).resolves.toBe('NEW');
+    // Both handles are still freed exactly once — the guard drops the write,
+    // never the cleanup.
+    expect(fake.calls.free).toBe(2);
+    registry.dispose();
+  });
+
+  it('a stale park does not overwrite text adopted while it was in flight', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+
+    const release = fake.holdSerialize();
+    const parking = registry.park('a');
+
+    registry.adopt('a', 'NEW FROM FILE');
+
+    release();
+    await parking;
+
+    await expect(registry.serialize(document)).resolves.toBe('NEW FROM FILE');
+    registry.dispose();
+  });
+
+  it('a stale park does not resurrect a forgotten document', async () => {
+    const fake = gatedKind();
+    const registry = createDocumentRegistry();
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+
+    const release = fake.holdSerialize();
+    const parking = registry.park('a');
+
+    await registry.forget('a');
+
+    release();
+    await parking;
+
+    expect(registry.isHot('a')).toBe(false);
+    await expect(registry.serialize(document)).rejects.toThrow('not registered');
+    registry.dispose();
+  });
+
+  it('a stale park does not resurrect after engine loss dropped the replacement', async () => {
+    const fake = gatedKind();
+    const listeners = new Set<(loss: { engine: EngineId }) => void>();
+    const registry = createDocumentRegistry({
+      subscribeToEngineLoss: (listener: (loss: { engine: EngineId }) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    });
+    const document = doc('a', fake.kind);
+
+    const h1 = await registry.acquire(document);
+    fake.edit(h1, 'OLD');
+
+    const releaseOld = fake.holdSerialize();
+    const parkingOld = registry.park('a');
+
+    const h2 = await fake.kind.codec.create();
+    fake.edit(h2, 'NEW');
+    await registry.adoptHandle(document, h2);
+
+    // The engine dies holding the replacement, which was never parked.
+    for (const listener of [...listeners]) listener({ engine: 'treemaker' });
+    expect(registry.isHot('a')).toBe(false);
+
+    releaseOld();
+    await parkingOld;
+
+    // The replacement is gone, but the old document it replaced must not come
+    // back in its place: adoptHandle dropped its text on purpose.
+    await expect(registry.serialize(document)).rejects.toThrow('not registered');
+    registry.dispose();
+  });
+});

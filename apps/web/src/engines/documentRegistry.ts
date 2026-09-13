@@ -94,6 +94,21 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
   const pins = new Map<string, number>();
   const isPinned = (documentId: string) => (pins.get(documentId) ?? 0) > 0;
   /**
+   * Ownership generation per document id.
+   *
+   * Bumped on every ownership/state change — a new park starting, `adopt`,
+   * `adoptHandle`, `forget`, an engine-loss drop. A park captures the
+   * generation when it starts and may still free the handle it started with,
+   * but must never commit serialized text once the generation has moved: the
+   * text it holds describes a document that no longer exists.
+   */
+  const generations = new Map<string, number>();
+  const bumpGeneration = (documentId: string): number => {
+    const next = (generations.get(documentId) ?? 0) + 1;
+    generations.set(documentId, next);
+    return next;
+  };
+  /**
    * Parks currently serializing, by document id.
    *
    * Keyed by id and held *outside* the hot entry on purpose, like `pins`: the
@@ -158,21 +173,34 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // Removed before the awaits: a second `park` racing this one must not
     // serialize and free the same handle twice.
     hot.delete(documentId);
+    // Captured alongside the removal: any ownership change after this point —
+    // `adopt`, `adoptHandle`, `forget`, a newer park, an engine-loss drop —
+    // bumps the generation, and this park must then free but never commit.
+    // Its text describes the document as it was when the park started.
+    const epoch = bumpGeneration(documentId);
     // Marked before the awaits, alongside the removal: an `acquire` landing in
     // the serialize/free window must wait for this park and hydrate from the
     // text it stores — not mint a blank handle from nothing parked yet, or a
     // stale one from the text being replaced. Set synchronously here, so there
     // is no gap between the removal above and the marker for anyone to slip through.
+    let committed = false;
     const work = (async () => {
+      let text: string | undefined;
       try {
-        parked.set(documentId, await entry.document.kind.codec.serialize(entry.handle));
+        text = await entry.document.kind.codec.serialize(entry.handle);
       } catch (error) {
         // Serialization failed, so the last known text is all there is. Keeping it
         // loses the edits since, but dropping the entry entirely would lose the
         // document — and the handle still has to be freed either way.
         console.error(`[ori-studio] failed to serialize document ${documentId}`, error);
       }
+      // Always freed: this handle was removed from the hot set above, so nobody
+      // else will free it — not even the ownership change that made this park
+      // stale.
       await entry.document.kind.codec.free(entry.handle);
+      if (generations.get(documentId) !== epoch) return;
+      if (text !== undefined) parked.set(documentId, text);
+      committed = true;
     })();
     parksInFlight.set(documentId, work);
     try {
@@ -180,7 +208,7 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     } finally {
       if (parksInFlight.get(documentId) === work) parksInFlight.delete(documentId);
     }
-    emit({ type: 'parked', documentId, reason, recoverable: parked.has(documentId) });
+    if (committed) emit({ type: 'parked', documentId, reason, recoverable: parked.has(documentId) });
   }
 
   /**
@@ -263,6 +291,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
 
   /** Adopt a document the registry has not seen, from text (e.g. loading a file). */
   function adopt(documentId: string, text: string): void {
+    // Invalidates any park serializing the previous occupant: its text must not
+    // overwrite the adopted one when it finishes.
+    bumpGeneration(documentId);
     parked.set(documentId, text);
   }
 
@@ -281,6 +312,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * make a later crash recover the wrong content rather than none.
    */
   async function adoptHandle(document: RegisteredDocument, handle: number): Promise<void> {
+    // First, synchronously: an in-flight park for the previous occupant is stale
+    // from here on — it may still free its own handle, but never commit.
+    bumpGeneration(document.id);
     const existing = hot.get(document.id);
     hot.set(document.id, { document, handle, touched: (clock += 1) });
     parked.delete(document.id);
@@ -293,6 +327,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
 
   /** Drop a document entirely — closing its tab. Frees any live handle. */
   async function forget(documentId: string): Promise<void> {
+    // First, synchronously: an in-flight park for this document is stale from
+    // here on — it may still free its own handle, but must not resurrect text.
+    bumpGeneration(documentId);
     const entry = hot.get(documentId);
     if (entry) {
       hot.delete(documentId);
@@ -310,6 +347,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     for (const entry of [...hot.values()]) {
       // A kind with no engine has no engine death to survive.
       if (entry.document.kind.engine === null || entry.document.kind.engine !== engine) continue;
+      // The live handle is gone: any park still serializing an older handle for
+      // this document is stale from here on.
+      bumpGeneration(entry.document.id);
       hot.delete(entry.document.id);
       // Whatever text was captured at the last park stands. A document that was
       // never parked has none, and `recoverable: false` says so rather than
