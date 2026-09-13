@@ -94,7 +94,44 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
   const pins = new Map<string, number>();
   const isPinned = (documentId: string) => (pins.get(documentId) ?? 0) > 0;
   /**
-   * Ownership generation per document id.
+   * Ownership / park state-machine invariants. Every choice below traces to one.
+   *
+   * [I1 hot handle] At most one live handle per document. Removing the hot
+   *   entry transfers cleanup duty to exactly one park (or to `forget` /
+   *   `adoptHandle`'s direct free) — never zero, never two.
+   * [I2 parked snapshot] `parked` holds the freshest text whose generation is
+   *   current. Only a current-epoch park commit or `adopt` overwrites it; only
+   *   `adoptHandle` / `forget` delete it. Nothing resurrects deleted text.
+   * [I3 in-flight park] A park whose hot entry is gone but whose text is not
+   *   parked yet is recorded in `parksInFlight` — at most one waiter-visible
+   *   record per document. Waiters await `done`, never a worker RPC directly.
+   * [I4 generation] Bumped synchronously on every ownership/state change (park
+   *   start, `adopt`, `adoptHandle`, `forget`, engine-loss drop). A park frees
+   *   its own handle unconditionally but commits text only while its epoch is
+   *   current — checked at serialize time AND at settle time.
+   * [I5 early commit] A successful serialization whose generation is still
+   *   current becomes last-known-good BEFORE the potentially-hanging `free`:
+   *   a cleanup hang, failure, or loss must never discard serialized content.
+   * [I6 waiter lifetime] Every waiter-visible record settles — normally via
+   *   work completion, early via `abandon` on supersede or engine loss.
+   *   Records are never dropped without settling their waiters.
+   * [I7 supersede retires] `adopt` / `adoptHandle` / `forget` / a newer park
+   *   synchronously retire the obsolete record (abandon + remove) while its
+   *   worker RPCs finish or hang untracked — free-but-never-commit. No
+   *   document accumulates multiple live waiter records.
+   * [I8 engine loss] Drops live handles without touching the dead worker,
+   *   abandons tracked parks synchronously, and bumps generations so late
+   *   settlements free but never commit. Early-committed text stands as the
+   *   recovery; a never-parked document stays unrecoverable (nothing invented).
+   * [I9 transfer] `adopt` / `adoptHandle` / `forget` apply synchronously —
+   *   bump, retire, then update hot/parked — before any await, so no waiter
+   *   observes a half-moved document.
+   * [I10 cleanup] Every removed hot handle is freed exactly once; `free`
+   *   errors are logged and never un-commit text nor fail waiters.
+   *   Finalization deletes only its own record, never a newer one.
+   */
+  /**
+   * Ownership generation per document id [I4].
    *
    * Bumped on every ownership/state change — a new park starting, `adopt`,
    * `adoptHandle`, `forget`, an engine-loss drop. A park captures the
@@ -212,19 +249,35 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
         // document — and the handle still has to be freed either way.
         console.error(`[ori-studio] failed to serialize document ${documentId}`, error);
       }
-      // Always freed: this handle was removed from the hot set above, so nobody
-      // else will free it — not even the ownership change that made this park
-      // stale.
-      await entry.document.kind.codec.free(entry.handle);
+      // [I5] Publish last-known-good BEFORE the potentially-hanging cleanup:
+      // once `serialize` has resolved, the text is recoverable even if `free`
+      // below pends forever and an engine loss abandons this park. The epoch
+      // check keeps a superseded park from committing over its replacement —
+      // whichever lands last among this commit, `adopt`, `adoptHandle`, or
+      // `forget` still wins, because each of those bumps first (see [I4]).
+      if (text !== undefined && generations.get(documentId) === epoch) {
+        parked.set(documentId, text);
+      }
+      // Always freed [I1, I10]: this handle was removed from the hot set above,
+      // so nobody else will free it — not even the ownership change that made
+      // this park stale. A cleanup failure is logged but never un-commits the
+      // text above and never fails `done` below: waiters proceed from the
+      // committed text, and the park caller resolves with the text safe.
+      try {
+        await entry.document.kind.codec.free(entry.handle);
+      } catch (error) {
+        console.error(`[ori-studio] failed to free document ${documentId}`, error);
+      }
       if (generations.get(documentId) !== epoch) return;
       if (text !== undefined) parked.set(documentId, text);
       committed = true;
     })();
     // Waiters settle on `done`, not on `work`: when the engine dies, `work`
     // pends forever on the terminated worker, and the loss path settles `done`
-    // via `abandon()` instead. Racing (rather than replacing) keeps the normal
-    // path's outcome — including a `free` failure — while a late settlement
-    // after abandon still runs the generation check above, so it frees but
+    // via `abandon()` instead. `work` itself never rejects — serialize and
+    // cleanup failures are logged above [I10] — so `done` only settles by
+    // completion or abandon, never by throwing at waiters. A late settlement
+    // after abandon still runs the generation checks above, so it frees but
     // never commits over the replacement.
     let releaseWaiters!: () => void;
     const abandoned = new Promise<void>((resolve) => {
