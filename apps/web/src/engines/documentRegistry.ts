@@ -173,20 +173,20 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    * from "the document I read no longer exists" (failure): the coarse
    * `generations` clock moves on both, this one only on the second.
    */
-  interface MaterializationCleanup {
+  interface MaterializationWaiter {
     documentId: string;
     engine: EngineId | null;
     abandon: () => void;
   }
-  const materializationCleanups = new Set<MaterializationCleanup>();
+  const materializationWaiters = new Set<MaterializationWaiter>();
   const ownershipRevisions = new Map<string, number>();
   const ownershipRevision = (documentId: string): number =>
     ownershipRevisions.get(documentId) ?? 0;
   const bumpOwnership = (documentId: string): void => {
     ownershipRevisions.set(documentId, ownershipRevision(documentId) + 1);
-    for (const cleanup of materializationCleanups) {
+    for (const cleanup of materializationWaiters) {
       if (cleanup.documentId !== documentId) continue;
-      materializationCleanups.delete(cleanup);
+      materializationWaiters.delete(cleanup);
       cleanup.abandon();
     }
   };
@@ -303,12 +303,13 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
    *   consuming the engine budget. Ownership changes reject materialization,
    *   including forget: retrying a forgotten id would create it anew. Park
    *   waiters that have not begun materializing may follow replacements [I7].
-   * [I14 discarded cleanup] Cleanup of a rejected materialization is tracked
-   *   before dispatch, bound to its minter, and awaited only until completion,
-   *   ownership supersede, or minter loss. Loss releases the waiter and counts
-   *   once against that acquire's engine budget. Late completion only cleans
-   *   its original worker; it never changes registry state or touches a new
-   *   client's numeric handle. Every completion/abandon removes its record.
+   * [I14 materialization waits] Create/hydrate and discarded cleanup register
+   *   a waiter before dispatch, bound to the minter. Completion, ownership
+   *   supersede, or minter loss releases it. Loss counts once against that
+   *   acquire's engine budget. Late materialization results are freed only on
+   *   the still-current minter; dead-generation results are abandoned [I11].
+   *   A superseded acquisition never waits for cleanup. Late work cannot
+   *   mutate registry state. Every completion/abandon removes its record.
    */
   /**
    * Ownership generation per document id [I4].
@@ -554,6 +555,51 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     if (committed) emit({ type: 'parked', documentId, reason, recoverable: parked.has(documentId) });
   }
 
+  /** Free only through the client whose provenance the caller just checked. */
+  async function freeMaterialization(document: RegisteredDocument, handle: number, client: unknown) {
+    try {
+      await document.kind.codec.free(handle, client);
+    } catch (error) {
+      console.error(`[ori-studio] failed to free stale hydration ${document.id}`, error);
+    }
+  }
+
+  /** [I14] Engine loss releases recovery even if create/hydrate never replies. */
+  async function materialize(
+    document: RegisteredDocument,
+    text: string | undefined,
+    client: unknown,
+    epoch: number,
+  ): Promise<{ handle: number } | null> {
+    let abandoned = false;
+    let abandon!: () => void;
+    const cancelled = new Promise<null>(resolve => {
+      abandon = () => { abandoned = true; resolve(null); };
+    });
+    const waiter = { documentId: document.id, engine: document.kind.engine, abandon };
+    materializationWaiters.add(waiter);
+    const work = (async () => {
+      const handle = text === undefined
+        ? await document.kind.codec.create(client)
+        : await document.kind.codec.hydrate(text, client);
+      if (abandoned) {
+        // Ownership may retire the acquisition while the worker stays alive.
+        // Cleanup has no remaining caller to block and no state to publish.
+        if (engineEpoch(document.kind.engine) === epoch) {
+          void freeMaterialization(document, handle, client);
+        }
+        return null;
+      }
+      return { handle };
+    })();
+    try {
+      // Promise.race observes late rejection too, after the waiter is retired.
+      return await Promise.race([work, cancelled]);
+    } finally {
+      materializationWaiters.delete(waiter);
+    }
+  }
+
   /** [I14] Registry-owned cleanup must not strand acquisition on a dead RPC. */
   async function discardMaterialization(
     document: RegisteredDocument,
@@ -563,20 +609,14 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     let abandon!: () => void;
     const abandoned = new Promise<void>(resolve => { abandon = resolve; });
     const cleanup = { documentId: document.id, engine: document.kind.engine, abandon };
-    materializationCleanups.add(cleanup);
+    materializationWaiters.add(cleanup);
     // Caller checked the minter epoch immediately before this synchronous
     // dispatch. Record first, so even loss during codec invocation releases it.
-    const work = (async () => {
-      try {
-        await document.kind.codec.free(handle, client);
-      } catch (error) {
-        console.error(`[ori-studio] failed to free stale hydration ${document.id}`, error);
-      }
-    })();
+    const work = freeMaterialization(document, handle, client);
     try {
       await Promise.race([work, abandoned]);
     } finally {
-      materializationCleanups.delete(cleanup);
+      materializationWaiters.delete(cleanup);
     }
   }
 
@@ -666,10 +706,13 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       const sequenceAtDispatch = parkedSequence(document.id);
       const stateAtDispatch = generations.get(document.id);
       const text = parked.get(document.id);
-      const handle =
-        text === undefined
-          ? await document.kind.codec.create(client)
-          : await document.kind.codec.hydrate(text, client);
+      const result = await materialize(document, text, client, epochAtResolution);
+      if (result === null) {
+        assertOwnership();
+        noteEngineRecovery();
+        continue;
+      }
+      const { handle } = result;
       if (engine !== null && engineEpoch(engine) !== epochAtResolution) {
         // Straddled a loss: abandon without cleanup (never hot.set, never
         // free — the number may name another document on the live engine)
@@ -686,6 +729,12 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
       ) {
         // No await between the epoch check and dispatch: this client still
         // owns the discarded handle. Never resolve a replacement for cleanup.
+        if (ownershipRevision(document.id) !== ownershipAtStart) {
+          // Supersede can land after materialize settled but before this
+          // continuation. Its earlier event cannot abandon a new cleanup wait.
+          void freeMaterialization(document, handle, client);
+          assertOwnership();
+        }
         await discardMaterialization(document, handle, client);
         assertOwnership();
         if (engine !== null && engineEpoch(engine) !== epochAtResolution) noteEngineRecovery();
@@ -947,9 +996,9 @@ export function createDocumentRegistry(options: DocumentRegistryOptions = {}) {
     // instead of inserted, and a handle this drop somehow misses is still
     // refused at every later use.
     engineEpochs.set(engine, engineEpoch(engine) + 1);
-    for (const cleanup of materializationCleanups) {
+    for (const cleanup of materializationWaiters) {
       if (cleanup.engine !== engine) continue;
-      materializationCleanups.delete(cleanup);
+      materializationWaiters.delete(cleanup);
       cleanup.abandon();
     }
     // A park serializing on the dead engine can never finish: its worker is
