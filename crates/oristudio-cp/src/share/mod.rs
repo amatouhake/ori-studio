@@ -152,8 +152,10 @@ pub fn encode_share_reported(
         }
     }
 
-    // Fallback: a lossless `.fold` body. Bigger, but it always round-trips, and
-    // a large link beats a wrong one.
+    // Fallback: a `.fold` body. Bigger, and admitted only where it preserves
+    // the document on transported semantics (checked below) — a large link
+    // beats a wrong one, and a document RAW cannot preserve is a typed error
+    // rather than a silently-changed link.
     let fold = crate::io::fold::export_fold_file_document_json(document)
         .map_err(|_| ShareError::NotRepresentable("document could not be exported as .fold"))?;
     let raw = v1::encode_raw(&fold);
@@ -161,9 +163,21 @@ pub fn encode_share_reported(
     // and checked itself" — the fallback used to skip that check and emitted
     // dead links for non-finite documents (F-005). A fallback that fails its
     // own decode is an encoder bug, reported as such.
-    v1::decode(&raw).map_err(|_| ShareError::SelfCheck {
+    let decoded = v1::decode(&raw).map_err(|_| ShareError::SelfCheck {
         rounds: options.max_rounds,
         reason: "fallback payload failed to decode",
+    })?;
+    // Decode success is not semantic preservation: the RAW body round-trips
+    // through the ordinary FOLD importer, which normalizes geometry, drops the
+    // title, aux segments and standalone points, and keeps hints and custom
+    // colours only where FOLD itself carries them. Emit only what survived on
+    // transported semantics; a divergence is a typed error, never a silently
+    // changed link. See `verify::raw_fallback_preserves`.
+    verify::raw_fallback_preserves(document, &decoded.model).map_err(|reason| {
+        ShareError::SelfCheck {
+            rounds: options.max_rounds,
+            reason,
+        }
     })?;
     Ok(EncodeReport {
         payload: frame::write(v1::VERSION, &raw),
