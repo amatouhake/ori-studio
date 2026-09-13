@@ -99,3 +99,60 @@ fn orh_repo_fixture_roundtrip_is_stable() {
         "fixture round trip grows per cycle"
     );
 }
+
+/// Divergent segment/circle counts must survive an export/import cycle (#368).
+///
+/// The importer sized circle storage by the *segment* `番号` count, so any
+/// document with more circles than segments exported fine but failed to
+/// reimport (`circle number N is out of range`). Each section is sized by its
+/// own declared records instead; this pins the two shapes that broke (0/2 and
+/// 1/3) plus cycle stability.
+#[test]
+fn orh_more_circles_than_segments_roundtrip_is_stable() {
+    use oristudio_cp::CreasePatternDocument;
+    use oristudio_cp::geometry::{Circle, LineColor, LineSegment, Point};
+
+    fn document_with(segments: usize, circles: usize) -> CreasePatternDocument {
+        let mut document = CreasePatternDocument {
+            title: Some("divergent".to_string()),
+            ..CreasePatternDocument::default()
+        };
+        for index in 0..segments {
+            document
+                .crease_pattern
+                .add_line_segment(LineSegment::with_color(
+                    Point::new(index as f64 * 10.0, 0.0),
+                    Point::new(index as f64 * 10.0 + 5.0, 0.0),
+                    LineColor::Red1,
+                ));
+        }
+        for index in 0..circles {
+            document.crease_pattern.add_circle(Circle::new(
+                index as f64,
+                index as f64,
+                1.0,
+                LineColor::Cyan3,
+            ));
+        }
+        document
+    }
+
+    for (segments, circles) in [(0usize, 2usize), (1, 3)] {
+        let document = document_with(segments, circles);
+        let first =
+            orh::import_orh_str(&orh::export_orh_string(&document)).expect("exported ORH imports");
+        let c0 = counts(&first);
+        assert_eq!(
+            c0,
+            (segments, circles),
+            "{segments}-seg/{circles}-circle ORH imports as {c0:?}"
+        );
+        let second = orh::import_orh_str(&orh::export_orh_string(&first)).expect("reimport");
+        let third = orh::import_orh_str(&orh::export_orh_string(&second)).expect("third import");
+        assert_eq!(
+            (counts(&second), counts(&third)),
+            (c0, c0),
+            "{segments}-seg/{circles}-circle ORH round trip drifts per cycle"
+        );
+    }
+}
