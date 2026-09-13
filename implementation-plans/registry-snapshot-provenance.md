@@ -63,3 +63,16 @@ this task's timeout/cancellation policy. P3: revision-map retention, a possible
 stale diagnostic hydrated event after adoptHandle cleanup (no production consumer),
 and conservative save-conflict retries. Local remediation notes remain uncommitted
 under the canonical checkout's `.audit/remediation/`, per their existing policy.
+
+
+## Follow-up: per-dispatch saves and recovery cleanup
+
+Goal: every successful serialization dispatch protects the text it returns, even
+after earlier waits/re-reads; discarded materialization cleanup cannot strand
+recovery after its engine dies.
+
+- [ ] Reproduce both findings with explicit gates
+- [ ] Publish per dispatch and abandon cleanup waits on owning-generation loss
+- [ ] Focused tests, including exact recovery budget and native-save propagation
+- [ ] Fresh read-only Astra `codex exec` review (no session self-review/subagents)
+- [ ] Full web tests, TypeScript, ESLint, diff-check; branch and local handoff updates

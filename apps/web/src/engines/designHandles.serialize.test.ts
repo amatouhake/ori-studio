@@ -195,3 +195,57 @@ it('completed recovery conflict propagates through native-save serialization, ne
     fakeDescriptor.codec.serialize = original;
   }
 });
+
+
+it('native-save re-read publishes v3 before pending fallback hydration can install v2', async () => {
+  const id = 'save-reread-publication';
+  const kind = 'save-fake' as unknown as DesignKindId;
+  const gate = () => {
+    let release!: () => void;
+    let start!: () => void;
+    const entered = new Promise<void>(resolve => { start = resolve; });
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    return { release, start, entered, wait };
+  };
+  const oldRead = gate();
+  const newRead = gate();
+  const staleHydration = gate();
+  const serialize = fakeDescriptor.codec.serialize;
+  const hydrate = fakeDescriptor.codec.hydrate;
+  const readGates = [oldRead, newRead];
+  live = makeEngine();
+  handles.adoptDesign(id, 'v2');
+  await handles.acquireDesignHandle(id, kind);
+  fakeDescriptor.codec.serialize = async (handle, client) => {
+    const pending = readGates.shift();
+    if (pending) { pending.start(); await pending.wait; }
+    return serialize(handle, client);
+  };
+  try {
+    const saving = handles.serializeDesign(id, kind);
+    await oldRead.entered;
+    for (const listener of [...lossListeners]) listener({ engine: 'treemaker' });
+    live = makeEngine();
+    const recovered = (await handles.acquireDesignHandle(id, kind))!;
+    live.write(recovered, 'v3');
+    oldRead.release();
+    await newRead.entered;
+    for (const listener of [...lossListeners]) listener({ engine: 'treemaker' });
+    live = makeEngine();
+    fakeDescriptor.codec.hydrate = async (text, client) => {
+      if (text === 'v2') { staleHydration.start(); await staleHydration.wait; }
+      return hydrate(text, client);
+    };
+    const recovering = handles.acquireDesignHandle(id, kind);
+    await staleHydration.entered;
+    newRead.release();
+    await expect(saving).resolves.toBe('v3');
+    staleHydration.release();
+    await recovering;
+    await expect(handles.serializeDesign(id, kind)).resolves.toBe('v3');
+  } finally {
+    oldRead.release(); newRead.release(); staleHydration.release();
+    fakeDescriptor.codec.serialize = serialize;
+    fakeDescriptor.codec.hydrate = hydrate;
+  }
+});
