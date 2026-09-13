@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use crate::CreasePatternDocument;
 use crate::checks_spatial::dispatched_camv;
-use crate::geometry::{Circle, FoldDirection, LineSegment};
+use crate::geometry::{Circle, LineSegment};
 use crate::model::CreasePatternModel;
 
 /// Vertex-identity tolerance for matching one document's diagnostics against the
@@ -164,7 +164,11 @@ pub fn raw_fallback_preserves(
     }
 
     let mut normalized = source.crease_pattern.clone();
-    crate::io::fold::normalize_like_fold_import(&mut normalized);
+    // A degenerate source (empty, point-like) cannot survive FOLD normalization;
+    // failing here keeps the typed rejection instead of comparing unnormalized
+    // content and risking a silently-changed link.
+    crate::io::fold::normalize_like_fold_import(&mut normalized)
+        .map_err(|_| "fallback cannot normalize degenerate geometry")?;
 
     // The encode entry gates finite source coordinates, so non-finite geometry
     // on either side means the FOLD round trip itself broke down — notably a

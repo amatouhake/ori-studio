@@ -602,13 +602,13 @@ fn normalize_imported_fold_lines(
 /// opening the same bytes as a `.fold` file. The encoder's fallback check
 /// compares against this normalization rather than the raw source — every
 /// other field still compares exactly.
-pub(crate) fn normalize_like_fold_import(model: &mut CreasePatternModel) {
+pub(crate) fn normalize_like_fold_import(model: &mut CreasePatternModel) -> Result<()> {
     let mut bounds = FoldImportBounds::default();
     for segment in &model.line_segments {
         bounds.include(segment.a);
         bounds.include(segment.b);
     }
-    normalize_imported_fold_lines(model, bounds);
+    normalize_imported_fold_lines(model, bounds)
 }
 
 fn normalize_imported_fold_point(
