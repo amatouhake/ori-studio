@@ -592,6 +592,15 @@ a.context-menu__item {
   pointer-events: none;
 }
 
+/* Up while a colour row's picker is open: the press that closes the picker
+   lands here and goes no further. Below the menu, so its rows stay usable, and
+   above everything else — see ContextMenuColorItem. */
+.context-menu__picker-shield {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-portaled-popover) - 1);
+}
+
 .panel-shell {
   display: flex;
   flex-direction: column;

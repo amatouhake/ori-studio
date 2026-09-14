@@ -539,6 +539,19 @@ wrong in use:
   have done (deselect, or select something else), which is how the viewport
   bar's hand-rolled dropdown always behaved. The right-click menu stays modal:
   a context menu's outside click only dismisses, everywhere.
+- **While a colour picker is open, one press outside closes only the picker.**
+  The engine closes its picker on any press outside it and that press then
+  lands on the page, where — non-modal — it would dismiss the menu and deselect
+  the figure. The picker is the topmost thing on screen, so `ContextMenuColorItem`
+  keeps an invisible shield over the page (below the menu, above everything
+  else) from `showPicker()` until the input blurs or a press lands on it; the
+  press that closes the picker stops there. A picker closed from its own
+  keyboard leaves no trace on the page, so the shield can outlive it by one
+  press, which then only takes the shield down — the one wart, accepted.
+- **Labels share one column per list.** `renderContextMenuItems` reserves the
+  leading slot for every row when any sibling draws an icon or a check, so the
+  glyph-less Side row sits under Render as. Menus with no icons at all — every
+  other context menu today — keep their labels at the edge.
 
 ### 4. Browser pass so far (Chromium, dev server, 2026-09-14)
 

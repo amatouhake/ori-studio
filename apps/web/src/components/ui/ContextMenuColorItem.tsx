@@ -23,6 +23,45 @@ function openPicker(input: HTMLInputElement) {
 }
 
 /**
+ * Absorb the press that closes an open colour picker.
+ *
+ * The engine closes its picker on any press outside it, and that press then
+ * lands on the page — where it would dismiss the menu and, on the canvas,
+ * deselect the figure the menu belongs to. The picker is the topmost thing on
+ * screen, so a press outside it should close the picker and nothing else. A
+ * plain DOM node, deliberately outside React: nothing about it may reach the
+ * menu's handlers, and stopping the event at the node itself is what keeps
+ * Radix's document-level outside-press listener from seeing it. Its own
+ * default action still runs, which moves focus off the input — the blur that
+ * commits the drag.
+ *
+ * Below the menu (the rows stay usable, the picker's own window is not in the
+ * DOM at all) and above everything else. Removed on that press, on the input
+ * blurring — a picker dismissed any other way — and with the row. A picker
+ * closed from its own keyboard leaves no trace on the page, so the shield can
+ * outlive it by one press; that press then only takes the shield down.
+ */
+function mountPickerShield(onPress: () => void): () => void {
+  const shield = document.createElement('div');
+  shield.className = 'context-menu__picker-shield';
+  shield.setAttribute('aria-hidden', 'true');
+  const swallow = (event: Event) => event.stopPropagation();
+  shield.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+    onPress();
+  });
+  for (const type of ['pointerup', 'pointermove', 'mousedown', 'mouseup', 'click', 'wheel']) {
+    shield.addEventListener(type, swallow);
+  }
+  shield.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  document.body.appendChild(shield);
+  return () => shield.remove();
+}
+
+/**
  * A menu row that edits one colour.
  *
  * A real `DropdownMenu.Item`, not a `<label>` holding the input: Radix blocks
@@ -38,6 +77,11 @@ function openPicker(input: HTMLInputElement) {
  */
 export function ContextMenuColorItem({ item }: { item: ColorItem }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  useEffect(() => {
+    if (!pickerOpen) return undefined;
+    return mountPickerShield(() => setPickerOpen(false));
+  }, [pickerOpen]);
   // The swatch follows the picker on its own. A context menu's rows are built
   // once at open, so `item.value` can lag the store while the picker is up;
   // the row still has to show what was just picked.
@@ -61,7 +105,9 @@ export function ContextMenuColorItem({ item }: { item: ColorItem }) {
       disabled={item.disabled}
       onSelect={(event) => {
         event.preventDefault();
-        if (inputRef.current) openPicker(inputRef.current);
+        if (!inputRef.current) return;
+        openPicker(inputRef.current);
+        setPickerOpen(true);
       }}
     >
       <span className="context-menu__icon" />
@@ -80,7 +126,10 @@ export function ContextMenuColorItem({ item }: { item: ColorItem }) {
             setShown(event.currentTarget.value);
             item.onChange(event.currentTarget.value);
           }}
-          onBlur={item.onCommit}
+          onBlur={() => {
+            setPickerOpen(false);
+            item.onCommit();
+          }}
           // The fallback's synthetic click must not bubble to the row and
           // select it a second time. A pointer never reaches the input itself.
           onClick={(event) => event.stopPropagation()}

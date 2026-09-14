@@ -187,6 +187,38 @@ describe('ContextMenu', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  // Labels share one column per list: a row without an icon keeps the slot
+  // when a sibling draws in it, and a list with no icons keeps its labels at
+  // the edge, as every icon-less menu always has.
+  it('aligns a glyph-less row with its iconed siblings, per list', () => {
+    render(true, [
+      { kind: 'action', id: 'a', label: 'With icon', icon: <span />, onSelect: () => {} },
+      { kind: 'action', id: 'b', label: 'Without', onSelect: () => {} },
+      {
+        kind: 'submenu',
+        id: 'sub',
+        label: 'Plain list',
+        items: [
+          { kind: 'action', id: 'c', label: 'One', onSelect: () => {} },
+          { kind: 'action', id: 'd', label: 'Two', onSelect: () => {} },
+        ],
+      },
+    ]);
+    const [withIcon, without, sub] = menuItems();
+    expect(withIcon?.querySelector('.context-menu__icon')).not.toBeNull();
+    expect(without?.querySelector('.context-menu__icon')).not.toBeNull();
+    expect(without?.querySelector('.context-menu__icon')?.childElementCount).toBe(0);
+    expect(sub?.querySelector('.context-menu__icon')).not.toBeNull();
+  });
+
+  it('keeps labels at the edge in a list where nothing draws a leading slot', () => {
+    render(true, [
+      { kind: 'action', id: 'a', label: 'One', onSelect: () => {} },
+      { kind: 'action', id: 'b', label: 'Two', onSelect: () => {} },
+    ]);
+    for (const row of menuItems()) expect(row.querySelector('.context-menu__icon')).toBeNull();
+  });
+
   it('gives a disabled submenu trigger its hint as a tooltip', () => {
     render(true, [
       {
@@ -370,6 +402,80 @@ describe('ContextMenu', () => {
       });
       root = null;
       expect(item.onCommit).toHaveBeenCalledTimes(1);
+    });
+
+    function shield(): HTMLElement | null {
+      return document.querySelector<HTMLElement>('.context-menu__picker-shield');
+    }
+
+    // The engine closes an open picker on any press outside it, and that press
+    // then lands on the page. A shield under the menu absorbs it, so closing
+    // the picker closes only the picker — not the menu, not the selection.
+    it('shields the page while the picker is open, and one press takes it down', async () => {
+      const onOpenChange = vi.fn();
+      const onChange = vi.fn();
+      const onCommit = vi.fn();
+      render(
+        true,
+        [{ kind: 'color', id: 'front', label: 'Front colour', value: '#ffff32', onChange, onCommit }],
+        onOpenChange
+      );
+      expect(shield()).toBeNull();
+      act(() => {
+        menuItems()[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      expect(shield()).not.toBeNull();
+      // Radix attaches its outside-press listener a tick after opening.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      const outsideSeen = vi.fn();
+      document.addEventListener('pointerdown', outsideSeen);
+      act(() => {
+        shield()?.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })
+        );
+      });
+      document.removeEventListener('pointerdown', outsideSeen);
+      // Stopped at the shield: nothing further up the document saw the press,
+      // Radix included, and the menu is still open.
+      expect(outsideSeen).not.toHaveBeenCalled();
+      expect(onOpenChange).not.toHaveBeenCalled();
+      expect(shield()).toBeNull();
+      // With no picker up, the next press outside dismisses as usual.
+      act(() => {
+        container?.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })
+        );
+      });
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it('takes the shield down when the picker is dismissed by other means', () => {
+      renderColor();
+      act(() => {
+        menuItems()[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      expect(shield()).not.toBeNull();
+      // A picker dismissed by the engine blurs the input (iOS's sheet, a
+      // press elsewhere in Chromium); nothing else on the page says it closed.
+      act(() => {
+        colorInput().blur();
+      });
+      expect(shield()).toBeNull();
+    });
+
+    it('takes the shield down with the row', () => {
+      renderColor();
+      act(() => {
+        menuItems()[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      expect(shield()).not.toBeNull();
+      act(() => {
+        root?.unmount();
+      });
+      root = null;
+      expect(shield()).toBeNull();
     });
 
     it('does not open for a disabled row', () => {
