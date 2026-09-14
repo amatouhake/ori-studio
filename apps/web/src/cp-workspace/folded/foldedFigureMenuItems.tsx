@@ -61,17 +61,22 @@ export function choiceMenuItem(
 /**
  * The Style group's rows: two submenus, three colour rows and a check row.
  *
- * Every row leaves the menu open. A figure's style is adjusted as a set — pick
- * a render style, then a colour, then turn the shadow off — and a menu that
- * closed on each pick would be reopened three times for one visit.
+ * `keepOpen` is for the toolbar's menu, whose rows are rebuilt on every render:
+ * a figure's style is adjusted as a set — pick a render style, then a colour,
+ * then turn the shadow off — and a menu that closed on each pick would be
+ * reopened three times for one visit. The context menu builds its rows once at
+ * open, so there a pick closes it, as a context menu's picks do everywhere.
  */
-export function styleMenuItems(group: FoldedFigureGroup): ContextMenuItem[] {
+export function styleMenuItems(
+  group: FoldedFigureGroup,
+  options: { keepOpen?: boolean } = {}
+): ContextMenuItem[] {
   return group.items.map((item): ContextMenuItem => {
     switch (item.kind) {
       case 'separator':
         return { kind: 'separator' };
       case 'choice':
-        return choiceMenuItem(item, { keepOpen: true });
+        return choiceMenuItem(item, options);
       case 'color':
         return {
           kind: 'color',
@@ -90,6 +95,7 @@ export function styleMenuItems(group: FoldedFigureGroup): ContextMenuItem[] {
           checked: item.checked,
           disabled: item.disabled,
           hint: item.hint,
+          keepOpen: options.keepOpen,
           onToggle: item.toggle,
         };
     }

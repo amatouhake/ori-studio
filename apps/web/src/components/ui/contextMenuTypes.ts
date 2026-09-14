@@ -65,7 +65,12 @@ export type ContextMenuItem =
       disabled?: boolean;
       /** Why the row is disabled, as its tooltip. */
       hint?: string;
-      /** Flip the setting. The menu stays open, so a run of toggles is one visit. */
+      /**
+       * Leave the menu open after the toggle, so a run of toggles is one visit.
+       * Only for a menu whose rows are rebuilt while it is open; a menu built
+       * once at open would go on showing the old check.
+       */
+      keepOpen?: boolean;
       onToggle: () => void;
     }
   | {

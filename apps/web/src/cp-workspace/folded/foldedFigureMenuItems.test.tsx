@@ -5,8 +5,8 @@ import type {
   OristudioCpFoldedFigureStatus,
 } from '../../engine/oristudioCpTypes';
 import type { ContextMenuItem } from '../../components/ui/contextMenuTypes';
-import type { FoldedFigureActionDeps } from './foldedFigureActions';
-import { foldedFigureMenuItems } from './foldedFigureMenuItems';
+import { buildFoldedFigureActions, type FoldedFigureActionDeps } from './foldedFigureActions';
+import { foldedFigureMenuItems, styleMenuItems } from './foldedFigureMenuItems';
 
 const t = ((_key: string, fallback: string) => fallback) as unknown as TFunction;
 
@@ -92,19 +92,33 @@ describe('foldedFigureMenuItems', () => {
     expect(checked).toHaveLength(1);
   });
 
-  // A figure's style is adjusted as a set, so no pick inside Style closes the
-  // menu — where an export format, a one-shot action, still does.
-  it('keeps the menu open for every row inside Style, and only there', () => {
+  // The context menu builds its rows once at open, so a row kept open would go
+  // on showing the state it was built with. Its picks close it, as a context
+  // menu's picks do everywhere; the toolbar asks for the opposite explicitly.
+  it('closes on a pick in the context menu, and stays open only where asked', () => {
     const items = foldedFigureMenuItems(makeFigure(), makeDeps({ exportAs: vi.fn() }));
     const style = styleMenu(items).items;
     for (const item of style) {
       if (item.kind === 'submenu') {
-        expect(item.items.every((row) => row.kind === 'radio' && row.keepOpen === true)).toBe(true);
+        expect(item.items.every((row) => row.kind === 'radio' && !row.keepOpen)).toBe(true);
       }
+      if (item.kind === 'checkbox') expect(item.keepOpen).toBeFalsy();
     }
     const exportMenu = items.find((item) => item.kind === 'submenu' && item.id === 'export');
     if (exportMenu?.kind !== 'submenu') throw new Error('no export submenu');
     expect(exportMenu.items.every((row) => row.kind === 'action')).toBe(true);
+
+    const group = buildFoldedFigureActions(makeFigure(), makeDeps()).find(
+      (action) => action.kind === 'group'
+    );
+    if (group?.kind !== 'group') throw new Error('no Style group');
+    const kept = styleMenuItems(group, { keepOpen: true });
+    for (const item of kept) {
+      if (item.kind === 'submenu') {
+        expect(item.items.every((row) => row.kind === 'radio' && row.keepOpen === true)).toBe(true);
+      }
+      if (item.kind === 'checkbox') expect(item.keepOpen).toBe(true);
+    }
   });
 
   it('routes a colour row and the shadow row to the model bindings', () => {

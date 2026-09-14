@@ -173,7 +173,7 @@ export function CpFoldedFigureToolbar({
                 label={action.label}
                 icon={foldedFigureActionIconNode(action.icon)}
                 disabled={action.disabled}
-                items={styleMenuItems(action)}
+                items={styleMenuItems(action, { keepOpen: true })}
               />
             );
           case 'note':

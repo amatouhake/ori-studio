@@ -522,10 +522,14 @@ Nothing in PR 1 is a one-way door: no store, file-format or kernel change.
 Two UX calls to make deliberately in PR 1, both one-line flips if they read
 wrong in use:
 
-- **Every row inside Style keeps the menu open.** Render as and Side radios use
-  `preventDefault` like the Shadow row (the checks menu already works this way),
-  because style settings are adjusted together. `radio` gains a `keepOpen` flag
-  so the export submenu's one-shot semantics are untouched.
+- **Every row inside the toolbar's Style menu keeps it open** — Render as and
+  Side radios and the Shadow row alike, through a `keepOpen` flag — because
+  style settings are adjusted together. The **context menu's** Style rows close
+  on a pick, as a context menu's picks do everywhere: its rows are built once
+  at open (`useContextMenuController` builds on demand, by design), so a row
+  kept open there would go on showing the check it was built with — which the
+  browser pass caught. The colour swatch follows the picker on its own for the
+  same reason.
 - **The Style menu is the only path to colours**; there is no inline swatch on
   the bar. That is the width argument from the earlier plan, kept.
 

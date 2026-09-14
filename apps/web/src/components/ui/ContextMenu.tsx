@@ -67,9 +67,7 @@ function renderItem(item: ContextMenuItem, index: number): React.ReactNode {
           disabled={item.disabled}
           title={item.hint}
           onSelect={(event) => {
-            // Kept open across the toggle, as the checks menu is: a setting
-            // switched on is usually adjusted alongside its neighbours.
-            event.preventDefault();
+            if (item.keepOpen) event.preventDefault();
             item.onToggle();
           }}
         >

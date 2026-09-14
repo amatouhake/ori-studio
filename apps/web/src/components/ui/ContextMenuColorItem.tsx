@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { ContextMenuItem } from './contextMenuTypes';
 
@@ -38,6 +38,15 @@ function openPicker(input: HTMLInputElement) {
  */
 export function ContextMenuColorItem({ item }: { item: ColorItem }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // The swatch follows the picker on its own. A context menu's rows are built
+  // once at open, so `item.value` can lag the store while the picker is up;
+  // the row still has to show what was just picked.
+  const [shown, setShown] = useState(item.value);
+  const [shownFor, setShownFor] = useState(item.value);
+  if (shownFor !== item.value) {
+    setShownFor(item.value);
+    setShown(item.value);
+  }
   // Read at unmount, so the cleanup commits through whatever the latest
   // render bound rather than the closure from the first.
   const commitRef = useRef(item.onCommit);
@@ -57,7 +66,7 @@ export function ContextMenuColorItem({ item }: { item: ColorItem }) {
     >
       <span className="context-menu__icon" />
       <span className="context-menu__label">{item.label}</span>
-      <span className="context-menu__swatch" style={{ background: item.value }}>
+      <span className="context-menu__swatch" style={{ background: shown }}>
         <input
           ref={inputRef}
           className="context-menu__color-input"
@@ -65,9 +74,12 @@ export function ContextMenuColorItem({ item }: { item: ColorItem }) {
           // Reached through the row, never by Tab — see the component note.
           tabIndex={-1}
           aria-label={item.label}
-          value={item.value}
+          value={shown}
           disabled={item.disabled}
-          onChange={(event) => item.onChange(event.currentTarget.value)}
+          onChange={(event) => {
+            setShown(event.currentTarget.value);
+            item.onChange(event.currentTarget.value);
+          }}
           onBlur={item.onCommit}
           // The fallback's synthetic click must not bubble to the row and
           // select it a second time. A pointer never reaches the input itself.

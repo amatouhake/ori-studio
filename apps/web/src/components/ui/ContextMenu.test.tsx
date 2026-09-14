@@ -218,19 +218,35 @@ describe('ContextMenu', () => {
       expect(alias?.querySelector('.context-menu__icon')?.childElementCount).toBe(0);
     });
 
-    it('toggles and leaves the menu open', () => {
+    it('toggles and closes, unless asked to stay open', () => {
       const onToggle = vi.fn();
       const onOpenChange = vi.fn();
       render(
         true,
-        [{ kind: 'checkbox', id: 'shadow', label: 'Shadow', checked: true, onToggle }],
+        [
+          { kind: 'checkbox', id: 'shadow', label: 'Shadow', checked: true, onToggle },
+          {
+            kind: 'checkbox',
+            id: 'alias',
+            label: 'Anti-alias',
+            checked: false,
+            keepOpen: true,
+            onToggle,
+          },
+        ],
         onOpenChange
       );
+      const [shadow, alias] = checkboxes();
       act(() => {
-        checkboxes()[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        alias?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       });
       expect(onToggle).toHaveBeenCalledTimes(1);
       expect(onOpenChange).not.toHaveBeenCalled();
+      act(() => {
+        shadow?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      expect(onToggle).toHaveBeenCalledTimes(2);
+      expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
     it('carries its hint as a tooltip when disabled', () => {
@@ -332,6 +348,10 @@ describe('ContextMenu', () => {
         typeColor(colorInput(), '#00ff00');
       });
       expect(item.onChange.mock.calls).toEqual([['#ff0000'], ['#00ff00']]);
+      // The swatch follows the picker even though the row's descriptor has
+      // not been rebuilt — a context menu's rows never are while it is open.
+      const swatch = menuItems()[0]?.querySelector<HTMLElement>('.context-menu__swatch');
+      expect(swatch?.style.background).toBe('rgb(0, 255, 0)');
       expect(item.onCommit).not.toHaveBeenCalled();
       act(() => {
         colorInput().focus();
