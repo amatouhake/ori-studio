@@ -9,10 +9,12 @@ import {
   foldedFigureFlipState,
   foldedFigureStyleGroup,
   isFoldedFigureReady,
+  type FoldedFigureAction,
   type FoldedFigureActionDeps,
   type FoldedFigureChoice,
   type FoldedFigureColorOption,
   type FoldedFigureCommand,
+  type FoldedFigureStyleItem,
   type FoldedFigureToggleOption,
 } from './foldedFigureActions';
 
@@ -90,12 +92,18 @@ function command(
   return found;
 }
 
+/** A choice by id, whether it sits at the top level (export) or inside Style. */
 function choice(
   figure: OristudioCpFoldedFigureEntry,
   deps: FoldedFigureActionDeps,
   id: FoldedFigureChoice['id'] = 'display-style'
 ): FoldedFigureChoice {
-  const found = buildFoldedFigureActions(figure, deps).find(
+  const actions = buildFoldedFigureActions(figure, deps);
+  const candidates: Array<FoldedFigureAction | FoldedFigureStyleItem> = actions.flatMap(
+    (action): Array<FoldedFigureAction | FoldedFigureStyleItem> =>
+      action.kind === 'group' ? action.items : [action]
+  );
+  const found = candidates.find(
     (action): action is FoldedFigureChoice => action.kind === 'choice' && action.id === id
   );
   if (!found) throw new Error(`no ${id} choice`);
@@ -118,10 +126,10 @@ describe('buildFoldedFigureActions', () => {
     ]);
   });
 
-  it('puts the display-style choice directly after flip', () => {
+  it('puts the Style group directly after flip', () => {
     const actions = buildFoldedFigureActions(makeFigure(), makeDeps());
     expect(actions[0]).toMatchObject({ kind: 'command', id: 'flip' });
-    expect(actions[1]).toMatchObject({ kind: 'choice', id: 'display-style' });
+    expect(actions[1]).toMatchObject({ kind: 'group', id: 'style', icon: 'style' });
   });
 
   it('separates the appearance, solution and manage groups', () => {
@@ -252,7 +260,7 @@ describe('buildFoldedFigureActions', () => {
 
   describe('export', () => {
     it('is absent when the caller supplies no export support', () => {
-      expect(choiceIds(makeFigure(), makeDeps())).toEqual(['display-style']);
+      expect(choiceIds(makeFigure(), makeDeps())).toEqual([]);
     });
 
     it('sits between the solution group and the manage group', () => {
@@ -260,14 +268,7 @@ describe('buildFoldedFigureActions', () => {
       const ids = buildFoldedFigureActions(makeFigure(), deps)
         .filter((action) => action.kind !== 'separator')
         .map((action) => action.id);
-      expect(ids).toEqual([
-        'flip',
-        'display-style',
-        'another',
-        'export',
-        'duplicate',
-        'delete',
-      ]);
+      expect(ids).toEqual(['flip', 'style', 'another', 'export', 'duplicate', 'delete']);
     });
 
     it('offers image formats only — a folded figure is geometry on a page', () => {

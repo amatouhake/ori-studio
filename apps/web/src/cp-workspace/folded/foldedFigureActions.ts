@@ -183,6 +183,7 @@ export interface FoldedFigureNoteAction {
 export type FoldedFigureAction =
   | FoldedFigureCommand
   | FoldedFigureChoice
+  | FoldedFigureGroup
   | FoldedFigureSeparator
   | FoldedFigureNoteAction;
 
@@ -429,6 +430,8 @@ export function foldedFigureStyleGroup(
  * Order is frequency-first, grouped by intent, destructive last — matching the
  * convention `AnnotationActions` sets for the image and text toolbars:
  * look (flip, style) → solution (another, refold) → manage (duplicate, delete).
+ * The Style group is one slot on the bar and one submenu in the menu; what it
+ * holds is {@link foldedFigureStyleGroup}'s to decide.
  */
 export function buildFoldedFigureActions(
   figure: OristudioCpFoldedFigureEntry,
@@ -436,7 +439,6 @@ export function buildFoldedFigureActions(
 ): FoldedFigureAction[] {
   const { t } = deps;
   const ready = isFoldedFigureReady(figure);
-  const currentStyle = figure.displayStyle;
   const canRefold = deps.refold !== undefined && deps.isStale?.(figure) === true;
   const { hasNext: hasNextSolution, wrapsToFirst } = foldedFigureCycling(figure);
   const capabilities = foldedFigureCapabilities(figure);
@@ -508,20 +510,7 @@ export function buildFoldedFigureActions(
   }
 
   actions.push(
-    {
-      kind: 'choice',
-      id: 'display-style',
-      label: t('panels:foldedFigureActions.displayStyle', 'Display style'),
-      icon: 'style',
-      disabled: !ready,
-      exclusive: true,
-      options: capabilities.styleChoices.map((value) => ({
-        id: `display-style-${value}`,
-        label: foldedDisplayStyleChoiceLabel(t, value),
-        checked: value === currentStyle,
-        run: () => deps.setDisplayStyle(figure, value),
-      })),
-    },
+    foldedFigureStyleGroup(figure, deps),
     { kind: 'separator', id: 'after-appearance' },
     {
       kind: 'command',

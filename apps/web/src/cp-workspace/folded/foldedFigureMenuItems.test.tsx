@@ -4,6 +4,7 @@ import type {
   OristudioCpFoldedFigureEntry,
   OristudioCpFoldedFigureStatus,
 } from '../../engine/oristudioCpTypes';
+import type { ContextMenuItem } from '../../components/ui/contextMenuTypes';
 import type { FoldedFigureActionDeps } from './foldedFigureActions';
 import { foldedFigureMenuItems } from './foldedFigureMenuItems';
 
@@ -60,15 +61,77 @@ describe('foldedFigureMenuItems', () => {
     expect(kinds.has('submenu')).toBe(true);
   });
 
-  it('gives an exclusive choice radio items, so the current mode is checked', () => {
-    const items = foldedFigureMenuItems(makeFigure({ displayStyle: 'Wire2' }), makeDeps());
-    const styleMenu = items.find((item) => item.kind === 'submenu' && item.id === 'display-style');
+  function styleMenu(items: ContextMenuItem[]) {
+    const found = items.find((item) => item.kind === 'submenu' && item.id === 'style');
+    if (found?.kind !== 'submenu') throw new Error('no Style submenu');
+    return found;
+  }
 
-    expect(styleMenu?.kind).toBe('submenu');
-    if (styleMenu?.kind !== 'submenu') return;
-    expect(styleMenu.items.every((item) => item.kind === 'radio')).toBe(true);
-    const checked = styleMenu.items.filter((item) => item.kind === 'radio' && item.checked);
+  it('nests the Style group as one submenu: two picks, three colours, one switch', () => {
+    const items = styleMenu(foldedFigureMenuItems(makeFigure(), makeDeps())).items;
+    expect(items.map((item) => (item.kind === 'separator' ? '—' : `${item.kind}:${item.id}`))).toEqual([
+      'submenu:display-style',
+      'submenu:side',
+      '—',
+      'color:front-color',
+      'color:back-color',
+      'color:line-color',
+      '—',
+      'checkbox:shadow',
+    ]);
+  });
+
+  it('gives an exclusive choice radio items, so the current mode is checked', () => {
+    const items = styleMenu(foldedFigureMenuItems(makeFigure({ displayStyle: 'Wire2' }), makeDeps())).items;
+    const renderAs = items.find((item) => item.kind === 'submenu' && item.id === 'display-style');
+
+    expect(renderAs?.kind).toBe('submenu');
+    if (renderAs?.kind !== 'submenu') return;
+    expect(renderAs.items.every((item) => item.kind === 'radio')).toBe(true);
+    const checked = renderAs.items.filter((item) => item.kind === 'radio' && item.checked);
     expect(checked).toHaveLength(1);
+  });
+
+  // A figure's style is adjusted as a set, so no pick inside Style closes the
+  // menu — where an export format, a one-shot action, still does.
+  it('keeps the menu open for every row inside Style, and only there', () => {
+    const items = foldedFigureMenuItems(makeFigure(), makeDeps({ exportAs: vi.fn() }));
+    const style = styleMenu(items).items;
+    for (const item of style) {
+      if (item.kind === 'submenu') {
+        expect(item.items.every((row) => row.kind === 'radio' && row.keepOpen === true)).toBe(true);
+      }
+    }
+    const exportMenu = items.find((item) => item.kind === 'submenu' && item.id === 'export');
+    if (exportMenu?.kind !== 'submenu') throw new Error('no export submenu');
+    expect(exportMenu.items.every((row) => row.kind === 'action')).toBe(true);
+  });
+
+  it('routes a colour row and the shadow row to the model bindings', () => {
+    const deps = makeDeps();
+    const figure = makeFigure({
+      snapshot: {
+        model: { state: 'Front0', display_shadows: false },
+        find_another_overlap_valid: true,
+      },
+    } as unknown as Partial<OristudioCpFoldedFigureEntry>);
+    const style = styleMenu(foldedFigureMenuItems(figure, deps)).items;
+    const front = style.find((item) => item.kind === 'color' && item.id === 'front-color');
+    const shadow = style.find((item) => item.kind === 'checkbox');
+    if (front?.kind !== 'color' || shadow?.kind !== 'checkbox') throw new Error('rows missing');
+
+    front.onChange('#010203');
+    front.onCommit();
+    shadow.onToggle();
+
+    expect(deps.updateModel).toHaveBeenNthCalledWith(
+      1,
+      figure,
+      { front_color: { red: 1, green: 2, blue: 3 } },
+      { scope: 'folded-color:folded-1:front_color', label: 'Change folded model color' }
+    );
+    expect(deps.endModelGesture).toHaveBeenCalledWith('folded-color:folded-1:front_color');
+    expect(deps.updateModel).toHaveBeenNthCalledWith(2, figure, { display_shadows: true });
   });
 
   it('invokes the bound verb when an item is selected', () => {

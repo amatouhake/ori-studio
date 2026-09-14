@@ -8,6 +8,7 @@ import {
   Focus,
   Layers,
   OctagonAlert,
+  Paintbrush,
   RefreshCw,
   RotateCcwSquare,
   Trash2,
@@ -41,8 +42,9 @@ export function foldedFigureActionIconNode(
     // but it is also the universal glyph for "upload", which is what it read as.
     case 'set-upright':
       return <Axis3d size={size} />;
+    // The figure's appearance, all of it: render style, side, colours, shadow.
     case 'style':
-      return <Layers size={size} />;
+      return <Paintbrush size={size} />;
     case 'display-style':
       return <Layers size={size} />;
     // Side has no glyph: the row reads as a word, and it never sits on a bar
