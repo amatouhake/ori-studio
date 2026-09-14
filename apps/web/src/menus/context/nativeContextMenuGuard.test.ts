@@ -31,7 +31,8 @@ import {
 
 const MOUSE = { pointerId: 1, pointerType: 'mouse' } as const;
 const PEN = { pointerId: 2, pointerType: 'pen' } as const;
-type Pointer = typeof MOUSE | typeof PEN;
+const PEN_B = { pointerId: 3, pointerType: 'pen' } as const;
+type Pointer = typeof MOUSE | typeof PEN | typeof PEN_B;
 
 function pointer(
   who: Pointer,
@@ -69,6 +70,25 @@ function contextMenuPrevented(
     button,
     pointerType: who.pointerType,
     pointerId: 1,
+  });
+  target.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+/**
+ * A `contextmenu` shaped as the Pointer Events spec has it: `pointerId` is
+ * the originating pointer's own. What Chromium 148 does for a mouse; what an
+ * engine reporting a pen faithfully would do.
+ */
+function exactContextMenuPrevented(
+  who: Pointer,
+  target: EventTarget = document.documentElement
+): boolean {
+  const event = new PointerEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    button: 2,
+    ...who,
   });
   target.dispatchEvent(event);
   return event.defaultPrevented;
@@ -153,10 +173,10 @@ describe('nativeContextMenuGuard', () => {
       }
     });
 
-    it('matches an event with no pointerType to the most recent press of any pointer', () => {
+    it('matches an event with no pointerType to the one pointer that can be owed it', () => {
       // The Windows event's `pointerType` has not been logged; a plain
-      // `MouseEvent` shape must still find the claim of the pointer that
-      // pressed last.
+      // `MouseEvent` shape must still find the claim when nothing else could
+      // own the event.
       rightDown();
       rightUp();
       claimNativeContextMenu(MOUSE.pointerId);
@@ -308,6 +328,147 @@ describe('nativeContextMenuGuard', () => {
       expect(isNativeContextMenuClaimed(MOUSE.pointerId)).toBe(false);
       claimNativeContextMenu(PEN.pointerId);
       expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(true);
+    });
+  });
+
+  describe('two pointers of the same type', () => {
+    it("consumes A's claim on A's exactly-identified menu, leaving B alone", () => {
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      rightDown(PEN_B);
+      expect(exactContextMenuPrevented(PEN)).toBe(true);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+      // B's press is still unserved; a claim for it is accepted.
+      rightUp(PEN_B);
+      claimNativeContextMenu(PEN_B.pointerId);
+      expect(isNativeContextMenuClaimed(PEN_B.pointerId)).toBe(true);
+    });
+
+    it('prefers the exact id over the pointer of that type that pressed last', () => {
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      rightDown(PEN_B);
+      rightUp(PEN_B);
+      claimNativeContextMenu(PEN_B.pointerId);
+      expect(exactContextMenuPrevented(PEN)).toBe(true);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+      expect(isNativeContextMenuClaimed(PEN_B.pointerId)).toBe(true);
+    });
+
+    it('fails open when the id is unusable and both pens could own the menu', () => {
+      // The Chromium quirk shape (`pointerId` 1, `pointerType` pen) with A
+      // claiming and B pressed but unserved: neither is chosen, the menu stays
+      // native, and neither pen's state moves.
+      rightDown(MOUSE);
+      contextMenuPrevented(MOUSE);
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      rightDown(PEN_B);
+      expect(contextMenuPrevented(PEN)).toBe(false);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(true);
+      rightUp(PEN_B);
+      claimNativeContextMenu(PEN_B.pointerId);
+      expect(isNativeContextMenuClaimed(PEN_B.pointerId)).toBe(true);
+    });
+
+    it('uses the type fallback once the other pen has been served', () => {
+      rightDown(PEN_B);
+      expect(contextMenuPrevented(PEN)).toBe(false);
+      rightUp(PEN_B);
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      // Only A can be owed a menu now: the quirk shape resolves to A.
+      expect(contextMenuPrevented(PEN)).toBe(true);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+    });
+
+    it('does not let a served historical press keep the fallback ambiguous', () => {
+      rightDown(PEN_B);
+      contextMenuPrevented(PEN);
+      rightUp(PEN_B);
+      // Much later: A alone is pressed. B's old press is history.
+      rightDown(PEN);
+      expect(contextMenuPrevented(PEN)).toBe(false);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+    });
+  });
+
+  describe('an event whose id contradicts its type (Chromium 148 pen)', () => {
+    it('rejects the mouse record the id names and resolves to the one pen', () => {
+      rightDown(MOUSE);
+      rightUp(MOUSE);
+      claimNativeContextMenu(MOUSE.pointerId);
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      // `pointerId` 1 is the mouse; `pointerType` says pen. The mouse's claim
+      // must survive and the pen's be consumed.
+      expect(contextMenuPrevented(PEN)).toBe(true);
+      expect(isNativeContextMenuClaimed(MOUSE.pointerId)).toBe(true);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+    });
+
+    it('marks the one pen served on its press-time menu, not the mouse', () => {
+      rightDown(MOUSE);
+      rightUp(MOUSE);
+      rightDown(PEN);
+      expect(contextMenuPrevented(PEN)).toBe(false);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+      claimNativeContextMenu(MOUSE.pointerId);
+      expect(isNativeContextMenuClaimed(MOUSE.pointerId)).toBe(true);
+    });
+  });
+
+  describe('an event with no pointerType', () => {
+    it('fails open when two pointers could own it', () => {
+      rightDown(MOUSE);
+      rightUp(MOUSE);
+      claimNativeContextMenu(MOUSE.pointerId);
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(untypedContextMenuPrevented()).toBe(false);
+      expect(isNativeContextMenuClaimed(MOUSE.pointerId)).toBe(true);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(true);
+    });
+
+    it('resolves to the one pointer left once the other is served', () => {
+      rightDown(MOUSE);
+      rightUp(MOUSE);
+      claimNativeContextMenu(MOUSE.pointerId);
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(exactContextMenuPrevented(PEN)).toBe(true);
+      expect(untypedContextMenuPrevented()).toBe(true);
+      expect(isNativeContextMenuClaimed()).toBe(false);
+    });
+  });
+
+  describe('a pointer id reused by another device', () => {
+    it('retypes the record, so the old type no longer matches it', () => {
+      // Id 2 was a pen; its next press reports a mouse. The id is a lifetime,
+      // not a device, so the record follows the press.
+      rightDown(PEN);
+      contextMenuPrevented(PEN);
+      rightUp(PEN);
+      const reused = { pointerId: 2, pointerType: 'mouse' } as const;
+      pointer(reused as unknown as Pointer, 'pointerdown', 2, 2);
+      pointer(reused as unknown as Pointer, 'pointerup', 2, 0);
+      claimNativeContextMenu(2);
+      // A pen-typed quirk event with no plausible pen must not take it …
+      expect(contextMenuPrevented(PEN)).toBe(false);
+      expect(isNativeContextMenuClaimed(2)).toBe(true);
+      // … and a mouse-typed one with no mouse on record resolves to it.
+      expect(contextMenuPrevented(MOUSE)).toBe(true);
     });
   });
 
