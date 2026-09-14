@@ -1,5 +1,6 @@
 /**
- * Ownership of the browser's native context menu for one right-button press.
+ * Ownership of the browser's native context menu for one pointer's
+ * right-button press.
  *
  * Every surface but one opens its context menu from the native `contextmenu`
  * event and calls `preventDefault()` there, so the native menu is handled
@@ -22,68 +23,99 @@
  * The right owner of that event is not the canvas but the request: "the
  * native menu belonging to this accepted release-raised menu, if it has not
  * come yet, is ours". So the controller *claims* it when it accepts a request
- * flagged `nativeContextMenuPending`, and the claim is matched here by a
+ * carrying the gesture's `pointerId`, and the claim is matched here by a
  * document-level capture listener, which sees the event wherever it lands.
  *
- * "Has not come yet" is a question about one specific right-button press,
- * and the state here is keyed to exactly that — not to `pointerdown` in
- * general, and not to time. Under Pointer Events' chorded-button rules a
- * button pressed or released while another is held raises `pointermove`,
- * not `pointerdown`/`pointerup`, with `button` naming the button that
- * changed and `buttons` the set now held (measured in Chromium 148: right
- * pressed while left is held is `pointermove {button: 2, buttons: 3}`;
- * released, `{button: 2, buttons: 1}`; plain movement is `button: -1`). So a
- * *press* of the secondary button is either `pointerdown` with `button` 2 or
- * `pointermove` with `button` 2 and bit 2 set in `buttons`, and each one
- * starts a new generation. A native `contextmenu` raised by that button
- * carries `button` 2 as well; one raised from the keyboard (Shift+F10, the
- * Menu key) carries `button` -1 in Chromium 148 and is always preceded by
- * its `keydown`. Only the former marks the current generation dispatched, so
- * a keyboard menu taken mid-press cannot make the press look already served.
+ * "Has not come yet" is a question about one specific press of one specific
+ * pointer, and the state here is keyed to exactly that — per `pointerId`,
+ * per press, never to "the latest pointer" or to time. A mouse and a pen are
+ * independent pointers, and one's native menu must neither be taken by the
+ * other's claim nor make the other's press look already served.
  *
- * A claim is therefore bounded three ways:
+ * What a press is, under Pointer Events' chorded-button rules: a button
+ * pressed or released while another is held raises `pointermove`, not
+ * `pointerdown`/`pointerup`, with `button` naming the button that changed
+ * and `buttons` the set now held (measured in Chromium 148: right pressed
+ * while left is held is `pointermove {button: 2, buttons: 3}`; released,
+ * `{button: 2, buttons: 1}`; plain movement is `button: -1`). So a press of
+ * the secondary button is `pointerdown` with `button` 2, or `pointermove`
+ * with `button` 2 and bit 2 set in `buttons`, and each one starts a new
+ * generation for *that* pointer.
  *
- * 1. It is refused when the current generation's `contextmenu` has already
- *    been dispatched — the press-time ordering — so the request that could
- *    not know which ordering it is under ends up owning nothing stale.
- * 2. It is consumed by the first `contextmenu` after it, whatever its
- *    `button`: a claim lives only between the canvas' `pointerup` and the
- *    release-time event, and a keyboard menu cannot land in that window
- *    without its `keydown` clearing the claim first. Nothing about the
- *    release-time event's `button` value is relied on.
- * 3. It expires at the next press of any button or key — the only ways a
- *    different native menu can be asked for. This is the net under orderings
- *    not observed yet (a release-time engine that never dispatches the
- *    event, say): without it the next right-click on a text field would lose
- *    its Cut/Copy/Paste menu.
+ * Which pointer a `contextmenu` belongs to: in Chromium 148 the event is a
+ * `PointerEvent` whose `pointerType` names the originating device (`pen` for
+ * a pen, `mouse` for a mouse) but whose `pointerId` does **not** — a pen
+ * whose pointer events carry id 2 raises a `contextmenu` with id 1. So the
+ * event is correlated by `pointerType`, to the pointer of that type with the
+ * most recent secondary press; an event with no usable `pointerType` falls
+ * back to the most recent secondary press of any pointer. A keyboard-raised
+ * menu (Shift+F10, the Menu key) carries `button` -1 in Chromium 148 and
+ * touches no pointer's state at all.
  *
- * The listeners are on the global `document` and nowhere else: the whole
- * problem is that the event may target `<html>` or a portaled layer rather
- * than the surface, so there is no narrower target that is correct. There is
- * no timer and no platform test.
+ * A claim then lives exactly as long as its press can still owe a menu:
+ *
+ * 1. It is refused when that pointer's current generation has already been
+ *    served — the press-time ordering — so the request that could not know
+ *    which ordering it is under ends up owning nothing stale.
+ * 2. It is consumed by the first `contextmenu` with `button` 2 correlated to
+ *    its pointer. One correlated to another pointer leaves it alone and is
+ *    that pointer's to keep native.
+ * 3. It is superseded by that pointer's next secondary press, which is the
+ *    only way the same pointer can ask for a different native menu. This is
+ *    the net under orderings not observed yet (a release-time engine that
+ *    never dispatches the event, say): the next right-click on a text field
+ *    with that mouse starts a new generation and keeps its Cut/Copy/Paste.
+ *
+ * Nothing else ends a claim, and nothing global can: another pointer's
+ * press, a key press and a menu the claim's pointer did not raise are all
+ * somebody else's business. The listeners are on the global `document`
+ * because the event may target `<html>` or a portaled layer rather than the
+ * surface; there is no timer and no platform test.
  */
 
 const SECONDARY_BUTTON = 2;
 const SECONDARY_BUTTONS_BIT = 2;
 
-/** Identity of the request holding the claim; `null` when nothing does. */
-let claim: object | null = null;
-/** Counts secondary-button presses; the current press is the latest. */
-let generation = 0;
-/** The generation whose native `contextmenu` has been seen; -1 means none. */
-let dispatchedGeneration = -1;
+interface PointerRecord {
+  /** `mouse`, `pen`, …; `null` for a claim made before any press was seen. */
+  pointerType: string | null;
+  /** Counts this pointer's secondary-button presses; the current one is the latest. */
+  generation: number;
+  /** The generation whose native `contextmenu` has been seen; -1 means none. */
+  dispatchedGeneration: number;
+  /** Identity of the request holding this pointer's claim; `null` when none. */
+  claim: object | null;
+}
+
+const pointers = new Map<number, PointerRecord>();
+/** The pointer with the most recent secondary press, per `pointerType`. */
+const latestByType = new Map<string, number>();
+let latest: number | null = null;
 let installed = false;
 
-/** A right-button press: this press's native menu, if any, is still to come. */
-function beginSecondaryPress(): void {
-  generation += 1;
-  claim = null;
+function record(pointerId: number, pointerType: string | null): PointerRecord {
+  let entry = pointers.get(pointerId);
+  if (!entry) {
+    entry = { pointerType, generation: 0, dispatchedGeneration: -1, claim: null };
+    pointers.set(pointerId, entry);
+  } else if (entry.pointerType === null && pointerType !== null) {
+    entry.pointerType = pointerType;
+  }
+  return entry;
+}
+
+/** A secondary press by one pointer: its native menu, if any, is still to come. */
+function beginSecondaryPress(event: PointerEvent): void {
+  const entry = record(event.pointerId, event.pointerType || null);
+  entry.generation += 1;
+  // Whatever the previous press of this pointer still owed, it will not come now.
+  entry.claim = null;
+  if (event.pointerType) latestByType.set(event.pointerType, event.pointerId);
+  latest = event.pointerId;
 }
 
 function onPointerDownCapture(event: PointerEvent): void {
-  // Any press ends whatever the previous gesture owed.
-  claim = null;
-  if (event.button === SECONDARY_BUTTON) beginSecondaryPress();
+  if (event.button === SECONDARY_BUTTON) beginSecondaryPress(event);
 }
 
 function onPointerMoveCapture(event: PointerEvent): void {
@@ -92,21 +124,34 @@ function onPointerMoveCapture(event: PointerEvent): void {
   // plain movement has `button` -1 and is not a transition at all.
   if (event.button !== SECONDARY_BUTTON) return;
   if ((event.buttons & SECONDARY_BUTTONS_BIT) === 0) return;
-  beginSecondaryPress();
+  beginSecondaryPress(event);
+}
+
+/** The pointer a native `contextmenu` belongs to, by the rule in the header. */
+function ownerOf(event: MouseEvent): PointerRecord | null {
+  const pointerType = 'pointerType' in event ? (event as PointerEvent).pointerType : '';
+  const byType = pointerType ? latestByType.get(pointerType) : undefined;
+  if (byType !== undefined) return pointers.get(byType) ?? null;
+  // No press of that type seen, or no type on the event: the most recent
+  // press of any pointer — but a typed event may only match a pointer whose
+  // type is unknown, never one known to be a different device.
+  if (latest === null) return null;
+  const entry = pointers.get(latest);
+  if (!entry) return null;
+  if (pointerType && entry.pointerType !== null && entry.pointerType !== pointerType) return null;
+  return entry;
 }
 
 function onContextMenuCapture(event: MouseEvent): void {
-  if (claim !== null) {
-    claim = null;
+  if (event.button !== SECONDARY_BUTTON) return;
+  const owner = ownerOf(event);
+  if (!owner) return;
+  if (owner.claim !== null) {
+    owner.claim = null;
     event.preventDefault();
     return;
   }
-  if (event.button === SECONDARY_BUTTON) dispatchedGeneration = generation;
-}
-
-/** A key press can raise a native menu of its own; no pointer claim may take it. */
-function onKeyDownCapture(): void {
-  claim = null;
+  owner.dispatchedGeneration = owner.generation;
 }
 
 /**
@@ -120,42 +165,48 @@ export function installNativeContextMenuGuard(): void {
   document.addEventListener('contextmenu', onContextMenuCapture, true);
   document.addEventListener('pointerdown', onPointerDownCapture, true);
   document.addEventListener('pointermove', onPointerMoveCapture, true);
-  document.addEventListener('keydown', onKeyDownCapture, true);
   installed = true;
 }
 
 /**
- * Claim the native context menu of the current right-button press, if it is
- * still to come. Synchronous, so a call from inside `pointerup` is in place
- * before a release-time `contextmenu` can be dispatched.
+ * Claim the native context menu of `pointerId`'s current right-button press,
+ * if it is still to come. Synchronous, so a call from inside `pointerup` is
+ * in place before a release-time `contextmenu` can be dispatched.
  *
  * Returns the release for *this* claim. Releasing a claim that a newer request
  * has since replaced is a no-op, so a stale close cannot drop a live claim.
  * When the press's native menu has already gone by there is nothing to
  * claim, and the release is a no-op from the start.
  */
-export function claimNativeContextMenu(): () => void {
+export function claimNativeContextMenu(pointerId: number): () => void {
   installNativeContextMenuGuard();
-  if (dispatchedGeneration === generation) return () => {};
+  const entry = record(pointerId, null);
+  if (entry.dispatchedGeneration === entry.generation) return () => {};
+  // A pointer the guard has never seen press — the guard was installed by
+  // this very call, after the press. The claim is then the only evidence of
+  // the press, and stands in for it.
+  if (entry.generation === 0 && latest === null) latest = pointerId;
   const token = {};
-  claim = token;
+  entry.claim = token;
   return () => {
-    if (claim === token) claim = null;
+    if (entry.claim === token) entry.claim = null;
   };
 }
 
-export function isNativeContextMenuClaimed(): boolean {
-  return claim !== null;
+/** Whether `pointerId` holds a live claim — or, with no id, whether any pointer does. */
+export function isNativeContextMenuClaimed(pointerId?: number): boolean {
+  if (pointerId !== undefined) return (pointers.get(pointerId)?.claim ?? null) !== null;
+  for (const entry of pointers.values()) if (entry.claim !== null) return true;
+  return false;
 }
 
 export function resetNativeContextMenuGuardForTests(): void {
-  claim = null;
-  generation = 0;
-  dispatchedGeneration = -1;
+  pointers.clear();
+  latestByType.clear();
+  latest = null;
   if (!installed) return;
   document.removeEventListener('contextmenu', onContextMenuCapture, true);
   document.removeEventListener('pointerdown', onPointerDownCapture, true);
   document.removeEventListener('pointermove', onPointerMoveCapture, true);
-  document.removeEventListener('keydown', onKeyDownCapture, true);
   installed = false;
 }

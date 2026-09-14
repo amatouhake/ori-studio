@@ -32,5 +32,13 @@ export type CpContextTarget =
 export interface CpContextMenuRequest {
   clientX: number;
   clientY: number;
+  /**
+   * The pointer whose release raised this. The canvas opens at `pointerup`,
+   * so the native `contextmenu` for the press may still be on its way, and it
+   * belongs to this pointer and no other — a pen right-clicking a field while
+   * the mouse is held on the canvas is a different pointer with its own menu.
+   * See `menus/context/nativeContextMenuGuard`.
+   */
+  pointerId: number;
   target: CpContextTarget;
 }

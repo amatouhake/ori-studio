@@ -430,7 +430,9 @@ describe('the right button', () => {
     });
 
     expect(requests).toHaveLength(1);
-    expect(requests[0]).toMatchObject({ ...at, target: { kind: 'blank' } });
+    // The pointer travels with the request: the controller claims that
+    // pointer's native menu, and no other's.
+    expect(requests[0]).toMatchObject({ ...at, pointerId: 1, target: { kind: 'blank' } });
     expect(erased).toEqual([]);
   });
 

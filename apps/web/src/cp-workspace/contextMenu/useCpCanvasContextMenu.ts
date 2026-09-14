@@ -41,9 +41,9 @@ import {
  * raises its menu from the native `contextmenu` event and has already
  * swallowed it. The WebGL surface raises its menu at `pointerup` — the
  * right-drag erase gesture is why — and its native `contextmenu` may still be
- * on its way, so only that path marks the request `nativeContextMenuPending`.
- * `openFoldedFigureMenu` serves both, which is why it is told rather than
- * deciding for itself.
+ * on its way, so only that path hands the controller the gesture's pointer as
+ * `nativeContextMenu`. `openFoldedFigureMenu` serves both, which is why it is
+ * told rather than deciding for itself.
  */
 
 export interface UseCpCanvasContextMenuOptions {
@@ -101,7 +101,7 @@ export function useCpCanvasContextMenu(
       figureId: string,
       clientX: number,
       clientY: number,
-      nativeContextMenuPending: boolean
+      nativeContextMenu: { pointerId: number } | null
     ): boolean => {
       const figure = foldedFigures.find((candidate) => candidate.id === figureId);
       if (!figure) return false;
@@ -113,7 +113,7 @@ export function useCpCanvasContextMenu(
         clientY,
         targetKind: 'folded-figure',
         hasSelection: true,
-        nativeContextMenuPending,
+        nativeContextMenu: nativeContextMenu ?? undefined,
         build: () => foldedFigureMenuItemsWith(figure, foldedFigureActionDeps, t),
       });
       return true;
@@ -161,9 +161,10 @@ export function useCpCanvasContextMenu(
 
   const onCanvasContextMenu = useCallback(
     (request: CpContextMenuRequest) => {
-      const { target, clientX, clientY } = request;
+      const { target, clientX, clientY, pointerId } = request;
+      const nativeContextMenu = { pointerId };
       if (target.kind === 'folded-figure') {
-        openFoldedFigureMenu(target.figureId, clientX, clientY, true);
+        openFoldedFigureMenu(target.figureId, clientX, clientY, nativeContextMenu);
         return;
       }
       if (target.kind === 'blank') {
@@ -174,7 +175,7 @@ export function useCpCanvasContextMenu(
           targetKind: 'empty',
           // The canvas raises this target only with nothing selected.
           hasSelection: false,
-          nativeContextMenuPending: true,
+          nativeContextMenu,
           build: () =>
             cpBlankCanvasMenuItems({
               ...menuDeps(),
@@ -224,7 +225,7 @@ export function useCpCanvasContextMenu(
         // The canvas only raises this target when something is selected — see
         // `cpRightClickOutcome` — so this is a statement of that, not a guess.
         hasSelection: true,
-        nativeContextMenuPending: true,
+        nativeContextMenu,
         build: () => cpSelectionMenuItems(menuDeps()),
       });
     },
@@ -233,7 +234,7 @@ export function useCpCanvasContextMenu(
 
   const onCanvasObjectContextMenu = useCallback(
     (id: string, clientX: number, clientY: number) => {
-      if (openFoldedFigureMenu(id, clientX, clientY, false)) return;
+      if (openFoldedFigureMenu(id, clientX, clientY, null)) return;
       const annotation = annotations.annotations.find((candidate) => candidate.id === id);
       // An inline simulation window falls through with no menu: its verbs live
       // on its own inspector, which the window already carries.

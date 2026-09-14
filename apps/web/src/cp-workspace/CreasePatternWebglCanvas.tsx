@@ -3707,6 +3707,7 @@ export function CreasePatternWebglCanvas({
             liveRef.current.onRequestContextMenu({
               clientX: e.clientX,
               clientY: e.clientY,
+              pointerId: e.pointerId,
               target:
                 figureId !== null
                   ? { kind: 'folded-figure', figureId }

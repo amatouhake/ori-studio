@@ -22,8 +22,8 @@ vi.mock('../../analytics', async (importOriginal) => ({
  * This is the seam the ownership flag lives on, and the one place it could
  * quietly go wrong: `openFoldedFigureMenu` serves both the WebGL canvas
  * (raised at `pointerup`, native menu possibly still to come) and the DOM
- * overlay (raised from the native `contextmenu`, already prevented). Marking
- * both pending because they share a builder is exactly the regression this
+ * overlay (raised from the native `contextmenu`, already prevented). Handing
+ * both a pointer because they share a builder is exactly the regression this
  * guards against. What it does not do is prove where a real engine targets
  * the native event; the controller's own tests play that by hand.
  */
@@ -79,11 +79,23 @@ function Probe() {
   return null;
 }
 
-/** The right-button press that starts each gesture below. */
-function press(): void {
-  document.body.dispatchEvent(
-    new PointerEvent('pointerdown', { bubbles: true, button: 2, pointerType: 'mouse' })
-  );
+/** The mouse's right-button press and release that each gesture below ends. */
+const MOUSE_POINTER_ID = 1;
+function rightClick(): void {
+  for (const [type, buttons] of [
+    ['pointerdown', 2],
+    ['pointerup', 0],
+  ] as const) {
+    document.body.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        button: 2,
+        buttons,
+        pointerType: 'mouse',
+        pointerId: MOUSE_POINTER_ID,
+      })
+    );
+  }
 }
 
 beforeEach(() => {
@@ -91,7 +103,7 @@ beforeEach(() => {
   document.body.append(container);
   root = createRoot(container);
   act(() => root?.render(<Probe />));
-  press();
+  rightClick();
 });
 
 afterEach(() => {
@@ -104,24 +116,30 @@ afterEach(() => {
 });
 
 describe('useCpCanvasContextMenu native menu ownership', () => {
-  it('claims the native menu for the WebGL canvas blank-space menu', () => {
+  it('claims the native menu for the WebGL canvas blank-space menu, for its pointer', () => {
     act(() =>
       menu?.onCanvasContextMenu({
         clientX: 10,
         clientY: 20,
+        pointerId: MOUSE_POINTER_ID,
         target: { kind: 'blank', modelPoint: { x: 0, y: 0 } },
       })
     );
     expect(menu?.controller.open).toBe(true);
-    expect(isNativeContextMenuClaimed()).toBe(true);
+    expect(isNativeContextMenuClaimed(MOUSE_POINTER_ID)).toBe(true);
   });
 
   it('claims it for the WebGL canvas selection menu', () => {
     act(() =>
-      menu?.onCanvasContextMenu({ clientX: 10, clientY: 20, target: { kind: 'selection' } })
+      menu?.onCanvasContextMenu({
+        clientX: 10,
+        clientY: 20,
+        pointerId: MOUSE_POINTER_ID,
+        target: { kind: 'selection' },
+      })
     );
     expect(menu?.controller.open).toBe(true);
-    expect(isNativeContextMenuClaimed()).toBe(true);
+    expect(isNativeContextMenuClaimed(MOUSE_POINTER_ID)).toBe(true);
   });
 
   it('claims it for a folded figure reached through the WebGL canvas', () => {
@@ -129,11 +147,12 @@ describe('useCpCanvasContextMenu native menu ownership', () => {
       menu?.onCanvasContextMenu({
         clientX: 10,
         clientY: 20,
+        pointerId: MOUSE_POINTER_ID,
         target: { kind: 'folded-figure', figureId: FIGURE.id },
       })
     );
     expect(menu?.controller.open).toBe(true);
-    expect(isNativeContextMenuClaimed()).toBe(true);
+    expect(isNativeContextMenuClaimed(MOUSE_POINTER_ID)).toBe(true);
   });
 
   it('claims nothing for the same folded figure reached through the overlay', () => {

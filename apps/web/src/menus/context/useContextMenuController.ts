@@ -61,19 +61,21 @@ export interface ContextMenuOpenRequest {
   /** How the menu was raised; `'pointer'` when omitted. Analytics only. */
   source?: ContextMenuSource;
   /**
-   * Whether the native `contextmenu` for the gesture behind this request may
-   * still be on its way, so that accepting the request must claim it.
+   * The pointer whose native `contextmenu` may still be on its way for this
+   * request, so that accepting it must claim that event — for that pointer.
    *
-   * Off by default, because the ordinary surface raises its menu *from* the
+   * Unset by default, because the ordinary surface raises its menu *from* the
    * native `contextmenu` handler and has already called `preventDefault()`
    * there: the event is over, and a claim would own nothing but the next
    * unrelated menu. Set it only from a surface that raises its menu at
    * `pointerup` instead — the crease-pattern canvas, which keeps right-drag
    * for erase — where the native event arrives before or after the request
-   * depending on the engine. See `nativeContextMenuGuard` for what the claim
-   * does under each ordering. A keyboard or touch request never sets it.
+   * depending on the engine, and carry the gesture's own `pointerId`: a menu
+   * a pen is raising elsewhere at the same time is that pen's, not this
+   * request's. See `nativeContextMenuGuard` for what the claim does under
+   * each ordering. A keyboard or touch request never sets it.
    */
-  nativeContextMenuPending?: boolean;
+  nativeContextMenu?: { pointerId: number };
   /**
    * The rows, built on demand.
    *
@@ -140,7 +142,10 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
   const deferFocusRef = useRef(false);
   // The release for the open menu's native-menu claim, if it made one. A ref
   // rather than state: it is armed synchronously inside the surface's
-  // `pointerup` and must not wait for a render.
+  // `pointerup` and must not wait for a render. Released when the menu it
+  // belongs to closes; a claim a newer request displaced is left to expire by
+  // its own pointer's rules, so which request rendered last never decides
+  // whose native menu gets suppressed.
   const releaseNativeClaimRef = useRef<(() => void) | null>(null);
   const releaseNativeClaim = useCallback(() => {
     releaseNativeClaimRef.current?.();
@@ -177,13 +182,12 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
       // right-click reads as the app being broken. Nothing opens, and nothing
       // is tracked, because no menu was raised.
       if (items.length === 0) return;
-      // Own the native context menu still owed to the gesture that raised
+      // Own the native context menu still owed to the pointer that raised
       // this, when the surface says there may be one. See the field's doc and
       // `nativeContextMenuGuard`.
-      releaseNativeClaim();
-      if (open.nativeContextMenuPending) {
-        releaseNativeClaimRef.current = claimNativeContextMenu();
-      }
+      releaseNativeClaimRef.current = open.nativeContextMenu
+        ? claimNativeContextMenu(open.nativeContextMenu.pointerId)
+        : null;
       setState({ x: open.clientX, y: open.clientY, items });
       track(ANALYTICS_EVENTS.contextMenuOpened, {
         surface,
@@ -196,7 +200,7 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
         ),
       });
     },
-    [releaseNativeClaim, surface]
+    [surface]
   );
 
   const close = useCallback(() => {
