@@ -37,7 +37,7 @@ export function matchesCpExperimentBase(s: WorkspaceState, base: CpExperimentBas
   return (Object.keys(base) as (keyof CpExperimentBase)[]).every(key => now[key] === base[key]);
 }
 export interface AutomationSlice {
-  commitCpExperiment: (document: OristudioCpDocumentSnapshot, base: CpExperimentBase, label: string, allowed?: () => boolean, related?: { source?: DerivedSource; figure?: OristudioCpFoldedFigureEntry }) => Promise<number>;
+  commitCpExperiment: (document: OristudioCpDocumentSnapshot, base: CpExperimentBase, label: string, allowed?: () => boolean, related?: { source?: DerivedSource; sourceProposal?: PortableProposal; figure?: OristudioCpFoldedFigureEntry }) => Promise<number>;
   publishDesignExperiment: (kind: 'treemaker' | 'box-pleat', text: string, title: string, viewState?: { symmetry: BpDocumentSymmetry }, proposal?: PortableProposal) => string;
 }
 
@@ -84,6 +84,9 @@ export const createAutomationSlice: WorkspaceSliceCreator<AutomationSlice> = (se
         oristudioCpCamvResult: null, oristudioCpError: null, error: null,
         oristudioCpHistoryPast: past, oristudioCpHistoryFuture: [],
         ...(tab ? { designTabs: [...s.designTabs, tab], activeDesignId: tab.id } : {}),
+        ...(tab && related?.sourceProposal ? { nativeProjectExtensions: { ...s.nativeProjectExtensions,
+          [PROPOSALS_KEY]: { ...(s.nativeProjectExtensions[PROPOSALS_KEY] as Record<string, unknown> | undefined), [tab.id]: related.sourceProposal },
+        } } : {}),
         ...staleFoldArtifactResourceState(s.foldArtifactRevision),
         dirty: true, projectEstablished: true, status: 'crease_pattern_ready', projectMessage: label });
       get().scheduleOristudioCamvRefresh();

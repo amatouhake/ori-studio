@@ -40,6 +40,7 @@ export interface DraftContent {
 export interface DraftCheckpoint extends DraftContent {
   label: string;
   revision: number;
+  jobIds: string[];
 }
 export interface Draft extends DraftContent {
   id: string;
@@ -124,5 +125,14 @@ export function portableProposal(summary: DraftSummary, source?: DerivedSource):
   // wasm-bindgen turns undefined map entries into null; omit them before a
   // snapshot enters the kernel so an absent brief remains absent on reopen.
   return JSON.parse(JSON.stringify({ version: 1, summary: { draft_id: summary.draft_id, revision: summary.revision,
-    brief: summary.brief, origin: summary.origin, evidence: summary.evidence }, source })) as PortableProposal;
+    brief: summary.brief, origin: summary.origin, evidence: summary.evidence, prior_evidence: summary.prior_evidence }, source })) as PortableProposal;
+}
+
+/** Context for the captured source tab itself. CP/pose checks belong to the
+ * derived proposal, so they must not become evidence about the source tree. */
+export function capturedSourceProposal(proposal: PortableProposal): PortableProposal | undefined {
+  const source = proposal.source;
+  if (!source) return undefined;
+  return { version: 1, summary: { draft_id: source.draft_id, revision: source.revision,
+    ...(proposal.summary.brief ? { brief: proposal.summary.brief } : {}) } };
 }

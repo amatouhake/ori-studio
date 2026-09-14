@@ -48,7 +48,11 @@ export async function staticPose(api: Remote<OristudioCpWorkerApi>, data: Design
       }
       return { result: { status: 'placed', snapshot: placed.snapshot, angles, starting_face: startingFace, scope },
         pose: { render: placed.render, snapshot: placed.snapshot, fold, face_line_ids: faceLines.map(ids => [...ids]) },
-        proposedData: { ...data, document, foldedFormFrames: fold.file_frames?.filter(f => f.frame_classes?.includes('foldedForm')) },
+        // The normal serializer already preserves foreign embedded frames.
+        // Capture only native pose frames that require an explicit append.
+        proposedData: { ...data, document, foldedFormFrames: [
+          ...(data.foldedFormFrames ?? []), ...(fold.file_frames?.filter(f => 'oristudio:folded3d' in f) ?? []),
+        ] },
       };
     } finally { await api.freeFoldedFigure(placed.handle); }
   } finally { await api.freeDocument(handle); }

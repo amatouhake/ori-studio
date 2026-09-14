@@ -1,5 +1,5 @@
 import { poseFigure } from './posePublication';
-import { PROPOSAL_KEY, PROPOSALS_KEY, type PortableProposal } from './proposals';
+import { capturedSourceProposal, PROPOSAL_KEY, PROPOSALS_KEY, type PortableProposal } from './proposals';
 import { flattenDocumentTexts, normalizeDocumentTexts } from '../cp-workspace/annotations/textInterchange';
 import { createNativeCreasePatternProjectFile, createNativeProjectFile, serializeNativeProjectFile } from '../lib/nativeProjectFile';
 import { emptyOristudioCpSelection, DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS } from '../lib/creasePatternViewport';
@@ -26,6 +26,7 @@ export async function captureFoldedForms(data: Extract<DesignData, { kind: 'crea
 }
 
 export async function exportDesign(data: DesignData, title: string, format: string, base?: CpExperimentBase, output?: AnalysisOutput, allowLoss = false, proposal?: PortableProposal): Promise<Record<string, unknown>> {
+  const capturedNativeFrames = data.kind === 'crease_pattern' && !!data.foldedFormFrames?.length;
   if (output?.pose && output.proposedData) data = output.proposedData;
   // OBJ is a simulation mesh here, not the application's crease interchange OBJ.
   const policyLosses = data.kind === 'crease_pattern' && ['cp', 'ori', 'fold', 'svg', 'png'].includes(format)
@@ -44,7 +45,7 @@ export async function exportDesign(data: DesignData, title: string, format: stri
     if (extensions) losses.push({ id: 'nativeExtensions', count: extensions, blocking: false });
     const original = data.document.metadata?.['oristudio:fold:file'] as { file_frames?: Record<string, unknown>[] } | undefined;
     const replaced = original?.file_frames?.filter(frame => 'oristudio:folded3d' in frame).length ?? 0;
-    if (replaced && !data.foldedFormFrames?.length) losses.push({ id: 'unrestoredNativeFrames', count: replaced, blocking: false });
+    if (replaced && !capturedNativeFrames) losses.push({ id: 'unrestoredNativeFrames', count: replaced, blocking: false });
   }
   if (blockingExportLoss(policyLosses).length) throw new AutomationError('export_loss_blocked', 'This format changes crease semantics. Export FOLD for crease interchange or OSF for the editable project.', { format, losses, alternatives: ['fold', 'osf'] });
   if (losses.length && !allowLoss) throw new AutomationError('export_loss_confirmation_required', 'Review losses and retry with allow_loss=true, or export OSF.', { format, losses, alternatives: ['osf'] });
@@ -60,9 +61,7 @@ export async function exportDesign(data: DesignData, title: string, format: stri
     content = format === 'png' ? await png(svg) : svg;
     mimeType = format === 'png' ? 'image/png' : 'image/svg+xml'; encoding = format === 'png' ? 'base64' : 'utf8';
   } else if (format === 'fold') {
-    if (output?.pose) {
-      content = JSON.stringify({ ...output.pose.fold, 'oristudio:agent-proposal': proposal });
-    } else if (data.kind === 'crease_pattern') {
+    if (data.kind === 'crease_pattern') {
       const file = JSON.parse(await withCp(data, (api, h) => api.exportFoldFile(h, texts, []))) as FoldDocument;
       if (data.foldedFormFrames) file.file_frames = [...(file.file_frames ?? []), ...data.foldedFormFrames];
       if (proposal) file['oristudio:agent-proposal'] = proposal;
@@ -91,6 +90,7 @@ export async function exportDesign(data: DesignData, title: string, format: stri
           title: source.title, text: source.data.text, format: source.data.kind === 'treemaker' ? 'tmd5' : 'bps',
           viewState: source.data.kind === 'box_pleat' ? source.data.viewState : undefined }],
         activeDesignId: 'agent-source', creasePattern: cpInput,
+        extensions: { [PROPOSALS_KEY]: { 'agent-source': capturedSourceProposal(proposal!) } },
       }) : createNativeCreasePatternProjectFile(cpInput));
     } else {
       const kind = data.kind === 'treemaker' ? 'treemaker' : 'box-pleat';

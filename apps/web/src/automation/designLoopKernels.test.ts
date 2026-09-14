@@ -17,6 +17,9 @@ import { parseNativeProjectFile } from '../lib/nativeProjectFile';
 import { restoreProposal } from './proposalRestore';
 import * as engines from './engines';
 import { designPaper } from './paper';
+import { captureCpExperimentBase } from '../store/workspaceStore/slices/automationSlice';
+import { useWorkspaceStore } from '../store/workspaceStore/store';
+import { createTextAnnotation, textDocFromPlainText } from '../cp-workspace/annotations/textAnnotation';
 
 const transport = vi.hoisted(() => ({ cp: null as unknown as OristudioCpWorkerApi, tree: null as unknown as TreemakerWorkerApi }));
 vi.mock('comlink', async original => ({ ...await original<typeof import('comlink')>(), expose: (api: OristudioCpWorkerApi | TreemakerWorkerApi) => {
@@ -32,6 +35,30 @@ beforeAll(async () => {
 });
 const signal = () => new AbortController().signal;
 const hinge = { vertices_coords: [[0, 0], [1, 0], [1, 1], [0, 1]], edges_vertices: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]], edges_assignment: ['B', 'B', 'B', 'B', 'V'], edges_foldAngle: [0, 0, 0, 0, 90] };
+
+it.each(['ori text', 'canvas annotation'] as const)('posed FOLD preserves %s, coordinates, metadata and foreign frames', async source => {
+  const texts = [{ x: 12, y: 34, text: 'Keep this text — 鳥\nsecond line' }];
+  const foreign = { frame_classes: ['foldedForm'], frame_title: 'Foreign frame', vertices_coords: [[0, 0, 0], [1, 1, 1]], edges_vertices: [[0, 1]] };
+  let data = await importDesign('crease_pattern', 'fold', JSON.stringify({ ...hinge, 'test:metadata': { keep: true }, file_frames: [foreign] }), 'Hinge');
+  if (source === 'ori text') {
+    const handle = await transport.cp.loadFoldFile(JSON.stringify(hinge));
+    try { data = await importDesign('crease_pattern', 'ori', await transport.cp.exportOri(handle, texts), 'ORI hinge'); }
+    finally { await transport.cp.freeDocument(handle); }
+  }
+  const base = source === 'canvas annotation' ? { ...captureCpExperimentBase(useWorkspaceStore.getInitialState()),
+    annotations: [createTextAnnotation({ id: 'note', center: { x: 12, y: 34 }, doc: textDocFromPlainText(texts[0].text) })] } : undefined;
+  const ordinary = JSON.parse(String((await exportDesign(data, 'Hinge', 'fold', base, undefined, true)).content));
+  const output = await staticPose(transport.cp as Remote<OristudioCpWorkerApi>, data, [{ line_id: 5, assignment: 'valley', angle: 70 }], 1, signal());
+  const file = JSON.parse(String((await exportDesign(data, 'Hinge', 'fold', base, output, true)).content));
+  expect(file['oriedita:texts_text']).toEqual([texts[0].text]);
+  expect(file['oriedita:texts_coords']).toEqual(ordinary['oriedita:texts_coords']);
+  expect(file.edges_foldAngle).toContain(70);
+  expect(file.file_frames.filter((f: Record<string, unknown>) => 'oristudio:folded3d' in f)).toHaveLength(1);
+  if (source === 'canvas annotation') {
+    expect(file['test:metadata']).toEqual({ keep: true });
+    expect(file.file_frames.filter((f: Record<string, unknown>) => f.frame_title === 'Foreign frame')).toEqual([foreign]);
+  }
+});
 
 it('poses actual CP geometry, maps face diagnostics to source creases, and saves a restartable figure without mutating the source', async () => {
   const data = await importDesign('crease_pattern', 'fold', JSON.stringify(hinge), 'Hinge');
@@ -64,6 +91,24 @@ it('refuses unassigned source structure rather than quietly omitting it from a s
   const data = await importDesign('crease_pattern', 'fold', JSON.stringify({ ...hinge, edges_assignment: ['B', 'B', 'B', 'B', 'U'] }), 'Unassigned');
   await expect(staticPose(transport.cp as Remote<OristudioCpWorkerApi>, data, [], 1, signal())).rejects.toMatchObject({ code: 'unassigned_pose' });
   await expect(staticPose(transport.cp as Remote<OristudioCpWorkerApi>, data, [{ line_id: 1, assignment: 'valley', angle: 60 }], 1, signal())).rejects.toMatchObject({ code: 'invalid_reference' });
+});
+
+it('retains captured native frames beside a new pose and still warns about unrestored imported frames', async () => {
+  const original = await importDesign('crease_pattern', 'fold', JSON.stringify(hinge), 'Hinge');
+  if (original.kind !== 'crease_pattern') throw new Error('Expected CP');
+  const first = await staticPose(transport.cp as Remote<OristudioCpWorkerApi>, original, [{ line_id: 5, assignment: 'valley', angle: 70 }], 1, signal());
+  const frames = first.pose!.fold.file_frames!.filter(f => 'oristudio:folded3d' in f);
+  const captured = { ...original, foldedFormFrames: frames };
+  const next = await staticPose(transport.cp as Remote<OristudioCpWorkerApi>, captured, [{ line_id: 5, assignment: 'valley', angle: 120 }], 1, signal());
+  const exported = await exportDesign(captured, 'Poses', 'fold', undefined, next);
+  const file = JSON.parse(String(exported.content));
+  expect(file.file_frames.filter((f: Record<string, unknown>) => 'oristudio:folded3d' in f)).toHaveLength(2);
+  expect(file.file_frames).toContainEqual(frames[0]);
+  expect(file.edges_foldAngle).toContain(120);
+  const imported = await importDesign('crease_pattern', 'fold', JSON.stringify(first.pose!.fold), 'Unrestored native frame');
+  const pose = await staticPose(transport.cp as Remote<OristudioCpWorkerApi>, imported, [{ line_id: 5, assignment: 'valley', angle: 120 }], 1, signal());
+  await expect(exportDesign(imported, 'Imported pose', 'fold', undefined, pose)).rejects.toMatchObject({ code: 'export_loss_confirmation_required',
+    details: { losses: expect.arrayContaining([{ id: 'unrestoredNativeFrames', count: 1, blocking: false }]) } });
 });
 
 it('searches reproducible bounded TreeMaker layouts with actual optimizer/build and exact source anchors', async () => {

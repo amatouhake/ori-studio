@@ -2,8 +2,8 @@ import { poseFigure } from './posePublication';
 import { diagnosticCp, designSvg } from './diagnosticRender';
 import { poseView } from './poseRender';
 import { sourceNodes } from './sourceProvenance';
-import { draftContent, describeDraft, portableProposal, PROPOSAL_KEY, PROPOSALS_KEY, type Draft, type DesignBrief, type DraftContent, type DraftSummary } from './proposals';
-import { restoreProposal } from './proposalRestore';
+import { capturedSourceProposal, draftContent, describeDraft, portableProposal, PROPOSAL_KEY, PROPOSALS_KEY, type Draft, type DesignBrief, type DraftContent, type DraftSummary } from './proposals';
+import { restoreCapturedSourceContext, restoreProposal } from './proposalRestore';
 import { designPaper, assertPaperReport } from './paper';
 import type { PoseAngle } from './pose';
 import { bpDocumentSymmetry } from '../lib/bpTreeSymmetry';
@@ -244,7 +244,9 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
         const metadata = data.document.metadata;
         savedProposal = metadata?.[PROPOSAL_KEY] ?? (metadata?.['oristudio:fold:file'] as Record<string, unknown> | undefined)?.[PROPOSAL_KEY];
       }
-      const restored = await restoreProposal(savedProposal, data, deps.engines);
+      const restored = data.kind !== 'crease_pattern' && args.source === 'active' && savedProposal === undefined
+        ? await restoreCapturedSourceContext(base.document?.document.metadata?.[PROPOSAL_KEY], data, deps.engines)
+        : await restoreProposal(savedProposal, data, deps.engines);
       if (restored.brief && args.brief && JSON.stringify(restored.brief) !== JSON.stringify(args.brief)) throw new AutomationError('brief_conflict', 'Saved constraints cannot be silently replaced. Continue with the saved brief and discuss a changed task with the user.');
       active();
       return result(describe(add(data, title, base, args.source === 'active', { ...restored, brief: restored.brief ?? args.brief as DesignBrief | undefined })));
@@ -282,7 +284,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
         ...(args.checkpoint_id ? { checkpoint_id: String(args.checkpoint_id) } : {}),
         ...(args.job_id ? { job_id: String(args.job_id), candidate_index: candidate ? Number(args.candidate_index ?? 0) : undefined } : {}) };
       const inherited = [...jobs.values()].filter(j => !args.from_source && j.draftId === d.id && j.status === 'completed' &&
-        (args.job_id ? j.id === args.job_id && !!output?.pose : j.revision === (checkpoint?.revision ?? d.revision)));
+        (args.job_id ? j.id === args.job_id && !!output?.pose : checkpoint ? checkpoint.jobIds.includes(j.id) : j.revision === d.revision));
       if (jobs.size + inherited.length > LIMITS.jobs) throw new AutomationError('resource_limit', 'Discard an old proposal to make room for inherited evidence');
       const child = add(content.data, String(args.title), d.base, d.preserveCompanions, content);
       for (const job of inherited) {
@@ -315,7 +317,8 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
     if (name === 'checkpoint_design') {
       writable(d, actor);
       if (d.checkpoints.size >= LIMITS.checkpoints) throw new AutomationError('resource_limit', 'Checkpoint limit reached');
-      const id = crypto.randomUUID(); d.checkpoints.set(id, { label: String(args.label), ...draftContent(d), revision: d.revision });
+      const id = crypto.randomUUID(); d.checkpoints.set(id, { label: String(args.label), ...draftContent(d), revision: d.revision,
+        jobIds: [...jobs.values()].filter(j => j.draftId === d.id && j.revision === d.revision && j.status === 'completed').map(j => j.id) });
       activity(d, 'checkpoint');
       return result({ ...describe(d), checkpoint_id: id });
     }
@@ -381,15 +384,20 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       unchangedAuthority();
       if (args.include_source && !d.source) throw new AutomationError('source_unavailable', 'This proposal has no captured source design');
       if (d.data.kind === 'crease_pattern') {
-        const output = adoptedPose(d);
+        const output = args.job_id ? artifacts(d, args.job_id) : adoptedPose(d);
         const figure = poseFigure(d.data, output, d.title);
+        if (args.job_id && !figure) throw new AutomationError('artifact_unavailable', 'Publication requires a placed pose with angles already adopted into this draft');
+        const proposal = portableProposal(describe(d), d.source);
         const document = { ...d.data.document, metadata: { ...d.data.document.metadata,
-          [PROPOSAL_KEY]: portableProposal(describe(d), d.source) } };
+          [PROPOSAL_KEY]: proposal } };
         checkSize({ ...d.data, document });
-        const revision = await state().commitCpExperiment(document, d.base, String(args.label), () => !disposed && !signal.aborted && d.authority === authority && drafts.has(d.id), args.include_source || figure ? { source: args.include_source ? d.source : undefined, figure } : undefined);
+        const revision = await state().commitCpExperiment(document, d.base, String(args.label), () => !disposed && !signal.aborted && d.authority === authority && drafts.has(d.id), args.include_source || figure ? {
+          source: args.include_source ? d.source : undefined, sourceProposal: args.include_source ? capturedSourceProposal(proposal) : undefined, figure,
+        } : undefined);
         d.base = captureCpExperimentBase(state());
         return result({ ...describe(d), committed: true, live_revision: revision, source_design_id: args.include_source ? state().activeDesignId : undefined, undo_label: args.label });
       }
+      if (args.job_id) throw new AutomationError('wrong_design_kind', 'A pose publication requires a crease pattern');
       const id = state().publishDesignExperiment(d.data.kind === 'treemaker' ? 'treemaker' : 'box-pleat', d.data.text, d.title, d.data.kind === 'box_pleat' ? d.data.viewState : undefined, portableProposal(describe(d)));
       return result({ ...describe(d), committed: true, design_id: id });
     }

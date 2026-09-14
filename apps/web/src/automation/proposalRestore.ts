@@ -7,6 +7,16 @@ import { validateBpDocumentSymmetry } from '../lib/bpTreeSymmetry';
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 
+function historicalEvidence(summary: Record<string, unknown>): unknown {
+  const previous = summary.prior_evidence;
+  const current = summary.evidence;
+  if (previous == null) return current;
+  // A no-check resave does not add another empty generation. Unknown report
+  // shapes are preserved; only the known empty-runs representation is skipped.
+  if (current == null || (record(current) && Array.isArray(current.runs) && current.runs.length === 0)) return previous;
+  return [...(Array.isArray(previous) ? previous : [previous]), current];
+}
+
 /** A saved report has no authority: restore intent and source data, then rerun
  * checks at the new revision. Reject damaged intent instead of dropping it. */
 export async function restoreProposal(value: unknown, data: DesignData, api: typeof engines): Promise<Partial<DraftContent>> {
@@ -34,5 +44,17 @@ export async function restoreProposal(value: unknown, data: DesignData, api: typ
   return { brief: (summary.brief ?? undefined) as DesignBrief | undefined, source,
     origin: typeof summary.draft_id === 'string' && Number.isSafeInteger(summary.revision) && Number(summary.revision) >= 0
       ? { draft_id: summary.draft_id, revision: Number(summary.revision), relation: 'fork' } : undefined,
-    priorEvidence: summary.evidence };
+    priorEvidence: historicalEvidence(summary) };
+}
+
+/** Older derived OSFs stored context only on the CP. Recover it for the source
+ * only when the active design model exactly matches that captured source;
+ * never attach a nearby CP's constraints or reports to an unrelated design. */
+export async function restoreCapturedSourceContext(value: unknown, data: DesignData, api: typeof engines): Promise<Partial<DraftContent>> {
+  if (data.kind === 'crease_pattern' || !record(value) || !record(value.source) || !record(value.source.data) ||
+    value.source.data.kind !== data.kind || typeof value.source.data.text !== 'string' ||
+    !await api.matchesSourceText(data, value.source.data.text)) return {};
+  const context = await restoreProposal(value, data, api);
+  const source = context.source!; // restoreProposal validates a present source.
+  return { brief: context.brief, origin: { draft_id: source.draft_id, revision: source.revision, relation: 'fork' } };
 }

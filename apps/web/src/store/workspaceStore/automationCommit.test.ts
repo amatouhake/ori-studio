@@ -46,8 +46,11 @@ describe('application publication', () => {
       else allowed = false;
       return prepared;
     });
-    await expect(before.commitCpExperiment(next.document, captureCpExperimentBase(before), 'Related proposal', () => allowed, { source })).rejects.toMatchObject({ code: outcome === 'conflict' ? 'conflict' : 'disconnected' });
+    await expect(before.commitCpExperiment(next.document, captureCpExperimentBase(before), 'Related proposal', () => allowed, { source,
+      sourceProposal: { version: 1, summary: { draft_id: source.draft_id, revision: source.revision, brief: { goal: 'Keep these constraints' } } },
+    })).rejects.toMatchObject({ code: outcome === 'conflict' ? 'conflict' : 'disconnected' });
     expect(useWorkspaceStore.getState().designTabs).toBe(before.designTabs);
+    expect(useWorkspaceStore.getState().nativeProjectExtensions).toBe(before.nativeProjectExtensions);
     expect(useWorkspaceStore.getState().oristudioCpHistoryPast).toBe(before.oristudioCpHistoryPast);
     expect(prepared.install).not.toHaveBeenCalled();
     expect(prepared.discard).toHaveBeenCalledOnce();

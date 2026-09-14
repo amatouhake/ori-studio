@@ -57,7 +57,8 @@ try {
   await mutate('discard_design', continued); drafts.delete(continued.draft_id);
   const hinge = await call('begin_design', { kind: 'crease_pattern', source: 'import', format: 'fold', title: 'Diagonal pose study',
     brief: { goal: 'Try a raised diagonal fold', paper: { shape: 'square', sheets: 1 } }, request_id: randomUUID(),
-    content: JSON.stringify({ vertices_coords: [[0, 0], [1, 0], [1, 1], [0, 1]], edges_vertices: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]], edges_assignment: ['B', 'B', 'B', 'B', 'V'], edges_foldAngle: [0, 0, 0, 0, 90] }) });
+    content: JSON.stringify({ vertices_coords: [[0, 0], [1, 0], [1, 1], [0, 1]], edges_vertices: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]], edges_assignment: ['B', 'B', 'B', 'B', 'V'], edges_foldAngle: [0, 0, 0, 0, 90],
+      'oriedita:texts_coords': [[0.2, 0.3]], 'oriedita:texts_text': ['Pose study note'] }) });
   assert.equal((await job('analyze_design', hinge, { analysis: 'paper' })).result.contract_met, true);
   const pose = await job('pose_design', hinge, { angles: [{ line_id: 5, assignment: 'valley', angle: 70 }] });
   assert.equal(pose.result.status, 'placed');
@@ -73,14 +74,23 @@ try {
   const file = await call('export_design', { ...address(adopted), format: 'osf' });
   assert.equal(JSON.parse(file.content).workspace.creasePattern.viewState.foldedFigures.length, 1);
   await writeFile(resolve(out, 'raised-diagonal.osf'), file.content);
-  await mutate('commit_design', adopted, { label: 'Adopted static pose' });
+  const fold = await call('export_design', { ...address(adopted), format: 'fold' });
+  assert.deepEqual(JSON.parse(fold.content)['oriedita:texts_text'], ['Pose study note']);
+  const chosenPose = adopted.evidence.runs.find(r => r.analysis === 'static_pose' && r.adopted);
+  assert(chosenPose);
+  await mutate('commit_design', adopted, { label: 'Adopted static pose', job_id: chosenPose.job_id });
   const clone = await call('begin_design', { kind: 'crease_pattern', source: 'active', request_id: randomUUID() });
   assert.equal(clone.brief.goal, 'Try a raised diagonal fold');
   assert.equal(clone.evidence.runs.length, 0);
   assert(clone.prior_evidence.runs.some(r => r.analysis === 'static_pose'));
+  await mutate('commit_design', clone, { label: 'Resaved historical proposal' });
+  const resaved = await call('begin_design', { kind: 'crease_pattern', source: 'active', request_id: randomUUID() });
+  assert.deepEqual(resaved.prior_evidence, clone.prior_evidence);
+  assert.equal(resaved.evidence.runs.length, 0);
   const status = { layout_candidates: layouts.result.candidates.length, source_anchors: cp.source.nodes.length,
     checkpoint: !!checkpoint.checkpoint_id, related_publication: !!related.source_design_id, pose: pose.result.status,
-    pose_verdict: pose.result.snapshot.verdict, restored_brief: true, historical_evidence: true };
+    pose_verdict: pose.result.snapshot.verdict, restored_brief: true, historical_evidence: true,
+    pinned_pose: true, posed_text_preserved: true, historical_resave: true };
   await writeFile(resolve(out, 'report.json'), JSON.stringify(status, null, 2));
   console.log('DESIGN LOOP PASSED', JSON.stringify(status));
 } finally {

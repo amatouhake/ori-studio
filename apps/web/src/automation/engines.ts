@@ -74,6 +74,19 @@ export async function importDesign(kind: DesignKind, format: string, text: strin
   throw new AutomationError('invalid_format', 'Use tmd5 for TreeMaker or bps for box pleating');
 }
 
+/** BP session captures include undo history; the design-tab codec omits it.
+ * Compare through that codec's serializer, without changing either document. */
+export async function matchesSourceText(data: Exclude<DesignData, CpData>, captured: string): Promise<boolean> {
+  if (data.text === captured) return true;
+  if (data.kind !== 'box_pleat') return false;
+  const api = await connectEngine('oristudio-bp');
+  const model = async (text: string) => {
+    const h = await api.loadProject(text);
+    try { return await api.exportBps(h); } finally { await api.freeProject(h); }
+  };
+  return await model(data.text) === await model(captured);
+}
+
 function line(input: Operation): OristudioCpLineSegment {
   return { a: input.a as Point, b: input.b as Point, color: COLORS[String(input.assignment)], active: 'Inactive0', selected: 0, customized: 0,
     customized_color: { red: 100, green: 200, blue: 200 },

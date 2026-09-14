@@ -21,7 +21,11 @@ The existing new-CP square is a starting geometry, not a universal rule.
 layout candidate, a pose job's proposed crease angles, or a derived CP's
 captured source (`from_source: true`). Each fork has its own revision, jobs and
 publication authority. The parent remains available. A named checkpoint fixes
-content and provenance; it does not retain a running worker or its trajectory.
+content, provenance and the completed-job set at that step; it does not retain
+a running worker or its trajectory. **Save step** on a displayed unadopted pose
+first creates an adopted variant, leaving the input CP unchanged. Review
+approval waits for the matching job's image, including successive poses at the
+same CP revision.
 
 **Keep** exempts a proposal from idle expiry for this enabled session. **Reject**
 discards that proposal and cancels its app job. Neither deletes descendants:
@@ -101,6 +105,9 @@ Final-form symmetry and source-layout symmetry remain separate judgments.
 ## Publication, save and restoration
 
 `commit_design` retains its live-base conflict check and one-action CP history.
+An optional `job_id` pins a placed pose whose angles are already adopted into
+that CP. A mismatched or unadopted pose is refused; omitting the argument keeps
+the existing matching-pose default.
 With `include_source: true`, a derived CP and its captured source design tab are
 prepared and published in one store transaction. Observers cannot see just
 half of that publication. A matching adopted static pose publishes with the CP
@@ -113,7 +120,15 @@ OSF preserves the selected proposal's brief, lineage, scoped report summary,
 captured source and supported static pose. The source is a normal design entry;
 the CP/pose use existing project fields. Proposal metadata uses version 1 under
 `oristudio:agent-proposal`, or `oristudio:agent-proposals` keyed by design ID for
-source-only files. Unknown project extensions retain their existing behavior.
+source design entries. Unknown project extensions retain their existing behavior.
+Related source tabs carry their own brief and source identity under their
+design ID; CP checks are not transferred as source validation. Historical
+reports are saved separately from current reports and survive repeated resaves.
+Older derived OSFs can recover the source brief from CP metadata when the active
+source model matches its captured snapshot (BPS undo history may differ). If
+the source has changed, continue through the CP's captured source explicitly;
+the app does not guess a relationship between different designs.
+
 FOLD can carry a static pose frame; simulation OBJ exports the simulated mesh.
 OSF does not archive simulation trajectories or the whole session's proposals.
 
