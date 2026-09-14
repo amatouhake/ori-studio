@@ -57,6 +57,8 @@ function deps(): FoldedFigureActionDeps {
     resetView: () => {},
     setUpright: () => {},
     setDisplayStyle: () => {},
+    updateModel: () => {},
+    endModelGesture: () => {},
     foldAnother: () => {},
     duplicate: () => {},
     remove: () => {},

@@ -43,6 +43,12 @@ export function foldedFigureActionIconNode(
       return <Axis3d size={size} />;
     case 'style':
       return <Layers size={size} />;
+    case 'display-style':
+      return <Layers size={size} />;
+    // Side has no glyph: the row reads as a word, and it never sits on a bar
+    // where an icon would be the only thing shown.
+    case 'side':
+      return null;
     case 'another':
       return <ChevronRight size={size} />;
     // Rewind-to-start, so the wrap at the end of a lap reads as what it is.

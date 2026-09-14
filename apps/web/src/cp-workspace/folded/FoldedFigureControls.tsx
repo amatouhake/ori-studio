@@ -134,7 +134,14 @@ export function FoldedFigureControls({
           ))}
         </select>
       </label>
-      <div className="folded-figure-menu__field folded-figure-menu__field--segmented">
+      <div
+        className="folded-figure-menu__field folded-figure-menu__field--segmented"
+        title={
+          activeFigure && !foldedAppearanceEnabled(activeFigure, 'side')
+            ? t('panels:foldedFigureActions.sideUnsupported3d', 'Turn a 3D model with Other side')
+            : undefined
+        }
+      >
         <span>{t('panels:creasePattern.side', 'Side')}</span>
         {/* The value is the kernel's full state, not just the two offered
             sides: a figure loaded from Oriedita in an overlay state keeps
@@ -147,7 +154,9 @@ export function FoldedFigureControls({
             label: foldedStateLabel(t, value),
           }))}
           value={model?.state ?? 'Front0'}
-          disabled={!modelReady}
+          disabled={
+            !modelReady || (activeFigure ? !foldedAppearanceEnabled(activeFigure, 'side') : false)
+          }
           onChange={(state) => onModelUpdate({ state })}
         />
       </div>
