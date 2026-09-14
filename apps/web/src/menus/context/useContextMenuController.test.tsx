@@ -252,9 +252,7 @@ describe('native context menu ownership', () => {
 
   it('does not arm on an empty request, which opened nothing', () => {
     press();
-    act(() =>
-      controller?.request(request({ nativeContextMenuPending: true, build: () => [] }))
-    );
+    act(() => controller?.request(request({ nativeContextMenuPending: true, build: () => [] })));
 
     expect(isNativeContextMenuClaimed()).toBe(false);
     expect(nativeMenuPrevented()).toBe(false);
@@ -332,6 +330,56 @@ describe('native context menu ownership', () => {
     other.remove();
     expect(isNativeContextMenuClaimed()).toBe(true);
     expect(nativeMenuPrevented()).toBe(true);
+  });
+
+  it('claims for the second right press of a chord, after the first was served', () => {
+    // right-down, left-down, right-up, right-down, left-up, right-up on the
+    // canvas, under release-time ordering. Chorded transitions are
+    // `pointermove`s carrying `button`, as measured in Chromium 148; the
+    // first press's native menu must not make the second look served.
+    const move = (button: number, buttons: number) =>
+      document.body.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, button, buttons, pointerType: 'mouse' })
+      );
+    press();
+    move(0, 3);
+    move(2, 1);
+    expect(nativeMenuPrevented()).toBe(false);
+    move(2, 3);
+    move(0, 2);
+    document.body.dispatchEvent(
+      new PointerEvent('pointerup', { bubbles: true, button: 2, buttons: 0, pointerType: 'mouse' })
+    );
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
+
+    expect(isNativeContextMenuClaimed()).toBe(true);
+    expect(nativeMenuPrevented(document.documentElement)).toBe(true);
+    expect(controller?.open).toBe(true);
+  });
+
+  it('claims for a right press during which a keyboard menu was taken elsewhere', () => {
+    // Hold right on the canvas, focus a field, Shift+F10, Escape, release.
+    const input = document.createElement('input');
+    document.body.append(input);
+    const key = (k: string) =>
+      input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: k }));
+    press();
+    key('Shift');
+    key('F10');
+    // The keyboard-raised menu carries button -1 (Chromium 148) and is native.
+    const keyboardMenu = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      button: -1,
+    });
+    input.dispatchEvent(keyboardMenu);
+    expect(keyboardMenu.defaultPrevented).toBe(false);
+    key('Escape');
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
+
+    expect(isNativeContextMenuClaimed()).toBe(true);
+    expect(nativeMenuPrevented(document.documentElement)).toBe(true);
+    input.remove();
   });
 
   it('lets a claim no event matched expire with the next press', () => {
