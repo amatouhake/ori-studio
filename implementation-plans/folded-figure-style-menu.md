@@ -309,9 +309,9 @@ three colour items and one checkbox, in that order.
 - `ANALYTICS_EVENTS.foldedFigureStyled = 'folded figure styled'`, properties
   `option` (`display_style | side | front_color | back_color | line_color |
   shadow`) and `figure_kind` (`flat | 3d`). Fired from the hook's model-write
-  bindings **once per committed change**: discrete options on the call, colours
-  at `endModelGesture` — never per pointer move, and never with the colour,
-  which is the user's work. A pure `foldedFigureStyleOptions(update)` helper
+  bindings **once per adjustment**: discrete options on the call, a colour drag
+  when it opens — never per pointer move, and never with the colour, which is
+  the user's work. A pure `foldedFigureStyleOptions(update)` helper
   maps a model patch to option names and is the unit-tested piece, since
   `useFoldedFigures` has no test harness. Row in `docs/analytics.md`.
 - i18n per `apps/web/CLAUDE.md`: inline defaults, `npm run i18n:extract`, the
@@ -382,30 +382,31 @@ Two pull requests: Phases 1–3 and 5 first, with the viewport-bar dropdown left
 in place; Phase 4 only after the menu has been used (De-risking §3).
 
 ### Phase 1 — Catalog
-- [ ] `group` / `color` / `toggle` kinds; Style group in the display-style slot
-- [ ] `updateModel` / `endModelGesture` on `FoldedFigureActionDeps`
-- [ ] `foldedFigureModel(figure)` in `foldedFigureState.ts`
-- [ ] `foldedModelGestureLedger.ts` (+ test); open scope closed by the next
+- [x] `group` / `color` / `toggle` kinds; Style group in the display-style slot
+- [x] `updateModel` / `endModelGesture` on `FoldedFigureActionDeps`
+- [x] `foldedFigureModel(figure)` in `foldedFigureState.ts`
+- [x] `foldedModelGestureLedger.ts` (+ test); open scope closed by the next
       gesture; idempotent commit
-- [ ] Side `'unsupported'` on 3D in `foldedFigureAppearance.ts`; test updated
-- [ ] Catalog tests listed under Phase 1
+- [x] Side `'unsupported'` on 3D in `foldedFigureAppearance.ts`; test updated
+- [x] Catalog tests listed under Phase 1
 
 ### Phase 2 — Menu primitives
-- [ ] `checkbox` and `color` item kinds in `contextMenuTypes.ts`
-- [ ] `ContextMenuColorItem`: hidden input over the swatch, `showPicker` →
+- [x] `checkbox` and `color` item kinds in `contextMenuTypes.ts`
+- [x] `ContextMenuColorItem`: hidden input over the swatch, `showPicker` →
       `click` fallback, commit on blur and on unmount, keys left to Radix
-- [ ] `radio.keepOpen`
-- [ ] `renderContextMenuItems` exported
-- [ ] Swatch and overlay styles
-- [ ] `ContextMenu.test.tsx` cases listed under Phase 2
+- [x] `radio.keepOpen`
+- [x] `renderContextMenuItems` exported
+- [x] Swatch and overlay styles
+- [x] `ContextMenu.test.tsx` cases listed under Phase 2
 
 ### Phase 3 — Surfaces
-- [ ] `styleMenuItems` / `choiceMenuItem`; `group` → Style ▸ submenu
-- [ ] Toolbar `GroupMenu` behind the paintbrush; `ChoiceMenu` on the shared
+- [x] `styleMenuItems` / `choiceMenuItem`; `group` → Style ▸ submenu
+- [x] Toolbar `GroupMenu` behind the paintbrush; `ChoiceMenu` on the shared
       renderer
-- [ ] Icons: `style` → `Paintbrush`, `display-style` → `Layers`
-- [ ] Hook deps gain the figure-addressed pair; active-bound trio removed
-- [ ] Test fixtures and toolbar / menu-item tests listed under Phase 3
+- [x] Icons: `style` → `Paintbrush`, `display-style` → `Layers`
+- [x] Hook deps gain the figure-addressed pair (the active-bound trio stays
+      until Phase 4 — the dropdown still binds it)
+- [x] Test fixtures and toolbar / menu-item tests listed under Phase 3
 
 ### Phase 4 — Retire the viewport-bar surface
 - [ ] `FoldedFigureMenuButton`, phone overflow item, `foldedModalOpen`, modal
@@ -416,10 +417,10 @@ in place; Phase 4 only after the menu has been used (De-risking §3).
 - [ ] Orphaned keys removed from all 9 locales, each grep-verified
 
 ### Phase 5 — Analytics, i18n, validation
-- [ ] `folded figure styled` event + `foldedFigureStyleOptions` helper (+ test);
+- [x] `folded figure styled` event + `foldedFigureStyleOptions` helper (+ test);
       `docs/analytics.md` row
-- [ ] `i18n:extract`, 8 locales, `i18n:stamp`, `i18n:check`
-- [ ] `lint:web`, `typecheck:web`, `test:web`
+- [x] `i18n:extract`, 8 locales, `i18n:stamp`, `i18n:check`
+- [x] `lint:web`, `typecheck:web`, `test:web`
 - [ ] Browser pass, flat and 3D, per the list under Phase 5 and the De-risking gates
 - [ ] Desktop shell pass for the native picker under WKWebView
 

@@ -1769,7 +1769,6 @@
     "panels:explori.viewportControls": "aafa42c75ac1",
     "panels:foldedFigureActions.anotherSolution": "7e041d61a730",
     "panels:foldedFigureActions.delete": "e2d0a54968ea",
-    "panels:foldedFigureActions.displayStyle": "d084240fc2f2",
     "panels:foldedFigureActions.duplicate": "02cdaabfca80",
     "panels:foldedFigureActions.export": "4a4c59c5208e",
     "panels:foldedFigureActions.exportPng": "6ef9788d38d3",
@@ -2809,7 +2808,11 @@
     "panels:treeEditor.contextMenu.pairAllNone": "229a002767d8",
     "panels:bpSymmetry.problem.axisOffCentre": "aca4720348b3",
     "panels:bpSymmetry.problem.notAMirror": "df53cd4703ad",
-    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7"
+    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7",
+    "panels:foldedFigureActions.renderAs": "b696ffa72558",
+    "panels:foldedFigureActions.side": "630ef00b7c4f",
+    "panels:foldedFigureActions.sideUnsupported3d": "d0fcca756b81",
+    "panels:foldedFigureActions.style": "7e744141b40e"
   },
   "es": {
     "common:cancel": "19766ed6ccb2",
@@ -4581,7 +4584,6 @@
     "panels:explori.viewportControls": "aafa42c75ac1",
     "panels:foldedFigureActions.anotherSolution": "7e041d61a730",
     "panels:foldedFigureActions.delete": "e2d0a54968ea",
-    "panels:foldedFigureActions.displayStyle": "d084240fc2f2",
     "panels:foldedFigureActions.duplicate": "02cdaabfca80",
     "panels:foldedFigureActions.export": "4a4c59c5208e",
     "panels:foldedFigureActions.exportPng": "6ef9788d38d3",
@@ -5621,7 +5623,11 @@
     "panels:treeEditor.contextMenu.pairAllNone": "229a002767d8",
     "panels:bpSymmetry.problem.axisOffCentre": "aca4720348b3",
     "panels:bpSymmetry.problem.notAMirror": "df53cd4703ad",
-    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7"
+    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7",
+    "panels:foldedFigureActions.renderAs": "b696ffa72558",
+    "panels:foldedFigureActions.side": "630ef00b7c4f",
+    "panels:foldedFigureActions.sideUnsupported3d": "d0fcca756b81",
+    "panels:foldedFigureActions.style": "7e744141b40e"
   },
   "fr": {
     "common:cancel": "19766ed6ccb2",
@@ -7393,7 +7399,6 @@
     "panels:explori.viewportControls": "aafa42c75ac1",
     "panels:foldedFigureActions.anotherSolution": "7e041d61a730",
     "panels:foldedFigureActions.delete": "e2d0a54968ea",
-    "panels:foldedFigureActions.displayStyle": "d084240fc2f2",
     "panels:foldedFigureActions.duplicate": "02cdaabfca80",
     "panels:foldedFigureActions.export": "4a4c59c5208e",
     "panels:foldedFigureActions.exportPng": "6ef9788d38d3",
@@ -8433,7 +8438,11 @@
     "panels:treeEditor.contextMenu.pairAllNone": "229a002767d8",
     "panels:bpSymmetry.problem.axisOffCentre": "aca4720348b3",
     "panels:bpSymmetry.problem.notAMirror": "df53cd4703ad",
-    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7"
+    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7",
+    "panels:foldedFigureActions.renderAs": "b696ffa72558",
+    "panels:foldedFigureActions.side": "630ef00b7c4f",
+    "panels:foldedFigureActions.sideUnsupported3d": "d0fcca756b81",
+    "panels:foldedFigureActions.style": "7e744141b40e"
   },
   "ja": {
     "common:cancel": "19766ed6ccb2",
@@ -10190,7 +10199,6 @@
     "panels:explori.viewportControls": "aafa42c75ac1",
     "panels:foldedFigureActions.anotherSolution": "7e041d61a730",
     "panels:foldedFigureActions.delete": "e2d0a54968ea",
-    "panels:foldedFigureActions.displayStyle": "d084240fc2f2",
     "panels:foldedFigureActions.duplicate": "02cdaabfca80",
     "panels:foldedFigureActions.export": "4a4c59c5208e",
     "panels:foldedFigureActions.exportPng": "6ef9788d38d3",
@@ -11194,7 +11202,11 @@
     "panels:treeEditor.contextMenu.pairAllNone": "229a002767d8",
     "panels:bpSymmetry.problem.axisOffCentre": "aca4720348b3",
     "panels:bpSymmetry.problem.notAMirror": "df53cd4703ad",
-    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7"
+    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7",
+    "panels:foldedFigureActions.renderAs": "b696ffa72558",
+    "panels:foldedFigureActions.side": "630ef00b7c4f",
+    "panels:foldedFigureActions.sideUnsupported3d": "d0fcca756b81",
+    "panels:foldedFigureActions.style": "7e744141b40e"
   },
   "ko": {
     "common:cancel": "19766ed6ccb2",
@@ -12951,7 +12963,6 @@
     "panels:explori.viewportControls": "aafa42c75ac1",
     "panels:foldedFigureActions.anotherSolution": "7e041d61a730",
     "panels:foldedFigureActions.delete": "e2d0a54968ea",
-    "panels:foldedFigureActions.displayStyle": "d084240fc2f2",
     "panels:foldedFigureActions.duplicate": "02cdaabfca80",
     "panels:foldedFigureActions.export": "4a4c59c5208e",
     "panels:foldedFigureActions.exportPng": "6ef9788d38d3",
@@ -13955,7 +13966,11 @@
     "panels:treeEditor.contextMenu.pairAllNone": "229a002767d8",
     "panels:bpSymmetry.problem.axisOffCentre": "aca4720348b3",
     "panels:bpSymmetry.problem.notAMirror": "df53cd4703ad",
-    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7"
+    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7",
+    "panels:foldedFigureActions.renderAs": "b696ffa72558",
+    "panels:foldedFigureActions.side": "630ef00b7c4f",
+    "panels:foldedFigureActions.sideUnsupported3d": "d0fcca756b81",
+    "panels:foldedFigureActions.style": "7e744141b40e"
   },
   "pt-BR": {
     "common:cancel": "19766ed6ccb2",
@@ -15727,7 +15742,6 @@
     "panels:explori.viewportControls": "aafa42c75ac1",
     "panels:foldedFigureActions.anotherSolution": "7e041d61a730",
     "panels:foldedFigureActions.delete": "e2d0a54968ea",
-    "panels:foldedFigureActions.displayStyle": "d084240fc2f2",
     "panels:foldedFigureActions.duplicate": "02cdaabfca80",
     "panels:foldedFigureActions.export": "4a4c59c5208e",
     "panels:foldedFigureActions.exportPng": "6ef9788d38d3",
@@ -16767,7 +16781,11 @@
     "panels:treeEditor.contextMenu.pairAllNone": "229a002767d8",
     "panels:bpSymmetry.problem.axisOffCentre": "aca4720348b3",
     "panels:bpSymmetry.problem.notAMirror": "df53cd4703ad",
-    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7"
+    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7",
+    "panels:foldedFigureActions.renderAs": "b696ffa72558",
+    "panels:foldedFigureActions.side": "630ef00b7c4f",
+    "panels:foldedFigureActions.sideUnsupported3d": "d0fcca756b81",
+    "panels:foldedFigureActions.style": "7e744141b40e"
   },
   "ru": {
     "common:cancel": "19766ed6ccb2",
@@ -18539,7 +18557,6 @@
     "panels:explori.viewportControls": "aafa42c75ac1",
     "panels:foldedFigureActions.anotherSolution": "7e041d61a730",
     "panels:foldedFigureActions.delete": "e2d0a54968ea",
-    "panels:foldedFigureActions.displayStyle": "d084240fc2f2",
     "panels:foldedFigureActions.duplicate": "02cdaabfca80",
     "panels:foldedFigureActions.export": "4a4c59c5208e",
     "panels:foldedFigureActions.exportPng": "6ef9788d38d3",
@@ -19579,7 +19596,11 @@
     "panels:treeEditor.contextMenu.pairAllNone": "229a002767d8",
     "panels:bpSymmetry.problem.axisOffCentre": "aca4720348b3",
     "panels:bpSymmetry.problem.notAMirror": "df53cd4703ad",
-    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7"
+    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7",
+    "panels:foldedFigureActions.renderAs": "b696ffa72558",
+    "panels:foldedFigureActions.side": "630ef00b7c4f",
+    "panels:foldedFigureActions.sideUnsupported3d": "d0fcca756b81",
+    "panels:foldedFigureActions.style": "7e744141b40e"
   },
   "zh-CN": {
     "common:cancel": "19766ed6ccb2",
@@ -21336,7 +21357,6 @@
     "panels:explori.viewportControls": "aafa42c75ac1",
     "panels:foldedFigureActions.anotherSolution": "7e041d61a730",
     "panels:foldedFigureActions.delete": "e2d0a54968ea",
-    "panels:foldedFigureActions.displayStyle": "d084240fc2f2",
     "panels:foldedFigureActions.duplicate": "02cdaabfca80",
     "panels:foldedFigureActions.export": "4a4c59c5208e",
     "panels:foldedFigureActions.exportPng": "6ef9788d38d3",
@@ -22340,6 +22360,10 @@
     "panels:treeEditor.contextMenu.pairAllNone": "229a002767d8",
     "panels:bpSymmetry.problem.axisOffCentre": "aca4720348b3",
     "panels:bpSymmetry.problem.notAMirror": "df53cd4703ad",
-    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7"
+    "panels:bpSymmetry.problem.unpaired": "d58d4f9339e7",
+    "panels:foldedFigureActions.renderAs": "b696ffa72558",
+    "panels:foldedFigureActions.side": "630ef00b7c4f",
+    "panels:foldedFigureActions.sideUnsupported3d": "d0fcca756b81",
+    "panels:foldedFigureActions.style": "7e744141b40e"
   }
 }
