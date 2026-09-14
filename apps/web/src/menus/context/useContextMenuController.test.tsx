@@ -184,38 +184,77 @@ describe('useContextMenuController', () => {
 });
 
 /**
- * The native menu that belongs to a pointer-raised request.
+ * Ownership of the native menu owed to a request raised at `pointerup`.
  *
- * Windows Chromium (Chrome, Edge, WebView2 alike) dispatches `contextmenu` on
- * right-button *release*, after the surface's `pointerup` has already opened
- * our menu — and once the modal menu has mounted, the event hit-tests to
- * `<html>` rather than the surface, so the surface's own listener never sees it
- * and both menus end up on screen. The controller is the point where a request
- * becomes an accepted menu, so it is where the native menu becomes ours to
- * suppress.
+ * Windows 11 Chromium (Chrome 152, Edge 153, WebView2 152) dispatches
+ * `contextmenu` on right-button *release*, after the crease-pattern canvas'
+ * `pointerup` has already opened our menu — and once the modal menu has
+ * mounted, the event hit-tests to `<html>` rather than the surface, so the
+ * surface's own listener never sees it and both menus end up on screen. The
+ * controller is the point where a request becomes an accepted menu, so it is
+ * where such a request claims its native menu. The event is played by hand
+ * here; where a real engine targets it is the manual check.
  */
 describe('native context menu ownership', () => {
-  it('lets native menus through while no pointer request is open', () => {
+  /** The canvas' press, so the guard sees a fresh gesture. */
+  function press(target: EventTarget = document.body): void {
+    target.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, button: 2, pointerType: 'mouse' })
+    );
+  }
+
+  it('lets native menus through while no request is open', () => {
+    press();
     expect(nativeMenuPrevented()).toBe(false);
   });
 
-  it('suppresses the native menu that follows an accepted pointer request', () => {
-    act(() => controller?.request(request()));
+  it('claims nothing for an ordinary pointer request, whose native menu is already over', () => {
+    // Every surface but the crease-pattern canvas raises its menu *from* the
+    // native `contextmenu` handler, after preventing it. `source` is still
+    // `'pointer'`; nothing is pending, and nothing may be claimed — or the
+    // next unrelated native menu would be eaten.
+    press();
+    act(() => controller?.request(request({ source: 'pointer' })));
 
-    // The Windows ordering, end to end: our menu is open, then the native
-    // event arrives at `<html>`. Ours stays; the native one is swallowed.
+    expect(controller?.open).toBe(true);
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    expect(nativeMenuPrevented()).toBe(false);
+  });
+
+  it('suppresses the native menu that follows a request with one pending', () => {
+    press();
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
+
+    // The release-time ordering, end to end: our menu is open, then the
+    // native event arrives at `<html>`. Ours stays; the native one is swallowed.
     expect(nativeMenuPrevented(document.documentElement)).toBe(true);
     expect(controller?.open).toBe(true);
   });
 
   it('suppresses exactly one — the next native menu after that is untouched', () => {
-    act(() => controller?.request(request()));
+    press();
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
     expect(nativeMenuPrevented()).toBe(true);
+    press();
     expect(nativeMenuPrevented()).toBe(false);
   });
 
+  it('claims nothing when the gesture already had its native menu before the request', () => {
+    // The press-time ordering: the surface's listener took the event on
+    // press, and the request at release has nothing left to own.
+    press();
+    expect(nativeMenuPrevented()).toBe(false);
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
+
+    expect(controller?.open).toBe(true);
+    expect(isNativeContextMenuClaimed()).toBe(false);
+  });
+
   it('does not arm on an empty request, which opened nothing', () => {
-    act(() => controller?.request(request({ build: () => [] })));
+    press();
+    act(() =>
+      controller?.request(request({ nativeContextMenuPending: true, build: () => [] }))
+    );
 
     expect(isNativeContextMenuClaimed()).toBe(false);
     expect(nativeMenuPrevented()).toBe(false);
@@ -230,6 +269,7 @@ describe('native context menu ownership', () => {
     act(() => controller?.onOpenChange(false));
     const input = document.createElement('input');
     document.body.append(input);
+    press(input);
     expect(nativeMenuPrevented(input)).toBe(false);
     input.remove();
   });
@@ -243,19 +283,22 @@ describe('native context menu ownership', () => {
   });
 
   it('releases the claim when the menu closes, either way', () => {
-    act(() => controller?.request(request()));
+    press();
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
     act(() => controller?.close());
     expect(isNativeContextMenuClaimed()).toBe(false);
     expect(nativeMenuPrevented()).toBe(false);
 
-    act(() => controller?.request(request()));
+    press();
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
     act(() => controller?.onOpenChange(false));
     expect(isNativeContextMenuClaimed()).toBe(false);
     expect(nativeMenuPrevented()).toBe(false);
   });
 
   it('releases the claim when the controller unmounts', () => {
-    act(() => controller?.request(request()));
+    press();
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
     expect(isNativeContextMenuClaimed()).toBe(true);
 
     act(() => root?.unmount());
@@ -264,17 +307,41 @@ describe('native context menu ownership', () => {
     expect(nativeMenuPrevented()).toBe(false);
   });
 
-  it('lets a stale claim expire with the next press rather than eat a later menu', () => {
-    // The other ordering: on macOS and Linux the gesture's `contextmenu` fired
-    // on press, before the request, so this claim never matches anything. It
-    // must not survive to swallow the native menu of the next right-click.
-    act(() => controller?.request(request()));
-    document.body.dispatchEvent(
-      new PointerEvent('pointerdown', { bubbles: true, button: 2, pointerType: 'mouse' })
-    );
-    expect(isNativeContextMenuClaimed()).toBe(false);
+  it("keeps one controller from dropping another controller's live claim", () => {
+    // Several surfaces mount a controller at once. A second one closing its
+    // own (empty) menu must not release the claim the first one holds.
+    const other = document.createElement('div');
+    document.body.append(other);
+    const otherRoot = createRoot(other);
+    let second: ContextMenuController | null = null;
+    function SecondProbe() {
+      const value = useContextMenuController('tree');
+      useEffect(() => {
+        second = value;
+      });
+      return null;
+    }
+    act(() => otherRoot.render(<SecondProbe />));
+
+    press();
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
+    act(() => second?.close());
+    expect(isNativeContextMenuClaimed()).toBe(true);
+
+    act(() => otherRoot.unmount());
+    other.remove();
+    expect(isNativeContextMenuClaimed()).toBe(true);
+    expect(nativeMenuPrevented()).toBe(true);
+  });
+
+  it('lets a claim no event matched expire with the next press', () => {
+    // No engine observed so far produces this; the net for one that does.
+    press();
+    act(() => controller?.request(request({ nativeContextMenuPending: true })));
     const input = document.createElement('input');
     document.body.append(input);
+    press(input);
+    expect(isNativeContextMenuClaimed()).toBe(false);
     expect(nativeMenuPrevented(input)).toBe(false);
     input.remove();
   });

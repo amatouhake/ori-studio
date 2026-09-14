@@ -58,13 +58,22 @@ export interface ContextMenuOpenRequest {
   targetKind: ContextMenuTargetKind;
   /** Whether the surface had a live selection when the menu was raised. */
   hasSelection: boolean;
-  /**
-   * How the menu was raised; `'pointer'` when omitted. Not only analytics: a
-   * pointer request also claims the gesture's native `contextmenu`, so it is
-   * suppressed wherever it lands (see `nativeContextMenuGuard`). A keyboard or
-   * touch request has no such event to claim and leaves native menus alone.
-   */
+  /** How the menu was raised; `'pointer'` when omitted. Analytics only. */
   source?: ContextMenuSource;
+  /**
+   * Whether the native `contextmenu` for the gesture behind this request may
+   * still be on its way, so that accepting the request must claim it.
+   *
+   * Off by default, because the ordinary surface raises its menu *from* the
+   * native `contextmenu` handler and has already called `preventDefault()`
+   * there: the event is over, and a claim would own nothing but the next
+   * unrelated menu. Set it only from a surface that raises its menu at
+   * `pointerup` instead — the crease-pattern canvas, which keeps right-drag
+   * for erase — where the native event arrives before or after the request
+   * depending on the engine. See `nativeContextMenuGuard` for what the claim
+   * does under each ordering. A keyboard or touch request never sets it.
+   */
+  nativeContextMenuPending?: boolean;
   /**
    * The rows, built on demand.
    *
@@ -129,9 +138,9 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
   const { t } = useTranslation();
   const [state, setState] = useState<ContextMenuState | null>(null);
   const deferFocusRef = useRef(false);
-  // The release for the native-menu claim of the open pointer-raised menu, if
-  // any. A ref rather than state: it is armed synchronously inside the
-  // surface's `pointerup` and must not wait for a render.
+  // The release for the open menu's native-menu claim, if it made one. A ref
+  // rather than state: it is armed synchronously inside the surface's
+  // `pointerup` and must not wait for a render.
   const releaseNativeClaimRef = useRef<(() => void) | null>(null);
   const releaseNativeClaim = useCallback(() => {
     releaseNativeClaimRef.current?.();
@@ -168,12 +177,11 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
       // right-click reads as the app being broken. Nothing opens, and nothing
       // is tracked, because no menu was raised.
       if (items.length === 0) return;
-      // Own the native context menu of the gesture that raised this. Only a
-      // pointer request has one: a keyboard chord or a touch path raises no
-      // release-time `contextmenu`, and a claim they made could only ever
-      // swallow someone else's. See `nativeContextMenuGuard`.
+      // Own the native context menu still owed to the gesture that raised
+      // this, when the surface says there may be one. See the field's doc and
+      // `nativeContextMenuGuard`.
       releaseNativeClaim();
-      if ((open.source ?? 'pointer') === 'pointer') {
+      if (open.nativeContextMenuPending) {
         releaseNativeClaimRef.current = claimNativeContextMenu();
       }
       setState({ x: open.clientX, y: open.clientY, items });

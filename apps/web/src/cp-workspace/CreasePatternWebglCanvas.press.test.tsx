@@ -382,10 +382,10 @@ describe('the canvas press pipeline the overlay hands presses back to', () => {
 /**
  * The right button's click-versus-drag split, at the wiring level. A click
  * raises the context menu *request*; a drag is the erase gesture and raises
- * nothing. The native `contextmenu` that Windows Chromium dispatches after the
- * click is suppressed by the controller that accepts the request — see
- * `menus/context/nativeContextMenuGuard` — which is why the request itself has
- * to be the thing that fires here and only here.
+ * nothing. Where an engine dispatches the native `contextmenu` after the click
+ * (observed on Windows 11 Chromium), it is the controller accepting that
+ * request that suppresses it — see `menus/context/nativeContextMenuGuard` —
+ * which is why the request has to fire here and only here.
  */
 describe('the right button', () => {
   function mountRight(
