@@ -378,8 +378,9 @@ three colour items and one checkbox, in that order.
 
 ## Checklist
 
-Two pull requests: Phases 1–3 and 5 first, with the viewport-bar dropdown left
-in place; Phase 4 only after the menu has been used (De-risking §3).
+Planned as two pull requests — Phases 1–3 and 5 first, Phase 4 after the menu
+had been used (De-risking §3) — and landed as one, at Zach's call after trying
+the menu on the dev server: the old dropdown and its code go with the same PR.
 
 ### Phase 1 — Catalog
 - [x] `group` / `color` / `toggle` kinds; Style group in the display-style slot
@@ -409,12 +410,12 @@ in place; Phase 4 only after the menu has been used (De-risking §3).
 - [x] Test fixtures and toolbar / menu-item tests listed under Phase 3
 
 ### Phase 4 — Retire the viewport-bar surface
-- [ ] `FoldedFigureMenuButton`, phone overflow item, `foldedModalOpen`, modal
+- [x] `FoldedFigureMenuButton`, phone overflow item, `foldedModalOpen`, modal
       mount removed from the panel
-- [ ] `FoldedFigureControls.tsx`, `FoldedFigureModal.tsx` deleted;
+- [x] `FoldedFigureControls.tsx`, `FoldedFigureModal.tsx` deleted;
       `foldedFigureControlOptions.ts` trimmed; `foldedFigureSubtitle` removed
-- [ ] `.folded-figure-menu*` / `.folded-figure-modal*` CSS removed
-- [ ] Orphaned keys removed from all 9 locales, each grep-verified
+- [x] `.folded-figure-menu*` / `.folded-figure-modal*` CSS removed
+- [x] Orphaned keys removed from all 9 locales, each grep-verified
 
 ### Phase 5 — Analytics, i18n, validation
 - [x] `folded figure styled` event + `foldedFigureStyleOptions` helper (+ test);
@@ -507,7 +508,8 @@ acceptance criterion.
 
 ### 3. Sequenced: the old surface stays until the new one is proven
 
-Land this as **two pull requests**, not one:
+*(Overtaken: after the browser pass Zach chose to land everything in one PR.
+Kept as the reasoning it was.)* Land this as **two pull requests**, not one:
 
 1. Phases 1–3 and 5: the Style menu on the toolbar and the context menu, with
    the viewport-bar dropdown and phone modal left exactly as they are. Both

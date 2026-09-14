@@ -7,7 +7,6 @@ import {
 } from '../../engine/oristudioCpTypes';
 import type {
   OristudioCpDocumentState,
-  OristudioCpFoldedFigureDisplayStyle,
   OristudioCpFoldedFigureEntry,
   OristudioCpFoldedFigureModel,
   FoldedFigurePlacement,
@@ -718,18 +717,6 @@ export function useFoldedFigures({ cpDocument, selectedFoldLineIds }: UseFoldedF
     t,
   ]);
 
-  const handleFoldedDisplayStyle = useCallback(
-    (displayStyle: OristudioCpFoldedFigureDisplayStyle) => {
-      if (!activeFoldedFigure) return;
-      const id = activeFoldedFigure.id;
-      runFoldedFigureAction(
-        t('panels:creasePattern.changeFoldedDisplayStyle', 'Change folded display style'),
-        () => setOristudioCpFoldedFigureDisplayStyle(id, displayStyle)
-      );
-    },
-    [activeFoldedFigure, setOristudioCpFoldedFigureDisplayStyle, runFoldedFigureAction, t]
-  );
-
   /**
    * Write part of a figure's model. The colour pickers fire a change per
    * pointer move, so a single drag would otherwise push dozens of undo entries.
@@ -789,21 +776,6 @@ export function useFoldedFigures({ cpDocument, selectedFoldLineIds }: UseFoldedF
       if (closed) commitFoldedFigureGesture(closed.label);
     },
     [commitFoldedFigureGesture, modelGestures]
-  );
-
-  /** The viewport bar's Folded models dropdown: the same write, bound to the active figure. */
-  const handleFoldedModelUpdate = useCallback(
-    (update: Partial<OristudioCpFoldedFigureModel>, scope?: string) => {
-      if (!activeFoldedFigure) return;
-      updateFoldedModel(
-        activeFoldedFigure,
-        update,
-        scope
-          ? { scope, label: t('panels:creasePattern.changeFoldedColor', 'Change folded model color') }
-          : undefined
-      );
-    },
-    [activeFoldedFigure, updateFoldedModel, t]
   );
 
   const handleDuplicateFoldedFigure = useCallback(() => {
@@ -1011,9 +983,6 @@ export function useFoldedFigures({ cpDocument, selectedFoldLineIds }: UseFoldedF
     gestureLabel: foldedGestureLabel,
     applyBoxUpdate: handleFoldedFigureBoxUpdate,
     foldModel: handleFoldModel,
-    setDisplayStyle: handleFoldedDisplayStyle,
-    updateModel: handleFoldedModelUpdate,
-    endModelGesture: endFoldedModelGesture,
     duplicate: handleDuplicateFoldedFigure,
     remove: handleDeleteFoldedFigure,
   };
