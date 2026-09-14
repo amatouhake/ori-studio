@@ -379,6 +379,80 @@ describe('the canvas press pipeline the overlay hands presses back to', () => {
  * has always ranked pan above the orbit and showed `grab` there, so this was a
  * cursor promising a gesture the press did not perform.
  */
+/**
+ * The right button's click-versus-drag split, at the wiring level. A click
+ * raises the context menu *request*; a drag is the erase gesture and raises
+ * nothing. The native `contextmenu` that Windows Chromium dispatches after the
+ * click is suppressed by the controller that accepts the request — see
+ * `menus/context/nativeContextMenuGuard` — which is why the request itself has
+ * to be the thing that fires here and only here.
+ */
+describe('the right button', () => {
+  function mountRight(
+    overrides: Partial<CreasePatternWebglCanvasProps>
+  ): HTMLCanvasElement {
+    act(() => root?.render(<CreasePatternWebglCanvas {...props()} {...overrides} />));
+    const canvas = container!.querySelector('canvas')!;
+    // The erase branch captures the pointer; jsdom has no active pointer.
+    canvas.setPointerCapture = () => {};
+    canvas.releasePointerCapture = () => {};
+    canvas.hasPointerCapture = () => true;
+    return canvas;
+  }
+
+  function rightButton(
+    type: 'pointerdown' | 'pointermove' | 'pointerup',
+    point: { clientX: number; clientY: number }
+  ): PointerEvent {
+    return new PointerEvent(type, {
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true,
+      button: type === 'pointermove' ? -1 : 2,
+      buttons: type === 'pointerup' ? 0 : 2,
+      cancelable: true,
+      ...point,
+    });
+  }
+
+  it('raises a menu request on a click over empty space, and erases nothing', () => {
+    const requests: unknown[] = [];
+    const erased: unknown[] = [];
+    const canvas = mountRight({
+      onRequestContextMenu: (request) => requests.push(request),
+      onEraseBox: (points) => erased.push(points),
+    });
+    const at = clientOf(50, 30);
+
+    act(() => {
+      canvas.dispatchEvent(rightButton('pointerdown', at));
+      canvas.dispatchEvent(rightButton('pointerup', at));
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ ...at, target: { kind: 'blank' } });
+    expect(erased).toEqual([]);
+  });
+
+  it('erases on a drag, and raises no menu request', () => {
+    const requests: unknown[] = [];
+    const erased: unknown[] = [];
+    const canvas = mountRight({
+      onRequestContextMenu: (request) => requests.push(request),
+      onEraseBox: (points) => erased.push(points),
+    });
+
+    act(() => {
+      canvas.dispatchEvent(rightButton('pointerdown', clientOf(-10, 80)));
+      canvas.dispatchEvent(rightButton('pointermove', clientOf(210, 120)));
+      canvas.dispatchEvent(rightButton('pointerup', clientOf(210, 120)));
+    });
+
+    expect(requests).toEqual([]);
+    expect(erased).toHaveLength(1);
+  });
+});
+
 describe('pan against a focused folded figure', () => {
   /** An orbit that claims every point, as a focused figure under the pointer does. */
   function orbitStub() {

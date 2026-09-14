@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ANALYTICS_EVENTS,
@@ -14,6 +14,7 @@ import { selectWorkspaceCapabilities } from '../../store/workspaceStore/capabili
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { runContextMenuAction } from './contextMenuRun';
 import type { ContextMenuActionContext } from './contextMenuActions';
+import { claimNativeContextMenu, installNativeContextMenuGuard } from './nativeContextMenuGuard';
 
 /**
  * How many rows a menu offered, bucketed.
@@ -57,6 +58,12 @@ export interface ContextMenuOpenRequest {
   targetKind: ContextMenuTargetKind;
   /** Whether the surface had a live selection when the menu was raised. */
   hasSelection: boolean;
+  /**
+   * How the menu was raised; `'pointer'` when omitted. Not only analytics: a
+   * pointer request also claims the gesture's native `contextmenu`, so it is
+   * suppressed wherever it lands (see `nativeContextMenuGuard`). A keyboard or
+   * touch request has no such event to claim and leaves native menus alone.
+   */
   source?: ContextMenuSource;
   /**
    * The rows, built on demand.
@@ -122,6 +129,21 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
   const { t } = useTranslation();
   const [state, setState] = useState<ContextMenuState | null>(null);
   const deferFocusRef = useRef(false);
+  // The release for the native-menu claim of the open pointer-raised menu, if
+  // any. A ref rather than state: it is armed synchronously inside the
+  // surface's `pointerup` and must not wait for a render.
+  const releaseNativeClaimRef = useRef<(() => void) | null>(null);
+  const releaseNativeClaim = useCallback(() => {
+    releaseNativeClaimRef.current?.();
+    releaseNativeClaimRef.current = null;
+  }, []);
+  useEffect(() => {
+    // Installed here, ahead of any gesture, rather than lazily at the first
+    // claim — so the listener the claim relies on is never the thing racing
+    // the event it is meant to catch.
+    installNativeContextMenuGuard();
+    return releaseNativeClaim;
+  }, [releaseNativeClaim]);
   // Subscribed, not read imperatively: a rebind has to change the hints on the
   // *next* menu, and the store is the only thing that says a rebind happened.
   const shortcutOverrides = useShortcutStore((store) => store.overrides);
@@ -146,6 +168,14 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
       // right-click reads as the app being broken. Nothing opens, and nothing
       // is tracked, because no menu was raised.
       if (items.length === 0) return;
+      // Own the native context menu of the gesture that raised this. Only a
+      // pointer request has one: a keyboard chord or a touch path raises no
+      // release-time `contextmenu`, and a claim they made could only ever
+      // swallow someone else's. See `nativeContextMenuGuard`.
+      releaseNativeClaim();
+      if ((open.source ?? 'pointer') === 'pointer') {
+        releaseNativeClaimRef.current = claimNativeContextMenu();
+      }
       setState({ x: open.clientX, y: open.clientY, items });
       track(ANALYTICS_EVENTS.contextMenuOpened, {
         surface,
@@ -158,14 +188,22 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
         ),
       });
     },
-    [surface]
+    [releaseNativeClaim, surface]
   );
 
-  const close = useCallback(() => setState(null), []);
+  const close = useCallback(() => {
+    releaseNativeClaim();
+    setState(null);
+  }, [releaseNativeClaim]);
 
-  const onOpenChange = useCallback((next: boolean) => {
-    if (!next) setState(null);
-  }, []);
+  const onOpenChange = useCallback(
+    (next: boolean) => {
+      if (next) return;
+      releaseNativeClaim();
+      setState(null);
+    },
+    [releaseNativeClaim]
+  );
 
   const deferFocus = useCallback(() => {
     deferFocusRef.current = true;

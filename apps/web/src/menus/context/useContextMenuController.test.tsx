@@ -3,6 +3,10 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContextMenuItem } from '../../components/ui/contextMenuTypes';
 import {
+  isNativeContextMenuClaimed,
+  resetNativeContextMenuGuardForTests,
+} from './nativeContextMenuGuard';
+import {
   useContextMenuController,
   type ContextMenuController,
   type ContextMenuOpenRequest,
@@ -61,7 +65,15 @@ afterEach(() => {
   controller = null;
   root = null;
   container = null;
+  resetNativeContextMenuGuardForTests();
 });
+
+/** Dispatch a cancelable native `contextmenu` at `target`; true if it was suppressed. */
+function nativeMenuPrevented(target: EventTarget = document.documentElement): boolean {
+  const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+  target.dispatchEvent(event);
+  return event.defaultPrevented;
+}
 
 describe('useContextMenuController', () => {
   it('starts closed and builds nothing', () => {
@@ -168,5 +180,102 @@ describe('useContextMenuController', () => {
     const secondPrevented = vi.spyOn(second, 'preventDefault');
     act(() => controller?.onCloseAutoFocus(second));
     expect(secondPrevented).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The native menu that belongs to a pointer-raised request.
+ *
+ * Windows Chromium (Chrome, Edge, WebView2 alike) dispatches `contextmenu` on
+ * right-button *release*, after the surface's `pointerup` has already opened
+ * our menu — and once the modal menu has mounted, the event hit-tests to
+ * `<html>` rather than the surface, so the surface's own listener never sees it
+ * and both menus end up on screen. The controller is the point where a request
+ * becomes an accepted menu, so it is where the native menu becomes ours to
+ * suppress.
+ */
+describe('native context menu ownership', () => {
+  it('lets native menus through while no pointer request is open', () => {
+    expect(nativeMenuPrevented()).toBe(false);
+  });
+
+  it('suppresses the native menu that follows an accepted pointer request', () => {
+    act(() => controller?.request(request()));
+
+    // The Windows ordering, end to end: our menu is open, then the native
+    // event arrives at `<html>`. Ours stays; the native one is swallowed.
+    expect(nativeMenuPrevented(document.documentElement)).toBe(true);
+    expect(controller?.open).toBe(true);
+  });
+
+  it('suppresses exactly one — the next native menu after that is untouched', () => {
+    act(() => controller?.request(request()));
+    expect(nativeMenuPrevented()).toBe(true);
+    expect(nativeMenuPrevented()).toBe(false);
+  });
+
+  it('does not arm on an empty request, which opened nothing', () => {
+    act(() => controller?.request(request({ build: () => [] })));
+
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    expect(nativeMenuPrevented()).toBe(false);
+  });
+
+  it('does not arm for a keyboard-raised menu', () => {
+    act(() => controller?.request(request({ source: 'keyboard' })));
+
+    expect(controller?.open).toBe(true);
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    // Close it, move on, right-click a text field: the native menu is intact.
+    act(() => controller?.onOpenChange(false));
+    const input = document.createElement('input');
+    document.body.append(input);
+    expect(nativeMenuPrevented(input)).toBe(false);
+    input.remove();
+  });
+
+  it('does not arm for a touch-raised menu', () => {
+    act(() => controller?.request(request({ source: 'touch' })));
+
+    expect(controller?.open).toBe(true);
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    expect(nativeMenuPrevented()).toBe(false);
+  });
+
+  it('releases the claim when the menu closes, either way', () => {
+    act(() => controller?.request(request()));
+    act(() => controller?.close());
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    expect(nativeMenuPrevented()).toBe(false);
+
+    act(() => controller?.request(request()));
+    act(() => controller?.onOpenChange(false));
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    expect(nativeMenuPrevented()).toBe(false);
+  });
+
+  it('releases the claim when the controller unmounts', () => {
+    act(() => controller?.request(request()));
+    expect(isNativeContextMenuClaimed()).toBe(true);
+
+    act(() => root?.unmount());
+
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    expect(nativeMenuPrevented()).toBe(false);
+  });
+
+  it('lets a stale claim expire with the next press rather than eat a later menu', () => {
+    // The other ordering: on macOS and Linux the gesture's `contextmenu` fired
+    // on press, before the request, so this claim never matches anything. It
+    // must not survive to swallow the native menu of the next right-click.
+    act(() => controller?.request(request()));
+    document.body.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, button: 2, pointerType: 'mouse' })
+    );
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    const input = document.createElement('input');
+    document.body.append(input);
+    expect(nativeMenuPrevented(input)).toBe(false);
+    input.remove();
   });
 });
