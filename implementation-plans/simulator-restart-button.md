@@ -37,12 +37,20 @@ the worker-side carry-over was enough for it and not for Refresh.
    rebuild does not report the error of a model that is gone.
 2. **One Restart control.** The panel's `restartSimulation` rewinds in place
    when the session is healthy (`runtime.reset()`, what Reset did) and rebuilds
-   through `refreshFoldArtifacts()` when it is not (what Refresh did). Disabled
-   while loading or with nothing loaded. The `R` key and the context-menu row
-   (`simulator.replay`) dispatch the same handler; the shortcut id is kept so
-   saved overrides still resolve, and its label becomes "Restart Simulation".
-3. **Drop the `simulator.refresh` capability.** Only the removed button read it.
-4. **i18n.** New `panels:simulator.restart`; reworded `tools:simulator.replay`;
+   through `refreshFoldArtifacts()` when it is not (what Refresh did) — and in
+   both cases puts the view back to its opening transform, so Restart means
+   "as if the simulation had just been opened". Disabled while loading or with
+   nothing loaded. The `R` key and the context-menu row (`simulator.replay`)
+   dispatch the same handler; the shortcut id is kept so saved overrides still
+   resolve, and its label becomes "Restart Simulation".
+3. **Cmd/Ctrl+arrow jumps, camera untouched.** `simulator.foldStart` and
+   `simulator.foldEnd` move from Shift+arrow to Cmd+←/→ — the start-of-line /
+   end-of-line idiom. `foldStart` is now a rewind (flat paper, solver at rest)
+   rather than a settle back to 0; `foldEnd` still folds to 100%. Neither
+   touches the view: they are the way to start over without losing the angle.
+   Inline windows share the verbs, so R there also resets the window's view.
+4. **Drop the `simulator.refresh` capability.** Only the removed button read it.
+5. **i18n.** New `panels:simulator.restart`; reworded `tools:simulator.replay`;
    removed `panels:simulator.refresh` / `reset` and the three
    `common:capability.refresh*` strings. Translated in all eight locales and
    stamped.
@@ -63,5 +71,6 @@ the worker-side carry-over was enough for it and not for Refresh.
 - [x] Remove the `simulator.refresh` capability
 - [x] i18n extract, translate the new/reworded strings in 8 locales, stamp
 - [x] Tests: runtime reload re-push; panel Restart branches; capability test
+- [x] Restart also resets the view; Cmd+←/→ jump either end and keep it
 - [x] Validation: lint, typecheck, i18n check, web unit tests
 - [x] Draft PR against `main` — #374
