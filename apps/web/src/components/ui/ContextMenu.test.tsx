@@ -158,4 +158,206 @@ describe('ContextMenu', () => {
     });
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
+
+  it('closes on a radio pick unless the item asks to stay open', () => {
+    const onOpenChange = vi.fn();
+    render(
+      true,
+      [
+        { kind: 'radio', id: 'wire', label: 'Wireframe', checked: false, onSelect: () => {} },
+        {
+          kind: 'radio',
+          id: 'xray',
+          label: 'X-ray',
+          checked: false,
+          keepOpen: true,
+          onSelect: () => {},
+        },
+      ],
+      onOpenChange
+    );
+    const [wire, xray] = menuItems();
+    act(() => {
+      xray?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    act(() => {
+      wire?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('gives a disabled submenu trigger its hint as a tooltip', () => {
+    render(true, [
+      {
+        kind: 'submenu',
+        id: 'side',
+        label: 'Side',
+        disabled: true,
+        hint: 'Turn a 3D model with Other side',
+        items: [],
+      },
+    ]);
+    const trigger = menuItems().find((element) => element.getAttribute('aria-haspopup') === 'menu');
+    expect(trigger?.getAttribute('title')).toBe('Turn a 3D model with Other side');
+  });
+
+  describe('checkbox', () => {
+    function checkboxes(): HTMLElement[] {
+      return Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'));
+    }
+
+    it('renders a check row, ticked when on', () => {
+      render(true, [
+        { kind: 'checkbox', id: 'shadow', label: 'Shadow', checked: true, onToggle: () => {} },
+        { kind: 'checkbox', id: 'alias', label: 'Anti-alias', checked: false, onToggle: () => {} },
+      ]);
+      const [shadow, alias] = checkboxes();
+      expect(shadow?.getAttribute('aria-checked')).toBe('true');
+      expect(shadow?.querySelector('.context-menu__icon')?.childElementCount).toBe(1);
+      expect(alias?.querySelector('.context-menu__icon')?.childElementCount).toBe(0);
+    });
+
+    it('toggles and leaves the menu open', () => {
+      const onToggle = vi.fn();
+      const onOpenChange = vi.fn();
+      render(
+        true,
+        [{ kind: 'checkbox', id: 'shadow', label: 'Shadow', checked: true, onToggle }],
+        onOpenChange
+      );
+      act(() => {
+        checkboxes()[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      expect(onToggle).toHaveBeenCalledTimes(1);
+      expect(onOpenChange).not.toHaveBeenCalled();
+    });
+
+    it('carries its hint as a tooltip when disabled', () => {
+      render(true, [
+        {
+          kind: 'checkbox',
+          id: 'shadow',
+          label: 'Shadow',
+          checked: false,
+          disabled: true,
+          hint: 'Shadows are not drawn for a 3D folded model yet',
+          onToggle: () => {},
+        },
+      ]);
+      expect(checkboxes()[0]?.getAttribute('title')).toBe(
+        'Shadows are not drawn for a 3D folded model yet'
+      );
+    });
+  });
+
+  describe('color', () => {
+    // React tracks the value it last set on the instance and ignores a change
+    // that lands through that same setter, so a test has to write the value
+    // the way the engine does — through the prototype — before it fires input.
+    function typeColor(input: HTMLInputElement, hex: string) {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      set?.call(input, hex);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function colorInput(): HTMLInputElement {
+      const input = document.querySelector<HTMLInputElement>('input[type="color"]');
+      if (!input) throw new Error('no colour input');
+      return input;
+    }
+
+    let showPicker: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      showPicker = vi.fn();
+      (HTMLInputElement.prototype as { showPicker?: () => void }).showPicker =
+        showPicker as unknown as () => void;
+    });
+    afterEach(() => {
+      delete (HTMLInputElement.prototype as { showPicker?: () => void }).showPicker;
+    });
+
+    function renderColor(overrides: { disabled?: boolean } = {}) {
+      const onChange = vi.fn();
+      const onCommit = vi.fn();
+      render(true, [
+        {
+          kind: 'color',
+          id: 'front',
+          label: 'Front colour',
+          value: '#ffff32',
+          onChange,
+          onCommit,
+          ...overrides,
+        },
+      ]);
+      return { onChange, onCommit };
+    }
+
+    it('is a menu item painting its swatch from the value', () => {
+      renderColor();
+      const [row] = menuItems();
+      expect(row?.textContent).toContain('Front colour');
+      const swatch = row?.querySelector<HTMLElement>('.context-menu__swatch');
+      expect(swatch?.style.background).toBe('rgb(255, 255, 50)');
+      expect(colorInput().value).toBe('#ffff32');
+    });
+
+    it('opens the picker from the row, with the input focused', () => {
+      renderColor();
+      act(() => {
+        menuItems()[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      expect(showPicker).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(colorInput());
+    });
+
+    it('falls back to a click when showPicker refuses', () => {
+      showPicker.mockImplementation(() => {
+        throw new DOMException('no activation', 'NotAllowedError');
+      });
+      renderColor();
+      const click = vi.spyOn(HTMLInputElement.prototype, 'click');
+      act(() => {
+        menuItems()[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      expect(click).toHaveBeenCalledTimes(1);
+      click.mockRestore();
+    });
+
+    it('streams changes and commits on blur', () => {
+      const item = renderColor();
+      act(() => {
+        typeColor(colorInput(), '#ff0000');
+        typeColor(colorInput(), '#00ff00');
+      });
+      expect(item.onChange.mock.calls).toEqual([['#ff0000'], ['#00ff00']]);
+      expect(item.onCommit).not.toHaveBeenCalled();
+      act(() => {
+        colorInput().focus();
+        colorInput().blur();
+      });
+      expect(item.onCommit).toHaveBeenCalledTimes(1);
+    });
+
+    it('commits when the menu unmounts without a blur', () => {
+      const item = renderColor();
+      act(() => {
+        typeColor(colorInput(), '#ff0000');
+      });
+      act(() => {
+        root?.unmount();
+      });
+      root = null;
+      expect(item.onCommit).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not open for a disabled row', () => {
+      renderColor({ disabled: true });
+      act(() => {
+        menuItems()[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      expect(showPicker).not.toHaveBeenCalled();
+    });
+  });
 });

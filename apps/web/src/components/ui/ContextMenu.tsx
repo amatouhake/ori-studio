@@ -1,6 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { ContextMenuColorItem } from './ContextMenuColorItem';
 import type { ContextMenuItem } from './contextMenuTypes';
 
 /**
@@ -20,7 +21,11 @@ function renderItem(item: ContextMenuItem, index: number): React.ReactNode {
     case 'submenu':
       return (
         <DropdownMenu.Sub key={item.id}>
-          <DropdownMenu.SubTrigger className="context-menu__item" disabled={item.disabled}>
+          <DropdownMenu.SubTrigger
+            className="context-menu__item"
+            disabled={item.disabled}
+            title={item.hint}
+          >
             {item.icon != null && <span className="context-menu__icon">{item.icon}</span>}
             <span className="context-menu__label">{item.label}</span>
             <span className="context-menu__subtrigger-arrow" aria-hidden>
@@ -44,12 +49,36 @@ function renderItem(item: ContextMenuItem, index: number): React.ReactNode {
           key={item.id}
           className="context-menu__item"
           disabled={item.disabled}
-          onSelect={item.onSelect}
+          onSelect={(event) => {
+            if (item.keepOpen) event.preventDefault();
+            item.onSelect();
+          }}
         >
           <span className="context-menu__icon">{item.checked && <Check size={12} />}</span>
           <span className="context-menu__label">{item.label}</span>
         </DropdownMenu.Item>
       );
+    case 'checkbox':
+      return (
+        <DropdownMenu.CheckboxItem
+          key={item.id}
+          className="context-menu__item"
+          checked={item.checked}
+          disabled={item.disabled}
+          title={item.hint}
+          onSelect={(event) => {
+            // Kept open across the toggle, as the checks menu is: a setting
+            // switched on is usually adjusted alongside its neighbours.
+            event.preventDefault();
+            item.onToggle();
+          }}
+        >
+          <span className="context-menu__icon">{item.checked && <Check size={12} />}</span>
+          <span className="context-menu__label">{item.label}</span>
+        </DropdownMenu.CheckboxItem>
+      );
+    case 'color':
+      return <ContextMenuColorItem key={item.id} item={item} />;
     case 'action':
       return (
         <DropdownMenu.Item
@@ -71,6 +100,17 @@ function renderItem(item: ContextMenuItem, index: number): React.ReactNode {
         </DropdownMenu.Item>
       );
   }
+}
+
+/**
+ * Render a list of entries into whatever `DropdownMenu.Content` they sit in.
+ *
+ * Exported so a toolbar dropdown can show the same rows a context menu does,
+ * from the same descriptors — a colour row or a check row written once, not
+ * once per surface.
+ */
+export function renderContextMenuItems(items: ContextMenuItem[]): React.ReactNode {
+  return items.map(renderItem);
 }
 
 interface ContextMenuProps {
@@ -148,7 +188,7 @@ export function ContextMenu({
           loop
           onCloseAutoFocus={onCloseAutoFocus}
         >
-          {items.map(renderItem)}
+          {renderContextMenuItems(items)}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
