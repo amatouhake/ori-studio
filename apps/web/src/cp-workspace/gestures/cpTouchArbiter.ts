@@ -174,10 +174,11 @@ export function createCpTouchArbiter(): CpTouchArbiter {
 
   /**
    * What an event carrying no contact of its own does: the pre-existing
-   * single-pointer behaviour, unless a camera gesture owns the surface.
+   * single-pointer behaviour, unless another contact owns the surface. A mouse
+   * released here after pressing in a text field must not finish a held pen.
    */
   const idleAction = (): 'forward' | 'ignore' =>
-    inRole('transform').length > 0 ? 'ignore' : 'forward';
+    [...contacts.values()].some((contact) => contact.role !== 'ignore') ? 'ignore' : 'forward';
 
   const rebase = () => {
     const set = inRole('transform');
@@ -280,8 +281,8 @@ export function createCpTouchArbiter(): CpTouchArbiter {
       const contact = contacts.get(pointer.pointerId);
       // A move with no press behind it is the ordinary hover case, and it is the
       // common one: a mouse or a Pencil moving over the canvas drives the snap
-      // indicator and every tool preview without ever pressing. It forwards —
-      // unless fingers are driving the camera, where a hover preview is noise.
+      // indicator and every tool preview without ever pressing. It forwards
+      // only while no other contact owns a gesture.
       if (!contact) return { action: idleAction() };
       contact.x = pointer.clientX;
       contact.y = pointer.clientY;
@@ -307,10 +308,8 @@ export function createCpTouchArbiter(): CpTouchArbiter {
     up(pointer: CpGesturePointer): CpGestureUpVerdict {
       const contact = contacts.get(pointer.pointerId);
       // Same rule as an unpressed move, for the same reason: a release whose
-      // press began on the DOM overlay above the canvas can still land here, and
-      // the existing release routing already arbitrates that case through its own
-      // flags (`textPressStarted` exists for it). Forwarding also keeps reaching
-      // the tail of `onPointerUp`, which clears every gesture flag as a safety net.
+      // press began outside the canvas can still land here. It can clear idle
+      // state, but must not finish a different pointer's active gesture.
       if (!contact) return { action: idleAction() };
       contacts.delete(pointer.pointerId);
       if (contact.role === 'transform') rebase();

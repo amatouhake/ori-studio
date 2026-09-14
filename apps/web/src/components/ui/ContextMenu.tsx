@@ -98,7 +98,7 @@ interface ContextMenuProps {
  * whose trigger opens on the native `contextmenu` event) so the surface raising
  * the menu keeps full control over when it appears — e.g. the crease-pattern
  * canvas opens it only on a right-*click*, leaving right-*drag* as its erase
- * gesture. Radix supplies the accessibility: focus trap/return, roving focus,
+ * gesture. Radix supplies the accessibility: roving focus,
  * typeahead, arrow-key nav, Escape, and viewport collision handling.
  *
  * The menu anchors to an invisible zero-size trigger positioned at the cursor.
@@ -110,6 +110,12 @@ interface ContextMenuProps {
  * gets centred by the grid — instead of sitting under the cursor. Portaling to
  * body makes `x`/`y` unambiguously viewport coordinates. React portals preserve
  * context, so Radix still wires the trigger to the menu.
+ *
+ * Non-modal on every surface: CP opens at pointerup, before release-time
+ * browsers hit-test contextmenu. Radix's modal body pointer-events lock would
+ * send that event to HTML instead of the canvas that prevents it. Another
+ * surface's modal context menu could cause the same problem during pen/mouse
+ * overlap, so all context menus must keep outside surfaces hit-testable.
  */
 export function ContextMenu({
   open,
@@ -120,7 +126,7 @@ export function ContextMenu({
   onCloseAutoFocus,
 }: ContextMenuProps) {
   return (
-    <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
+    <DropdownMenu.Root open={open} onOpenChange={onOpenChange} modal={false}>
       {createPortal(
         <DropdownMenu.Trigger asChild>
           <span
@@ -147,6 +153,10 @@ export function ContextMenu({
           collisionPadding={8}
           loop
           onCloseAutoFocus={onCloseAutoFocus}
+          // A moved/replaced menu can sit under another pointer's delayed native
+          // event. Own native menus on this menu's content, including portaled
+          // submenus (React events bubble through their logical parent).
+          onContextMenu={(event) => event.preventDefault()}
         >
           {items.map(renderItem)}
         </DropdownMenu.Content>

@@ -58,6 +58,22 @@ beforeEach(() => {
 });
 
 describe('ContextMenu', () => {
+  it('keeps outside surfaces hit-testable while open', () => {
+    render(true, [{ kind: 'action', id: 'a', label: 'Flip', onSelect: () => {} }]);
+    expect(document.body.style.pointerEvents).not.toBe('none');
+  });
+
+  it('prevents native menus on its content, leaving native input menus alone', () => {
+    render(true, [{ kind: 'action', id: 'a', label: 'Flip', onSelect: () => {} }]);
+    const field = document.createElement('input');
+    container?.append(field);
+    for (const [target, prevented] of [[menuItems()[0], true], [field, false]] as const) {
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+      act(() => target.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(prevented);
+    }
+  });
+
   it('renders nothing when closed', () => {
     render(false, [{ kind: 'action', id: 'a', label: 'Flip', onSelect: () => {} }]);
     expect(menuItems()).toHaveLength(0);

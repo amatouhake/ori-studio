@@ -217,6 +217,56 @@ function mount(): void {
   act(() => root?.render(<CreasePatternWebglCanvas {...props()} />));
 }
 
+describe('right-click ownership and erase', () => {
+  function setup() {
+    const request = vi.fn();
+    const erase = vi.fn();
+    act(() => root?.render(<CreasePatternWebglCanvas {...props()}
+      onRequestContextMenu={request} onEraseBox={erase} />));
+    const canvas = container!.querySelector('canvas')!;
+    canvas.setPointerCapture = () => {};
+    canvas.releasePointerCapture = () => {};
+    canvas.hasPointerCapture = () => true;
+    const send = (type: string, pointerId = 2, pointerType = 'pen', x = 50, y = 30) => {
+      act(() => canvas.dispatchEvent(new PointerEvent(type, {
+        pointerId, pointerType, button: type === 'pointermove' ? -1 : 2,
+        buttons: type === 'pointerup' || type === 'pointercancel' ? 0 : 2,
+        ...clientOf(x, y),
+      })));
+    };
+    return { request, erase, send };
+  }
+
+  // Historical foreign-release regression: pressing outside the canvas leaves
+  // no arbiter contact. Its motion/release must not move or finish the held pen.
+  it.each(['pointerup', 'pointercancel'])('ignores foreign motion and %s beside a pen', (end) => {
+    const { request, erase, send } = setup();
+    send('pointerdown');
+    send('pointermove', 1, 'mouse', 210, 120);
+    send(end, 1, 'mouse');
+    expect(request).not.toHaveBeenCalled();
+    expect(erase).not.toHaveBeenCalled();
+    send('pointerup');
+    expect(request).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      ...clientOf(50, 30), target: { kind: 'blank', modelPoint: { x: 50, y: 30 } },
+    }));
+    expect(erase).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['click', false, 'pointerup', 1, 0],
+    ['drag', true, 'pointerup', 0, 1],
+    ['cancel', false, 'pointercancel', 0, 0],
+  ] as const)('%s preserves the menu/erase split', (_name, moved, end, menus, erases) => {
+    const { request, erase, send } = setup();
+    send('pointerdown');
+    if (moved) send('pointermove', 2, 'pen', 210, 120);
+    send(end, 2, 'pen', moved ? 210 : 50, moved ? 120 : 30);
+    expect(request).toHaveBeenCalledTimes(menus);
+    expect(erase).toHaveBeenCalledTimes(erases);
+  });
+});
+
 /** A primary-button press at a client point, as the overlay would hand it over. */
 function pressAt(point: { clientX: number; clientY: number }): PointerEvent {
   return new PointerEvent('pointerdown', {

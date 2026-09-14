@@ -61,6 +61,21 @@ describe('isCoarsePointer', () => {
 });
 
 describe('single-pointer sequences are untouched', () => {
+  it.each([
+    ['mouse beside pen', pen, mouse],
+    ['pen beside mouse', mouse, pen],
+    ['another pen', pen, pen],
+  ] as const)('ignores an unregistered %s until the owner releases', (_name, owner, foreign) => {
+    const arbiter = createCpTouchArbiter();
+    expect(actionsOf(arbiter, [
+      down(owner(1, 10, 10)),
+      move(foreign(2, 80, 60)),
+      up(foreign(2, 80, 60)),
+      up(owner(1, 10, 10)),
+      move(foreign(2, 80, 60)),
+    ])).toEqual(['forward', 'ignore', 'ignore', 'forward', 'forward']);
+  });
+
   const makers: readonly [string, PointerMaker][] = [
     ['mouse', mouse],
     ['pen', pen],
