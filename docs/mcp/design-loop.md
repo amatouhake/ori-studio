@@ -33,7 +33,9 @@ and publication while leaving all old analysis stale. Report metadata marks
 copied jobs `inherited: true`; they do not replace a checkpoint's selected placement.
 
 **Keep** exempts a proposal from idle expiry for this enabled session. **Reject**
-discards that proposal and cancels its app job. Neither deletes descendants:
+immediately revokes and discards that proposal and cancels its app job. Already
+queued requests and in-flight publication cannot apply it after rejection.
+Neither deletes descendants:
 derived source content is captured, not a fragile reference to a parent draft.
 Save an OSF before disabling access or restarting the renderer; retention is
 not durable storage. Bounds remain eight drafts, eight checkpoints per draft,
@@ -94,6 +96,14 @@ Each report identifies its draft revision, analysis scope, execution status and
 result. A completed job can report refusal, no solution, incomplete coverage or
 an unsupported case. Job failure/cancellation and budget exhaustion remain
 visible. Old reports are marked stale; absent checks are listed as not run.
+
+Checkpoint render responses use only that step's frozen completed-job set,
+with freshness relative to the checkpoint revision. Later jobs are excluded
+even if their revision matches. Saved-file `prior_evidence` remains historical.
+The render's `revision` identifies the pictured content; `draft_revision` names
+the latest draft revision at response time, and `stale` reports a difference.
+The review panel explicitly labels its evidence list as latest-draft evidence
+when a checkpoint is selected; continue that step to inspect its own reports.
 
 | Evidence | Scope and limit |
 | --- | --- |

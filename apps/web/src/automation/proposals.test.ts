@@ -84,6 +84,54 @@ it('taking over a running job cancels it and refuses its late result', async () 
   expect(service.getSnapshot().drafts[0]).toMatchObject({ revision: 0, kind: 'crease_pattern', kept: true, owner: 'human', busy_job: null });
 });
 
+it.each(['reject', 'takeover'])('%s revokes queued publication even when the request queue is full', async revoke => {
+  let finish!: (svg: string) => void;
+  const renderSvg = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));
+  const { begin, service, state } = setup({ renderSvg });
+  const d = await begin();
+  const render = service.call('render_view', { ...address(d), view: 'crease_pattern' });
+  await vi.waitFor(() => expect(renderSvg).toHaveBeenCalledOnce());
+  const commit = service.call('commit_design', { ...address(d), request_id: 'commit', label: 'Too late' });
+  const reads = Array.from({ length: LIMITS.queue - 2 }, () => service.call('inspect_design', address(d)));
+  expect((await service.call('inspect_design', address(d))).structuredContent?.code).toBe('busy');
+  if (revoke === 'reject') service.reject(String(d.draft_id), 0);
+  else service.takeOver(String(d.draft_id), 0);
+  finish('<svg/>'); await render; await Promise.all(reads);
+  expect((await commit).structuredContent?.code).toBe(revoke === 'reject' ? 'draft_not_found' : 'human_owned');
+  expect(state.commitCpExperiment).not.toHaveBeenCalled();
+});
+
+it('reject cancels a running job and refuses late results without revoking an existing child', async () => {
+  let finish!: (output: AnalysisOutput) => void;
+  let signal!: AbortSignal;
+  const { begin, mutate, service } = setup({ analyze: (_data, _analysis, _args, abort) => { signal = abort; return new Promise(resolve => { finish = resolve; }); } });
+  const d = await begin();
+  const child = await mutate('fork_design', { ...address(d), title: 'Independent child' });
+  const job = await mutate('analyze_design', { ...address(d), analysis: 'checks' });
+  service.reject(String(d.draft_id), 0);
+  expect(signal.aborted).toBe(true);
+  finish({ result: { conclusion: 'no_local_issues' }, data: { kind: 'treemaker', text: 'late' } });
+  await settle();
+  expect(service.getSnapshot().drafts.map(d => d.draft_id)).toEqual([child.draft_id]);
+  expect((await service.call('job_status', { job_id: job.job_id })).structuredContent?.code).toBe('job_not_found');
+  expect(await mutate('commit_design', { ...address(child), label: 'Separate proposal' })).toMatchObject({ committed: true });
+});
+
+it('reject fences an in-flight edit and stale rejection cannot remove a different revision', async () => {
+  const { begin, service, api } = setup();
+  const d = await begin();
+  let finish!: (result: { data: engines.CpData; reports: never[] }) => void;
+  api.editCp.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const edit = service.call('edit_creases', { ...address(d), request_id: 'edit', operations: [{ type: 'insert_vertex', point: { x: 0, y: 0 } }] });
+  await vi.waitFor(() => expect(api.editCp).toHaveBeenCalledOnce());
+  expect(() => service.reject(String(d.draft_id), 1)).toThrow(expect.objectContaining({ code: 'stale_revision' }));
+  expect(service.getSnapshot().drafts).toHaveLength(1);
+  service.reject(String(d.draft_id), 0);
+  finish({ data: { kind: 'crease_pattern', document: createStarterOristudioCpDocument('late') }, reports: [] });
+  expect((await edit).structuredContent?.code).toBe('human_owned');
+  expect(service.getSnapshot().drafts).toHaveLength(0);
+});
+
 it('kept proposals survive idle sweep; released proposals expire without altering Live', async () => {
   let now = 0;
   const { begin, mutate, service } = setup({ now: () => now });
@@ -125,4 +173,28 @@ it('renders multiple images with stable revision metadata and no diagnostic labe
   expect(ok(response)).toMatchObject({ revision: 0, purpose: 'evaluation', stale: false, simulation: { outcome: 'step_limit_without_target_attainment' } });
   expect(response.content.filter(c => c.type === 'image')).toHaveLength(2);
   expect((await service.call('render_view', { ...address(d), view: 'crease_pattern', line_ids: [1] })).structuredContent?.code).toBe('invalid_arguments');
+});
+
+it.each([false, true])('checkpoint render stays frozen while a later job finishes (changes revision: %s)', async changes => {
+  let finishJob!: (output: AnalysisOutput) => void;
+  let finishRender!: (svg: string) => void;
+  const renderSvg = vi.fn((_data: DesignData) => new Promise<string>(resolve => { finishRender = resolve; }));
+  const { begin, mutate, service } = setup({ analyze: () => new Promise(resolve => { finishJob = resolve; }), renderSvg });
+  const d = await begin({ kind: 'treemaker' });
+  const cp = await mutate('checkpoint_design', { ...address(d), label: 'Before job' });
+  const job = await mutate('analyze_design', { ...address(d), analysis: changes ? 'build_cp' : 'checks' });
+  expect((await service.call('checkpoint_design', { ...address(d), request_id: 'busy-checkpoint', label: 'Still running' })).structuredContent?.code).toBe('draft_busy');
+  const pending = service.call('render_view', { ...address(d), checkpoint_id: cp.checkpoint_id, view: 'design' });
+  await vi.waitFor(() => expect(renderSvg).toHaveBeenCalledOnce());
+  finishJob({ result: { conclusion: 'complete' }, ...(changes ? { data: { kind: 'treemaker' as const, text: 'later geometry' } } : {}) });
+  await vi.waitFor(async () => expect(ok(await service.call('job_status', { job_id: job.job_id })).status).toBe('completed'));
+  finishRender('<svg/>');
+  const response = await pending;
+  const snapshot = ok(response);
+  expect(snapshot).toMatchObject({ revision: 0, draft_revision: changes ? 1 : 0, stale: changes, busy_job: null,
+    evidence: { runs: [], not_run: expect.arrayContaining(['checks']) } });
+  expect(JSON.parse((response.content[0] as { text: string }).text)).toEqual(snapshot);
+  expect(renderSvg.mock.calls[0][0]).toEqual({ kind: 'treemaker', text: 'original tree' });
+  const latest = ok(await service.call('inspect_design', { ...address(d), revision: changes ? 1 : 0 }));
+  expect(latest.evidence).toMatchObject({ runs: [{ job_id: job.job_id, stale: false, status: 'completed' }] });
 });

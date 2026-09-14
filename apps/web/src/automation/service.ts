@@ -351,10 +351,13 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       })));
     }
     if (name === 'render_view') {
-      const snapshot = describe(d);
       const checkpoint = args.checkpoint_id ? d.checkpoints.get(String(args.checkpoint_id)) : undefined;
       if (args.checkpoint_id && !checkpoint) throw new AutomationError('checkpoint_not_found', 'Unknown checkpoint');
       if (checkpoint && args.job_id) throw new AutomationError('invalid_arguments', 'A checkpoint preview cannot use a current job');
+      // Freeze evidence with the rendered content, including which jobs had
+      // completed at Save step. Revision equality alone admits later jobs.
+      const snapshot = checkpoint ? describeDraft({ ...d, ...draftContent(checkpoint), revision: checkpoint.revision, busy: null },
+        [...jobs.values()].filter(j => checkpoint.jobIds.includes(j.id))) : describe(d);
       const data = checkpoint?.data ?? d.data;
       const output = args.job_id ? artifacts(d, args.job_id) : args.view === 'pose' ? checkpoint ? checkpoint.pose : snapshot.has_pose ? d.pose : undefined : undefined;
       if (args.view === 'pose' && !output?.pose) throw new AutomationError('artifact_unavailable', 'Choose a completed pose job_id or a saved static placement');
@@ -369,7 +372,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       for (const camera of cameras) {
         const posed = args.view === 'pose' && output ? poseView(output, camera, diagnostic, selected) : undefined;
         const svg = posed?.svg ?? (diagnostic && data.kind === 'crease_pattern' && args.view === 'crease_pattern'
-          ? diagnosticCp(data, selected, checkpoint?.source ?? d.source)
+          ? diagnosticCp(data, selected, checkpoint ? checkpoint.source : d.source)
           : diagnostic && args.view === 'design' && data.kind !== 'crease_pattern' ? await designSvg(data, true)
           : await deps.renderSvg(data, String(args.view), output, camera));
         const image = await deps.png(svg, Number(args.size ?? 1024));
@@ -377,8 +380,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
         views.push({ camera, regions: diagnostic ? posed?.regions : undefined, projection_order: posed?.projection_order });
         images.push({ type: 'image', data: image, mimeType: 'image/png' });
       }
-      const metadata = { ...snapshot, revision: checkpoint?.revision ?? snapshot.revision, checkpoint_id: args.checkpoint_id ?? null,
-        has_pose: checkpoint ? poseMatches(checkpoint.data, checkpoint.pose) : snapshot.has_pose,
+      const metadata = { ...snapshot, draft_revision: d.revision, checkpoint_id: args.checkpoint_id ?? null,
         view: args.view, purpose: args.purpose ?? 'evaluation', camera: ['simulation', 'pose'].includes(String(args.view)) ? cameras[0] : null,
         views, job_id: args.job_id ?? null, simulation: args.view === 'simulation' ? output?.result : undefined,
         stale: d.revision !== snapshot.revision, width: args.size ?? 1024, height: args.size ?? 1024 };
@@ -463,6 +465,12 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       d.authority += 1; d.owner = 'human'; d.kept = true;
       if (d.busy) jobs.get(d.busy)?.stop?.('job_cancelled');
       activity(d, 'human_takeover');
+    },
+    /** Human revocation must precede the request queue, like takeover. Removing
+     * the draft blocks queued requests; its authority epoch also fences work
+     * already awaiting engines or atomic live publication. */
+    reject(draftId: string, revision: number) {
+      live(); drop(getDraft({ draft_id: draftId, revision }));
     },
     dispose() { clearInterval(expiry); disposed = true; for (const d of drafts.values()) drop(d); receipts.clear(); historyAuthorization = undefined; notify(); listeners.clear(); } };
 }

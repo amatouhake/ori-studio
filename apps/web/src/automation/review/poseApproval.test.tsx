@@ -64,6 +64,58 @@ beforeEach(async () => {
 });
 afterEach(async () => { await act(async () => { root.unmount(); unbind(); service.dispose(); }); host.remove(); await releaseOristudioCpDocument(); vi.unstubAllGlobals(); });
 
+it('Reject revokes a displayed pose before a publication queued behind a render can reach Live', async () => {
+  const d = await reviewPose(true);
+  const before = useWorkspaceStore.getState();
+  let release!: (image: string) => void;
+  heldImage = new Promise(resolve => { release = resolve; });
+  const render = service.call('render_view', { ...address(d), view: 'pose' });
+  await until(() => heldImage === undefined);
+  const commit = service.call('commit_design', { ...address(d), request_id: crypto.randomUUID(), label: 'Rejected pose' });
+  await act(async () => { button('Reject').click(); });
+  const immediatelyRemoved = !service.getSnapshot().drafts.some(row => row.draft_id === d.draft_id);
+  let committed!: ToolResult;
+  await act(async () => { release('late render'); await render; committed = await commit; });
+  await until(() => !service.getSnapshot().drafts.some(row => row.draft_id === d.draft_id));
+  expect(creaseFoldAngle(useWorkspaceStore.getState().oristudioCpDocument!.document.crease_pattern.line_segments[4])).toBe(90);
+  expect(useWorkspaceStore.getState().oristudioCpDocument).toBe(before.oristudioCpDocument);
+  expect(useWorkspaceStore.getState().oristudioCpHistoryPast).toBe(before.oristudioCpHistoryPast);
+  expect(useWorkspaceStore.getState().oristudioCpFoldedFigures).toBe(before.oristudioCpFoldedFigures);
+  expect(committed.structuredContent?.code).toBe('draft_not_found');
+  expect(immediatelyRemoved).toBe(true);
+});
+
+it.each(['Reject', 'takeover', 'disconnect'])('%s fences a pose commit already preparing its replacement and frees the unpublished handle', async revoke => {
+  const d = await reviewPose(true);
+  const before = useWorkspaceStore.getState();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const load = transport.api.loadDocument.bind(transport.api);
+  let preparedHandle: number | undefined;
+  const loading = vi.spyOn(transport.api, 'loadDocument').mockImplementationOnce(async document => {
+    const handle = await load(document); preparedHandle = handle; await held; return handle;
+  });
+  const freed = vi.spyOn(transport.api, 'freeDocument');
+  try {
+    const commit = service.call('commit_design', { ...address(d), request_id: crypto.randomUUID(), label: 'Late pose' });
+    await until(() => preparedHandle !== undefined);
+    await act(async () => {
+      if (revoke === 'Reject') button('Reject').click();
+      else if (revoke === 'takeover') service.takeOver(String(d.draft_id), Number(d.revision));
+      else service.dispose();
+    });
+    let response!: ToolResult;
+    await act(async () => { release(); response = await commit; });
+    expect(response.isError).toBe(true);
+    expect(useWorkspaceStore.getState().oristudioCpDocument).toBe(before.oristudioCpDocument);
+    expect(useWorkspaceStore.getState().oristudioCpHistoryPast).toBe(before.oristudioCpHistoryPast);
+    expect(useWorkspaceStore.getState().oristudioCpFoldedFigures).toBe(before.oristudioCpFoldedFigures);
+    expect(useWorkspaceStore.getState().designTabs).toBe(before.designTabs);
+    expect(useWorkspaceStore.getState().nativeProjectExtensions).toBe(before.nativeProjectExtensions);
+    expect(freed).toHaveBeenCalledWith(preparedHandle);
+  } finally { release(); loading.mockRestore(); freed.mockRestore(); }
+});
+
 it.each(['Apply CP', 'Take over in Live', 'Save OSF'])('%s waits for the second pose image at the same draft revision', async action => {
   const d = await reviewPose();
   expect(host.querySelectorAll('img')).toHaveLength(4);
@@ -211,6 +263,7 @@ it.each(['rollback', 'fork after rollback', 'checkpoint after rollback'])('check
   const checkpointView = await call('render_view', { ...address(d), checkpoint_id: checkpoint.checkpoint_id, view: 'pose' });
   expect(checkpointView.has_pose).toBe(true);
   expect(checkpointView.revision).toBe(checkpoint.revision);
+  expect(checkpointView.evidence).toMatchObject({ runs: [{ job_id: oldJobId, stale: false }] });
   d = await mutate('rollback_design', { ...address(d), checkpoint_id: checkpoint.checkpoint_id });
   expect(service.getSnapshot().drafts.find(row => row.draft_id === d.draft_id)!.evidence.runs.every(row => row.stale)).toBe(true);
   expect(service.getSnapshot().drafts.find(row => row.draft_id === d.draft_id)!.evidence.not_run).toContain('static_pose');

@@ -122,7 +122,10 @@ export function useAgentReview() {
     setCheckpoint(id: string) { setCheckpoint(id); setView('auto'); }, view, setView, chosenView, diagnostic, setDiagnostic,
     error, pending, preview: shown ? preview : null, loading, fork, apply, save,
     keep: () => action(async () => { await mutate('retain_design', { keep: !d?.kept }); }, 'keep'),
-    reject: () => action(async () => { await mutate('discard_design'); }, 'reject'),
+    reject: () => action(async () => {
+      if (!service || !d) return;
+      service.reject(d.draft_id, d.revision);
+    }, 'reject'),
     checkpointNow: () => action(async () => {
       if (!service || !shown) return;
       // A displayed job can change while this request waits in the queue,
