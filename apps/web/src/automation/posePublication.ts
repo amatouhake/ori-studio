@@ -6,12 +6,12 @@ import { foldedSourceProvenance } from '../cp-workspace/folded/foldedFigureStale
 import { cpUserAnchorForLineIds, placeFoldedFigureBesideCp } from '../cp-workspace/adapters/cpFoldedToScene';
 import type { AnalysisOutput } from './analysis';
 import type { DesignData } from './contracts';
+import { poseMatches } from './proposals';
 
 /** Publish the same restartable snapshot shape as an OSF-reopened 3D figure.
  * A private worker's handle never crosses into the live engine namespace. */
 export function poseFigure(data: DesignData, output: AnalysisOutput | undefined, title: string): OristudioCpFoldedFigureEntry | undefined {
-  if (data.kind !== 'crease_pattern' || !output?.pose || output.proposedData?.kind !== 'crease_pattern' ||
-    JSON.stringify(data.document.crease_pattern) !== JSON.stringify(output.proposedData.document.crease_pattern)) return undefined;
+  if (data.kind !== 'crease_pattern' || !output?.pose || !poseMatches(data, output)) return undefined;
   const { render, snapshot } = output.pose;
   const camera = defaultFolded3dCamera(render, snapshot.model.state);
   const scopedIds = data.document.crease_pattern.line_segments.map((_, i) => i + 1);

@@ -7,6 +7,19 @@ import { validateBpDocumentSymmetry } from '../lib/bpTreeSymmetry';
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 
+/** JSON object order is not intent. Array order and every supplied value still
+ * matter; do not sort constraints or normalize away an explicit choice. */
+export function sameBrief(left: DesignBrief, right: DesignBrief): boolean {
+  const equal = (a: unknown, b: unknown): boolean => {
+    if (a === b) return true;
+    if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((item, i) => equal(item, b[i]));
+    if (!record(a) || !record(b)) return false;
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && equal(a[key], b[key]));
+  };
+  return equal(left, right);
+}
+
 function historicalEvidence(summary: Record<string, unknown>): unknown {
   const previous = summary.prior_evidence;
   const current = summary.evidence;

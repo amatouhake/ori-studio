@@ -36,7 +36,15 @@ export interface DraftContent {
   origin?: DraftOrigin;
   /** Reports from a saved file are historical context, never current checks. */
   priorEvidence?: unknown;
+  /** Adopted static placement, retained independently of job/evidence freshness. */
+  pose?: AnalysisOutput;
 }
+
+export function poseMatches(data: DesignData, output: AnalysisOutput | undefined): boolean {
+  return data.kind === 'crease_pattern' && !!output?.pose && output.proposedData?.kind === 'crease_pattern' &&
+    JSON.stringify(data.document.crease_pattern) === JSON.stringify(output.proposedData.document.crease_pattern);
+}
+
 export interface DraftCheckpoint extends DraftContent {
   label: string;
   revision: number;
@@ -64,12 +72,13 @@ export interface EvidenceJob {
   revision: number;
   analysis: string;
   status: JobStatus;
+  inherited?: boolean;
   output?: AnalysisOutput;
   error?: { structuredContent?: Record<string, unknown> };
 }
 
 export function draftContent(d: DraftContent): DraftContent {
-  return { data: d.data, source: d.source, brief: d.brief, origin: d.origin, priorEvidence: d.priorEvidence };
+  return { data: d.data, source: d.source, brief: d.brief, origin: d.origin, priorEvidence: d.priorEvidence, pose: d.pose };
 }
 
 /** Each row names what ran, including inconclusive/error results. Never reduce
@@ -92,7 +101,7 @@ function evidenceResult(result?: Record<string, unknown>) {
 
 export function evidence(d: Draft, jobs: Iterable<EvidenceJob>) {
   const rows = [...jobs].filter(j => j.draftId === d.id).map(j => ({
-    job_id: j.id, revision: j.revision, analysis: j.analysis, status: j.status,
+    job_id: j.id, revision: j.revision, analysis: j.analysis, status: j.status, inherited: j.inherited === true,
     stale: j.revision !== d.revision, result: evidenceResult(j.output?.result), error: j.error?.structuredContent,
     adopted: j.output?.proposedData?.kind === 'crease_pattern' && d.data.kind === 'crease_pattern'
       ? JSON.stringify(j.output.proposedData.document.crease_pattern) === JSON.stringify(d.data.document.crease_pattern) : undefined,
@@ -111,7 +120,8 @@ export function describeDraft(d: Draft, jobs: Iterable<EvidenceJob>) {
     draft_id: d.id, revision: d.revision, kind: d.data.kind, title: d.title,
     busy_job: d.busy, kept: d.kept, owner: d.owner, brief: d.brief, origin: d.origin,
     source: d.source ? { draft_id: d.source.draft_id, revision: d.source.revision, title: d.source.title, kind: d.source.data.kind, nodes: d.source.nodes } : null,
-    checkpoints: [...d.checkpoints].map(([id, c]) => ({ checkpoint_id: id, label: c.label, revision: c.revision })),
+    has_pose: poseMatches(d.data, d.pose),
+    checkpoints: [...d.checkpoints].map(([id, c]) => ({ checkpoint_id: id, label: c.label, revision: c.revision, has_pose: poseMatches(c.data, c.pose) })),
     evidence: evidence(d, jobs), activity: d.activity,
     prior_evidence: d.priorEvidence,
   };
@@ -120,6 +130,23 @@ export type DraftSummary = ReturnType<typeof describeDraft>;
 
 export const PROPOSAL_KEY = 'oristudio:agent-proposal';
 export const PROPOSALS_KEY = 'oristudio:agent-proposals';
+
+/** Remap only document-owned proposal context when a tab acquires a new ID.
+ * Keep the captured draft lineage and historical reports, not live authority. */
+export function copyDesignProposalContext(extensions: Record<string, unknown>, sourceId: string, targetId: string): Record<string, unknown> {
+  const contexts = extensions[PROPOSALS_KEY] as Record<string, unknown> | undefined;
+  if (!contexts || !Object.hasOwn(contexts, sourceId)) return removeDesignProposalContext(extensions, targetId);
+  return { ...extensions, [PROPOSALS_KEY]: { ...contexts, [targetId]: structuredClone(contexts[sourceId]) } };
+}
+
+export function removeDesignProposalContext(extensions: Record<string, unknown>, designId: string): Record<string, unknown> {
+  const contexts = extensions[PROPOSALS_KEY] as Record<string, unknown> | undefined;
+  if (!contexts || !Object.hasOwn(contexts, designId)) return extensions;
+  const remaining = { ...contexts };
+  delete remaining[designId];
+  return { ...extensions, [PROPOSALS_KEY]: remaining };
+}
+
 export interface PortableProposal { version: 1; summary: Record<string, unknown>; source?: DerivedSource }
 export function portableProposal(summary: DraftSummary, source?: DerivedSource): PortableProposal {
   // wasm-bindgen turns undefined map entries into null; omit them before a

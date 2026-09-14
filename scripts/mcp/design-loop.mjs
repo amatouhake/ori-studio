@@ -70,7 +70,7 @@ try {
     if (purpose === 'diagnostic') assert(metadata.views.some(v => v.regions.some(r => r.line_ids.includes(5))));
     for (const [i, image] of images.entries()) await writeFile(resolve(out, `${purpose}-${i}.png`), Buffer.from(image.data, 'base64'));
   }
-  const adopted = await mutate('fork_design', hinge, { job_id: pose.job_id, title: 'Raised diagonal' });
+  let adopted = await mutate('fork_design', hinge, { job_id: pose.job_id, title: 'Raised diagonal' });
   const file = await call('export_design', { ...address(adopted), format: 'osf' });
   assert.equal(JSON.parse(file.content).workspace.creasePattern.viewState.foldedFigures.length, 1);
   await writeFile(resolve(out, 'raised-diagonal.osf'), file.content);
@@ -79,7 +79,22 @@ try {
   const chosenPose = adopted.evidence.runs.find(r => r.analysis === 'static_pose' && r.adopted);
   assert(chosenPose);
   await mutate('commit_design', adopted, { label: 'Adopted static pose', job_id: chosenPose.job_id });
-  const clone = await call('begin_design', { kind: 'crease_pattern', source: 'active', request_id: randomUUID() });
+  const savedPose = await mutate('checkpoint_design', adopted, { label: 'Chosen starting face' });
+  await job('pose_design', adopted, { starting_face: 2, angles: [{ line_id: 5, assignment: 'valley', angle: 70 }] });
+  adopted = await mutate('edit_creases', adopted, { operations: [{ type: 'assign_creases', line_ids: [5], assignment: 'valley', angle: 120 }] });
+  adopted = await mutate('rollback_design', adopted, { checkpoint_id: savedPose.checkpoint_id });
+  assert(adopted.has_pose);
+  assert(adopted.evidence.runs.every(r => r.stale));
+  assert(adopted.evidence.not_run.includes('static_pose'));
+  const restoredPose = await call('export_design', { ...address(adopted), format: 'osf' });
+  const restoredFigures = JSON.parse(restoredPose.content).workspace.creasePattern.viewState.foldedFigures;
+  assert.equal(restoredFigures.length, 1);
+  assert.equal(restoredFigures[0].startingFaceId, 1);
+  const restoredView = structured(await raw('render_view', { ...address(adopted), view: 'pose', size: 512 }));
+  assert.equal(restoredView.job_id, null);
+  await mutate('commit_design', adopted, { label: 'Rolled-back static pose' });
+  const clone = await call('begin_design', { kind: 'crease_pattern', source: 'active', request_id: randomUUID(),
+    brief: { paper: { sheets: 1, shape: 'square' }, goal: 'Try a raised diagonal fold' } });
   assert.equal(clone.brief.goal, 'Try a raised diagonal fold');
   assert.equal(clone.evidence.runs.length, 0);
   assert(clone.prior_evidence.runs.some(r => r.analysis === 'static_pose'));
@@ -90,7 +105,7 @@ try {
   const status = { layout_candidates: layouts.result.candidates.length, source_anchors: cp.source.nodes.length,
     checkpoint: !!checkpoint.checkpoint_id, related_publication: !!related.source_design_id, pose: pose.result.status,
     pose_verdict: pose.result.snapshot.verdict, restored_brief: true, historical_evidence: true,
-    pinned_pose: true, posed_text_preserved: true, historical_resave: true };
+    pinned_pose: true, posed_text_preserved: true, historical_resave: true, checkpoint_rollback_pose: true, reordered_brief: true };
   await writeFile(resolve(out, 'report.json'), JSON.stringify(status, null, 2));
   console.log('DESIGN LOOP PASSED', JSON.stringify(status));
 } finally {

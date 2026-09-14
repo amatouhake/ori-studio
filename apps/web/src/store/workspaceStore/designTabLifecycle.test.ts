@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PROPOSALS_KEY } from '../../automation/proposals';
 
 const dialogMocks = vi.hoisted(() => ({
   requestConfirmation:
@@ -196,6 +197,60 @@ describe('reorderDesignTab', () => {
 });
 
 describe('duplicateDesignTab', () => {
+  it.each(['duplicate', 'new tab', 'close last', 'new design'] as const)('%s does not inherit orphaned context when an older file leaves an unused design ID', async transition => {
+    useWorkspaceStore.setState({ designTabs: [{ id: 'design-1', title: 'No proposal context', paneLayout: null, pendingHydration: false,
+      kind: 'treemaker', treemaker: createTreemakerDesignState() }], activeDesignId: 'design-1',
+      nativeProjectExtensions: { unrelated: 'keep', [PROPOSALS_KEY]: { 'design-2': { version: 1, summary: { brief: { goal: 'Unrelated old source' } } } } },
+    });
+    if (transition === 'duplicate') await useWorkspaceStore.getState().duplicateDesignTab('design-1');
+    else if (transition === 'new tab') useWorkspaceStore.getState().addDesignTab();
+    else if (transition === 'close last') useWorkspaceStore.getState().closeDesignTab('design-1');
+    else useWorkspaceStore.getState().startNewDesign();
+    expect(activeId()).toBe('design-2');
+    expect((useWorkspaceStore.getState().nativeProjectExtensions[PROPOSALS_KEY] as Record<string, unknown>)[activeId()]).toBeUndefined();
+    expect(useWorkspaceStore.getState().nativeProjectExtensions.unrelated).toBe('keep');
+  });
+
+  it('copies proposal context atomically, keeps unrelated extensions, and removes only the closed source entry', async () => {
+    const proposal = { version: 1, summary: { draft_id: 'agent-source', revision: 3, brief: { goal: 'Keep this', constraints: ['Preserve lengths'] }, prior_evidence: { report: 'historical' } } };
+    useWorkspaceStore.setState({ designTabs: [{ id: 'design-1', title: 'Source', paneLayout: null, pendingHydration: false,
+      kind: 'treemaker', treemaker: createTreemakerDesignState() }], activeDesignId: 'design-1',
+      nativeProjectExtensions: { unrelated: { keep: true }, [PROPOSALS_KEY]: { 'design-1': proposal, untouched: { keep: true } } },
+    });
+    const observed: boolean[] = [];
+    const unsubscribe = useWorkspaceStore.subscribe(s => {
+      for (const tab of s.designTabs) if (tab.title === 'Source copy') observed.push(!!(s.nativeProjectExtensions[PROPOSALS_KEY] as Record<string, unknown>)[tab.id]);
+    });
+    await useWorkspaceStore.getState().duplicateDesignTab('design-1');
+    unsubscribe();
+    expect(observed.length).toBeGreaterThan(0);
+    expect(observed.every(Boolean)).toBe(true);
+    const duplicate = activeId();
+    const contexts = useWorkspaceStore.getState().nativeProjectExtensions[PROPOSALS_KEY] as Record<string, unknown>;
+    expect(contexts[duplicate]).toEqual(proposal);
+    expect(contexts[duplicate]).not.toBe(proposal);
+    useWorkspaceStore.getState().closeDesignTab('design-1');
+    expect(useWorkspaceStore.getState().nativeProjectExtensions).toEqual({ unrelated: { keep: true }, [PROPOSALS_KEY]: { [duplicate]: proposal, untouched: { keep: true } } });
+    useWorkspaceStore.getState().closeDesignTab(duplicate);
+    expect(useWorkspaceStore.getState().nativeProjectExtensions).toEqual({ unrelated: { keep: true }, [PROPOSALS_KEY]: { untouched: { keep: true } } });
+  });
+
+  it('does not resurrect a source or its context if it closes while duplication serializes', async () => {
+    useWorkspaceStore.setState({ designTabs: [{ id: 'design-1', title: 'Source', paneLayout: null, pendingHydration: false,
+      kind: 'treemaker', treemaker: createTreemakerDesignState() }], activeDesignId: 'design-1',
+      nativeProjectExtensions: { [PROPOSALS_KEY]: { 'design-1': { version: 1, summary: { brief: { goal: 'Closed source' } } } } },
+    });
+    let finish!: (text: string) => void;
+    vi.mocked(handles.serializeDesign).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const copying = useWorkspaceStore.getState().duplicateDesignTab('design-1');
+    useWorkspaceStore.getState().closeDesignTab('design-1');
+    const remaining = tabs();
+    finish('old source'); await copying;
+    expect(tabs()).toBe(remaining);
+    expect(handles.adoptDesign).not.toHaveBeenCalled();
+    expect(useWorkspaceStore.getState().nativeProjectExtensions[PROPOSALS_KEY]).toEqual({});
+  });
+
   it('copies through the codec and lands beside the original', async () => {
     useWorkspaceStore.setState({
       designTabs: [

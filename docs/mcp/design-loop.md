@@ -26,6 +26,11 @@ a running worker or its trajectory. **Save step** on a displayed unadopted pose
 first creates an adopted variant, leaving the input CP unchanged. Review
 approval waits for the matching job's image, including successive poses at the
 same CP revision.
+Save step also pins a displayed job whose angles are already adopted: queued
+jobs at that revision cannot replace it. Adopted placements are retained as
+draft/checkpoint content. Rollback restores that placement for review, export
+and publication while leaving all old analysis stale. Report metadata marks
+copied jobs `inherited: true`; they do not replace a checkpoint's selected placement.
 
 **Keep** exempts a proposal from idle expiry for this enabled session. **Reject**
 discards that proposal and cancels its app job. Neither deletes descendants:
@@ -106,8 +111,13 @@ Final-form symmetry and source-layout symmetry remain separate judgments.
 
 `commit_design` retains its live-base conflict check and one-action CP history.
 An optional `job_id` pins a placed pose whose angles are already adopted into
-that CP. A mismatched or unadopted pose is refused; omitting the argument keeps
-the existing matching-pose default.
+that CP. A mismatched or unadopted pose is refused. Without a job ID, the
+adopted/checkpointed placement is used by default, falling back to a current
+matching pose job when no placement has been adopted. `render_view` with
+`view: "pose"` and no job ID renders that saved placement; `checkpoint_id` can
+select a saved placement directly. This does not make its old checks current.
+An explicit job selects that placement for the requested action; fork the job
+to make it the retained placement of a new proposal.
 With `include_source: true`, a derived CP and its captured source design tab are
 prepared and published in one store transaction. Observers cannot see just
 half of that publication. A matching adopted static pose publishes with the CP
@@ -124,6 +134,9 @@ source design entries. Unknown project extensions retain their existing behavior
 Related source tabs carry their own brief and source identity under their
 design ID; CP checks are not transferred as source validation. Historical
 reports are saved separately from current reports and survive repeated resaves.
+Ordinary tab duplication copies that context to the new design ID, preserving
+captured draft lineage and historical reports. Closing a tab removes its own
+entry without removing descendants' context.
 Older derived OSFs can recover the source brief from CP metadata when the active
 source model matches its captured snapshot (BPS undo history may differ). If
 the source has changed, continue through the CP's captured source explicitly;
@@ -136,7 +149,9 @@ Open OSF through the application's normal file flow, then clone the active
 design with `begin_design`. Saved source content is imported and checked before
 restoring its relationship; saved reports become `prior_evidence`, never current
 validation. A conflicting supplied brief is refused instead of weakening saved
-constraints. Direct MCP imports remain CP/ORI/FOLD/TMD5/BPS, not OSF or host paths.
+constraints. Brief equality ignores JSON object key order, including nested
+paper fields, while preserving every value and array order. Direct MCP imports
+remain CP/ORI/FOLD/TMD5/BPS, not OSF or host paths.
 
 This is additive automation protocol 1 functionality. Discover
 `workspace.capabilities.design_loop.version` (currently 1); the new fork,

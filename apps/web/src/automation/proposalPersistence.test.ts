@@ -1,5 +1,5 @@
-// Actual OSF Open, captured-source publication, registry and serializers. Only
-// worker transport/file dialogs are replaced; saved context must be read back
+// Actual OSF Open, captured-source publication, registry and serializers.
+// Transport, file dialogs and check reports are controlled; context is read back
 // through begin_design, not injected into the new draft by the test.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -37,6 +37,11 @@ const call = async (name: string, args: Record<string, unknown> = {}) => ok(awai
 const mutate = (name: string, args: Record<string, unknown>) => call(name, { request_id: crypto.randomUUID(), ...args });
 const address = (d: Record<string, unknown>) => ({ draft_id: d.draft_id, revision: d.revision });
 const brief = { goal: 'Preserve this source design', constraints: ['Keep the specified flap lengths'] };
+
+async function idle() {
+  for (let i = 0; i < 100 && !workspaceOperationsIdle(); i++) await new Promise(resolve => setTimeout(resolve, 0));
+  expect(workspaceOperationsIdle()).toBe(true);
+}
 
 it('does not recover an unrelated CP brief for a different legacy source', async () => {
   const context = { version: 1, summary: { brief }, source: { data: { kind: 'treemaker', text: 'captured' } } };
@@ -144,5 +149,49 @@ it.each(['export', 'commit'] as const)('historical reports survive restore → %
     if (!addCheck) expect(d.prior_evidence).toEqual(previous);
     if (newJob) expect(JSON.stringify(d.prior_evidence)).toContain(newJob);
     expect(d.evidence).toMatchObject({ runs: [], not_run: expect.arrayContaining(['checks']) });
+  }
+});
+
+it.each(['fold', 'osf'] as const)('%s restoration accepts an identical supplied brief regardless of key order, but refuses changed intent', async format => {
+  const intent = { goal: 'Preserve folded intent', constraints: ['Keep the diagonal', 'Use one sheet'], paper: { shape: 'square', sheets: 1 } };
+  const d = await mutate('begin_design', { kind: 'crease_pattern', source: 'new', brief: intent });
+  const exported = await call('export_design', { ...address(d), format });
+  if (format === 'osf') await reopen(String(exported.content));
+  const begin = { kind: 'crease_pattern', ...(format === 'fold' ? { source: 'import', format, content: exported.content } : { source: 'active' }) };
+  for (const supplied of [intent, { paper: { sheets: 1, shape: 'square' }, constraints: intent.constraints, goal: intent.goal }]) {
+    const continued = await mutate('begin_design', { ...begin, brief: supplied });
+    expect(continued.brief).toEqual(intent);
+    await mutate('discard_design', address(continued));
+  }
+  for (const changed of [{ ...intent, constraints: ['Keep the diagonal'] }, { ...intent, paper: { shape: 'rectangle', sheets: 1 } },
+    { ...intent, preferences: ['New preference'] }, { ...intent, goal: 'Different goal' }]) {
+    expect((await service.call('begin_design', { ...begin, brief: changed, request_id: crypto.randomUUID() })).structuredContent?.code).toBe('brief_conflict');
+  }
+});
+
+it.each([
+  ['treemaker', 'live'], ['treemaker', 'reopened'], ['box_pleat', 'live'], ['box_pleat', 'reopened'],
+] as const)('%s %s proposal survives duplicate → begin → save/reopen → duplicate with constraints and provenance', async (kind, route) => {
+  const source = await beginSource(kind);
+  const report = await checks(source);
+  if (route === 'reopened') await reopen(String((await call('export_design', { ...address(source), format: 'osf' })).content));
+  else await mutate('commit_design', { ...address(source), label: 'Publish source' });
+  await idle();
+  let expectedOrigin = address(source);
+  for (let generation = 0; generation < 2; generation++) {
+    const parent = useWorkspaceStore.getState().activeDesignId!;
+    await useWorkspaceStore.getState().duplicateDesignTab(parent);
+    await idle();
+    expect(useWorkspaceStore.getState().activeDesignId).not.toBe(parent);
+    const continued = await mutate('begin_design', { kind, source: 'active' });
+    expect(continued.brief).toEqual(brief);
+    expect(continued.origin).toMatchObject({ ...expectedOrigin, relation: 'fork' });
+    expect(JSON.stringify(continued.prior_evidence)).toContain(report);
+    expect(continued.evidence).toMatchObject({ runs: [] });
+    expect((await service.call('begin_design', { kind, source: 'active', brief: { goal: 'Replace constraints' }, request_id: crypto.randomUUID() })).structuredContent?.code).toBe('brief_conflict');
+    if (generation === 0) {
+      expectedOrigin = address(continued);
+      await reopen(String((await call('export_design', { ...address(continued), format: 'osf' })).content));
+    }
   }
 });

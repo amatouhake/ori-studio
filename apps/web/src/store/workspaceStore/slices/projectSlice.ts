@@ -1,3 +1,4 @@
+import { copyDesignProposalContext, removeDesignProposalContext } from '../../../automation/proposals';
 import {
   activeDesignTab,
   createDesignTab,
@@ -1912,7 +1913,10 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
   const discardAllDesigns = () => {
     const state = get();
     void Promise.all(state.designTabs.map((tab) => forgetDesign(tab.id)));
-    return resetDesignTabs(state);
+    const reset = resetDesignTabs(state);
+    const nativeProjectExtensions = [...state.designTabs.map(tab => tab.id), reset.activeDesignId]
+      .reduce(removeDesignProposalContext, state.nativeProjectExtensions);
+    return { ...reset, nativeProjectExtensions };
   };
 
   /**
@@ -3166,7 +3170,8 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
     addDesignTab: () => {
       const tabs = get().designTabs;
       const tab = createDesignTab(tabs);
-      set({ designTabs: [...tabs, tab], activeDesignId: tab.id });
+      set({ designTabs: [...tabs, tab], activeDesignId: tab.id,
+        nativeProjectExtensions: removeDesignProposalContext(get().nativeProjectExtensions, tab.id) });
       useLayoutStore.getState().activateWorkspace('design');
       trackDesignTabOpened('strip', tabs.length + 1);
     },
@@ -3198,6 +3203,7 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
         open_count_bucket: bucketCount(designTabs.length, DESIGN_TAB_COUNT_BUCKETS),
       });
       void forgetDesign(designId);
+      const nativeProjectExtensions = removeDesignProposalContext(get().nativeProjectExtensions, designId);
       const remaining = designTabs.filter((tab) => tab.id !== designId);
       if (remaining.length === 0) {
         // Never zero tabs: closing the last one leaves a fresh chooser in its
@@ -3208,7 +3214,8 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
         // ids — a late write addressed to the closed design would otherwise land
         // on the one that took its place.
         const replacement = createDesignTab(designTabs);
-        set({ designTabs: [replacement], activeDesignId: replacement.id });
+        set({ designTabs: [replacement], activeDesignId: replacement.id,
+          nativeProjectExtensions: removeDesignProposalContext(nativeProjectExtensions, replacement.id) });
         trackDesignTabOpened('replace-last', 1);
         return;
       }
@@ -3217,7 +3224,7 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
           ? (remaining[index] ?? remaining[remaining.length - 1]).id
           : activeDesignId;
       if (nextActive !== activeDesignId) void parkDesign(activeDesignId);
-      set({ designTabs: remaining, activeDesignId: nextActive });
+      set({ designTabs: remaining, activeDesignId: nextActive, nativeProjectExtensions });
     },
 
     requestCloseDesignTab: async (designId) => {
@@ -3350,7 +3357,11 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
         return;
       }
       if (text === null) return;
-      const copy = createDesignTab(tabs, {
+      // A close/open or replacement during serialization must not resurrect
+      // the old source or attach its context to a different document.
+      const currentTabs = get().designTabs;
+      if (!currentTabs.includes(source)) return;
+      const copy = createDesignTab(currentTabs, {
         kind: source.kind,
         title: `${source.title} copy`,
         // The copy exists as *text* — the arm `createDesignTab` gives it is empty,
@@ -3361,12 +3372,13 @@ export const createProjectSlice: WorkspaceSliceCreator<ProjectSlice> = (set, get
         pendingHydration: true,
       });
       adoptDesign(copy.id, text);
-      const next = [...tabs];
-      next.splice(index + 1, 0, copy);
+      const next = [...currentTabs];
+      next.splice(currentTabs.indexOf(source) + 1, 0, copy);
       // History is deliberately not carried: undoing a copy into states it never
       // had would be nonsense. `editCount` starts fresh for the same reason.
       void parkDesign(get().activeDesignId);
-      set({ designTabs: next, activeDesignId: copy.id, dirty: true });
+      set({ designTabs: next, activeDesignId: copy.id, dirty: true,
+        nativeProjectExtensions: copyDesignProposalContext(get().nativeProjectExtensions, source.id, copy.id) });
       void get().hydrateDesignTab(copy.id);
       trackDesignTabOpened('duplicate', next.length);
     },

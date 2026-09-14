@@ -2,8 +2,8 @@ import { poseFigure } from './posePublication';
 import { diagnosticCp, designSvg } from './diagnosticRender';
 import { poseView } from './poseRender';
 import { sourceNodes } from './sourceProvenance';
-import { capturedSourceProposal, draftContent, describeDraft, portableProposal, PROPOSAL_KEY, PROPOSALS_KEY, type Draft, type DesignBrief, type DraftContent, type DraftSummary } from './proposals';
-import { restoreCapturedSourceContext, restoreProposal } from './proposalRestore';
+import { capturedSourceProposal, draftContent, describeDraft, portableProposal, poseMatches, PROPOSAL_KEY, PROPOSALS_KEY, type Draft, type DesignBrief, type DraftContent, type DraftSummary } from './proposals';
+import { restoreCapturedSourceContext, restoreProposal, sameBrief } from './proposalRestore';
 import { designPaper, assertPaperReport } from './paper';
 import type { PoseAngle } from './pose';
 import { bpDocumentSymmetry } from '../lib/bpTreeSymmetry';
@@ -35,6 +35,7 @@ export const GUIDANCE = {
 interface Job {
   id: string; draftId: string; revision: number; analysis: string; status: 'running' | 'completed' | 'cancelled' | 'failed';
   controller: AbortController; stop?: (code: string) => void; output?: AnalysisOutput; error?: ToolResult; started: number; completed?: number;
+  inherited?: boolean;
 }
 
 /** Explicit dependencies let transaction tests exercise races without mocking kernels. */
@@ -136,6 +137,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
     return job.output;
   }
   function adoptedPose(d: Draft) {
+    if (poseMatches(d.data, d.pose)) return d.pose;
     if (d.data.kind !== 'crease_pattern') return undefined;
     const geometry = JSON.stringify(d.data.document.crease_pattern);
     return [...jobs.values()].reverse().find(j => j.draftId === d.id && j.revision === d.revision && j.status === 'completed' &&
@@ -247,7 +249,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       const restored = data.kind !== 'crease_pattern' && args.source === 'active' && savedProposal === undefined
         ? await restoreCapturedSourceContext(base.document?.document.metadata?.[PROPOSAL_KEY], data, deps.engines)
         : await restoreProposal(savedProposal, data, deps.engines);
-      if (restored.brief && args.brief && JSON.stringify(restored.brief) !== JSON.stringify(args.brief)) throw new AutomationError('brief_conflict', 'Saved constraints cannot be silently replaced. Continue with the saved brief and discuss a changed task with the user.');
+      if (restored.brief && args.brief && !sameBrief(restored.brief, args.brief as DesignBrief)) throw new AutomationError('brief_conflict', 'Saved constraints cannot be silently replaced. Continue with the saved brief and discuss a changed task with the user.');
       active();
       return result(describe(add(data, title, base, args.source === 'active', { ...restored, brief: restored.brief ?? args.brief as DesignBrief | undefined })));
     }
@@ -275,10 +277,11 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       const output = artifacts(d, args.job_id);
       const candidate = output?.candidates?.[Number(args.candidate_index ?? 0)];
       const content = draftContent(checkpoint ?? d);
+      content.pose = checkpoint ? checkpoint.pose : adoptedPose(d);
       if (args.job_id && !candidate && !output?.proposedData) throw new AutomationError('artifact_unavailable', 'This job has no adoptable layout or pose');
-      if (args.from_source && d.source) { content.data = d.source.data; content.source = undefined; }
-      if (candidate) content.data = candidate.data;
-      else if (output?.proposedData) content.data = output.proposedData;
+      if (args.from_source && d.source) { content.data = d.source.data; content.source = undefined; content.pose = undefined; }
+      if (candidate) { content.data = candidate.data; content.pose = undefined; }
+      else if (output?.proposedData) { content.data = output.proposedData; content.pose = output.pose ? output : undefined; }
       content.origin = { draft_id: args.from_source ? d.source!.draft_id : d.id, revision: args.from_source ? d.source!.revision : checkpoint?.revision ?? d.revision,
         relation: candidate ? 'layout' : output?.proposedData ? 'pose' : 'fork',
         ...(args.checkpoint_id ? { checkpoint_id: String(args.checkpoint_id) } : {}),
@@ -288,7 +291,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       if (jobs.size + inherited.length > LIMITS.jobs) throw new AutomationError('resource_limit', 'Discard an old proposal to make room for inherited evidence');
       const child = add(content.data, String(args.title), d.base, d.preserveCompanions, content);
       for (const job of inherited) {
-        const id = crypto.randomUUID(); jobs.set(id, { ...job, id, draftId: child.id, revision: 0, controller: new AbortController(), stop: undefined });
+        const id = crypto.randomUUID(); jobs.set(id, { ...job, id, draftId: child.id, revision: 0, inherited: true, controller: new AbortController(), stop: undefined });
       }
       notify(); return result(describe(child));
     }
@@ -311,13 +314,15 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
         auxiliary: data.document.crease_pattern.aux_line_segments, circles: data.document.crease_pattern.circles,
       } : data;
       const geometryChanged = JSON.stringify(geometry(d.data)) !== JSON.stringify(geometry(edited.data));
-      d.data = edited.data; if (changed) { d.revision += 1; activity(d, name); }
+      d.data = edited.data;
+      if (!poseMatches(d.data, d.pose)) d.pose = undefined;
+      if (changed) { d.revision += 1; activity(d, name); }
       return result({ ...describe(d), changed, geometry_changed: geometryChanged, reports: edited.reports });
     }
     if (name === 'checkpoint_design') {
       writable(d, actor);
       if (d.checkpoints.size >= LIMITS.checkpoints) throw new AutomationError('resource_limit', 'Checkpoint limit reached');
-      const id = crypto.randomUUID(); d.checkpoints.set(id, { label: String(args.label), ...draftContent(d), revision: d.revision,
+      const id = crypto.randomUUID(); d.checkpoints.set(id, { label: String(args.label), ...draftContent(d), pose: adoptedPose(d), revision: d.revision,
         jobIds: [...jobs.values()].filter(j => j.draftId === d.id && j.revision === d.revision && j.status === 'completed').map(j => j.id) });
       activity(d, 'checkpoint');
       return result({ ...describe(d), checkpoint_id: id });
@@ -351,7 +356,8 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
       if (args.checkpoint_id && !checkpoint) throw new AutomationError('checkpoint_not_found', 'Unknown checkpoint');
       if (checkpoint && args.job_id) throw new AutomationError('invalid_arguments', 'A checkpoint preview cannot use a current job');
       const data = checkpoint?.data ?? d.data;
-      const output = artifacts(d, args.job_id);
+      const output = args.job_id ? artifacts(d, args.job_id) : args.view === 'pose' ? checkpoint ? checkpoint.pose : snapshot.has_pose ? d.pose : undefined : undefined;
+      if (args.view === 'pose' && !output?.pose) throw new AutomationError('artifact_unavailable', 'Choose a completed pose job_id or a saved static placement');
       const diagnostic = args.purpose === 'diagnostic';
       if (args.line_ids && (!diagnostic || data.kind !== 'crease_pattern')) throw new AutomationError('invalid_arguments', 'Line highlighting belongs to CP diagnostic views');
       const selected = (args.line_ids ?? []) as number[];
@@ -372,6 +378,7 @@ export function createAutomationService(overrides: Partial<AutomationDependencie
         images.push({ type: 'image', data: image, mimeType: 'image/png' });
       }
       const metadata = { ...snapshot, revision: checkpoint?.revision ?? snapshot.revision, checkpoint_id: args.checkpoint_id ?? null,
+        has_pose: checkpoint ? poseMatches(checkpoint.data, checkpoint.pose) : snapshot.has_pose,
         view: args.view, purpose: args.purpose ?? 'evaluation', camera: ['simulation', 'pose'].includes(String(args.view)) ? cameras[0] : null,
         views, job_id: args.job_id ?? null, simulation: args.view === 'simulation' ? output?.result : undefined,
         stale: d.revision !== snapshot.revision, width: args.size ?? 1024, height: args.size ?? 1024 };

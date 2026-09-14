@@ -53,6 +53,18 @@ try {
     const publication = await mutate('commit_design', cp, { include_source: true, label: 'Source and CP' });
     const published = useWorkspaceStore.getState();
     if (!published.designTabs.some(t => t.id === publication.source_design_id)) throw new Error('Captured source missing: ' + JSON.stringify({publication, tabs: published.designTabs.map(t => ({id:t.id,title:t.title})), active:published.activeDesignId}));
+    const { workspaceOperationsIdle } = await import('/src/store/workspaceStore/operationFence.ts');
+    const idle = async () => {
+      for (let i = 0; i < 200 && !workspaceOperationsIdle(); i++) await new Promise(resolve => setTimeout(resolve, 10));
+      if (!workspaceOperationsIdle()) throw new Error('Design hydration did not finish');
+    };
+    await idle();
+    await useWorkspaceStore.getState().duplicateDesignTab(publication.source_design_id);
+    await idle();
+    const copiedSource = await call('begin_design', { kind: 'treemaker', source: 'active', request_id: crypto.randomUUID(),
+      brief: { delivery_stage: 'base', constraints: ['Preserve the supplied flap lengths'], goal: 'Compare a compact three-flap base' } });
+    if (copiedSource.origin?.draft_id !== candidate.draft_id || copiedSource.brief?.constraints?.[0] !== 'Preserve the supplied flap lengths') throw new Error('Duplicated source lost its context');
+    await mutate('discard_design', copiedSource);
     const hinge = await call('begin_design', { source: 'import', kind: 'crease_pattern', format: 'fold', request_id: crypto.randomUUID(), title: 'Fold-angle study', brief: { goal: 'Compare a raised diagonal fold', paper: { shape: 'square', sheets: 1 }, delivery_stage: 'exploration' }, content: JSON.stringify({ vertices_coords: [[0, 0], [1, 0], [1, 1], [0, 1]], edges_vertices: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]], edges_assignment: ['B', 'B', 'B', 'B', 'V'], edges_foldAngle: [0, 0, 0, 0, 90] }) });
     await job('analyze_design', hinge, { analysis: 'paper' });
     await mutate('checkpoint_design', hinge, { label: 'Before posing' });
@@ -64,7 +76,7 @@ try {
     const file = JSON.parse(saved.content);
     if (file.workspace.creasePattern.viewState.foldedFigures.length !== 1) throw new Error('Adopted pose absent from OSF');
     setAgentReviewOpen(true);
-    return { layoutCandidates: layouts.result.candidates.length, sourceAnchors: cp.source.nodes.length,
+    return { layoutCandidates: layouts.result.candidates.length, sourceAnchors: cp.source.nodes.length, duplicatedSourceContext: true,
       cpImageRevision: cpImage.revision, poseStatus: posed.result.status, poseVerdict: posed.result.snapshot.verdict,
       diagnosticViews: diagnostic.views, adopted: address(adopted), osf: saved.content };
   }, treeText);
@@ -102,5 +114,5 @@ try {
   delete report.osf;
   await writeFile(resolve(out, 'report.json'), JSON.stringify({ ...report, live, errors }, null, 2));
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ layoutCandidates: report.layoutCandidates, sourceAnchors: report.sourceAnchors, poseStatus: report.poseStatus, live, errors, artifacts: out }, null, 2));
+  console.log(JSON.stringify({ layoutCandidates: report.layoutCandidates, sourceAnchors: report.sourceAnchors, poseStatus: report.poseStatus, duplicatedSourceContext: report.duplicatedSourceContext, live, errors, artifacts: out }, null, 2));
 } finally { await browser.close(); }

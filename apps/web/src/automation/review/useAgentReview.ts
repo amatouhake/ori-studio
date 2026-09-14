@@ -28,13 +28,17 @@ export function useAgentReview() {
   const [preview, setPreview] = useState<{ images: string[]; revision: number; draftId: string; checkpoint: string; view: string; jobId: string | null; diagnostic: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const d = snapshot.drafts.find(d => d.draft_id === selected) ?? snapshot.drafts.at(-1);
-  const currentCheckpoint = d?.checkpoints.find(c => c.checkpoint_id === checkpoint)?.checkpoint_id ?? '';
+  const savedStep = d?.checkpoints.find(c => c.checkpoint_id === checkpoint);
+  const currentCheckpoint = savedStep?.checkpoint_id ?? '';
   const runs = d?.evidence.runs.filter(r => !r.stale && r.status === 'completed') ?? [];
-  const poseJob = [...runs].reverse().find(r => r.analysis === 'static_pose' && r.result?.status === 'placed');
+  // Inherited reports can include other poses of the same angles. The saved
+  // placement owns the default view until this draft computes a new pose.
+  const poseJob = [...runs].reverse().find(r => r.analysis === 'static_pose' && r.result?.status === 'placed' && (!r.inherited || !d?.has_pose));
   const simulationJob = [...runs].reverse().find(r => r.analysis === 'simulation');
   const foldJob = [...runs].reverse().find(r => r.analysis === 'flat_fold' && r.result?.outcome === 'Solved');
-  const chosenView = view === 'auto' ? d?.kind !== 'crease_pattern' ? 'design' : poseJob && !currentCheckpoint ? 'pose' : 'crease_pattern' : view;
-  const job = chosenView === 'pose' ? poseJob : chosenView === 'simulation' ? simulationJob : chosenView === 'folded' ? foldJob : undefined;
+  const hasPose = currentCheckpoint ? savedStep?.has_pose : poseJob || d?.has_pose;
+  const chosenView = view === 'auto' ? d?.kind !== 'crease_pattern' ? 'design' : hasPose ? 'pose' : 'crease_pattern' : view;
+  const job = currentCheckpoint ? undefined : chosenView === 'pose' ? poseJob : chosenView === 'simulation' ? simulationJob : chosenView === 'folded' ? foldJob : undefined;
   const jobId = job?.job_id;
   const revision = d?.revision;
   const draftId = d?.draft_id;
@@ -72,9 +76,9 @@ export function useAgentReview() {
   };
   // An unadopted pose is an artifact over unchanged input geometry. Use the
   // same adoption path for publication and Save step, always pinning its job.
-  const continuation = async () => {
+  const continuation = async (pinDisplayedPose = false) => {
     if (!d) throw new Error(t('common:agentReview.noProposal', 'No proposal is available.'));
-    if (currentCheckpoint || (chosenView === 'pose' && jobId && !job?.adopted)) {
+    if (currentCheckpoint || (chosenView === 'pose' && jobId && (pinDisplayedPose || !job?.adopted))) {
       const next = await mutate('fork_design', { title: d.title, ...(currentCheckpoint ? { checkpoint_id: currentCheckpoint } : { job_id: jobId }) });
       setSelected(String(next.draft_id)); setCheckpoint('');
       return next as DraftSummary;
@@ -121,7 +125,10 @@ export function useAgentReview() {
     reject: () => action(async () => { await mutate('discard_design'); }, 'reject'),
     checkpointNow: () => action(async () => {
       if (!service || !shown) return;
-      const next = await continuation();
+      // A displayed job can change while this request waits in the queue,
+      // even if its angles are already adopted. Pin it through a pose fork.
+      // A saved placement (no jobId) is immutable draft content instead.
+      const next = await continuation(true);
       value(await service.call('checkpoint_design', { draft_id: next.draft_id, revision: next.revision, request_id: crypto.randomUUID(),
         label: t('common:agentReview.stepLabel', 'Review step {{revision}}', { revision: next.revision }) }, 'human'));
     }, 'checkpoint'),
