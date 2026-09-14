@@ -110,31 +110,34 @@ export function ContextMenuColorItem({ item }: { item: ColorItem }) {
         setPickerOpen(true);
       }}
     >
-      <span className="context-menu__icon" />
-      <span className="context-menu__label">{item.label}</span>
-      <span className="context-menu__swatch" style={{ background: shown }}>
-        <input
-          ref={inputRef}
-          className="context-menu__color-input"
-          type="color"
-          // Reached through the row, never by Tab — see the component note.
-          tabIndex={-1}
-          aria-label={item.label}
-          value={shown}
-          disabled={item.disabled}
-          onChange={(event) => {
-            setShown(event.currentTarget.value);
-            item.onChange(event.currentTarget.value);
-          }}
-          onBlur={() => {
-            setPickerOpen(false);
-            item.onCommit();
-          }}
-          // The fallback's synthetic click must not bubble to the row and
-          // select it a second time. A pointer never reaches the input itself.
-          onClick={(event) => event.stopPropagation()}
-        />
+      {/* The swatch takes the leading slot, where a sibling row's icon or
+          check sits, so every label in the menu starts at the same column. */}
+      <span className="context-menu__icon">
+        <span className="context-menu__swatch" style={{ background: shown }}>
+          <input
+            ref={inputRef}
+            className="context-menu__color-input"
+            type="color"
+            // Reached through the row, never by Tab — see the component note.
+            tabIndex={-1}
+            aria-label={item.label}
+            value={shown}
+            disabled={item.disabled}
+            onChange={(event) => {
+              setShown(event.currentTarget.value);
+              item.onChange(event.currentTarget.value);
+            }}
+            onBlur={() => {
+              setPickerOpen(false);
+              item.onCommit();
+            }}
+            // The fallback's synthetic click must not bubble to the row and
+            // select it a second time. A pointer never reaches the input itself.
+            onClick={(event) => event.stopPropagation()}
+          />
+        </span>
       </span>
+      <span className="context-menu__label">{item.label}</span>
     </DropdownMenu.Item>
   );
 }

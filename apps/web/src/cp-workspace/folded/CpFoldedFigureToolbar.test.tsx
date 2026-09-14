@@ -260,6 +260,12 @@ describe('CpFoldedFigureToolbar', () => {
       ]);
       const submenus = rows().filter((row) => row.getAttribute('aria-haspopup') === 'menu');
       expect(submenus.map((row) => row.textContent)).toEqual(['Render as', 'Side']);
+      // Every row draws in the leading slot — a glyph, a swatch, or (when on) a
+      // check — so the labels line up without any row reserving an empty one.
+      for (const row of rows()) {
+        if (row.getAttribute('role') === 'menuitemcheckbox') continue;
+        expect(row.querySelector('.context-menu__icon')?.childElementCount, row.textContent ?? '').toBe(1);
+      }
       expect(document.querySelectorAll('[role="menu"] input[type="color"]')).toHaveLength(3);
       expect(document.querySelector('[role="menuitemcheckbox"]')?.textContent).toBe('Shadow');
     });

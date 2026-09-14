@@ -567,13 +567,14 @@ a.context-menu__item {
   color: currentcolor;
 }
 
-/* A colour row's value, painted. The native input lies over it invisibly so the
-   engine's picker anchors beside the swatch rather than at the row's origin, and
-   `pointer-events: none` sends a click to the row instead — whose select opens
-   the picker, so it cannot open twice. */
+/* A colour row's value, painted, in the leading slot where a sibling's icon
+   sits. The native input lies over it invisibly so the engine's picker anchors
+   beside the swatch rather than at the row's origin, and `pointer-events: none`
+   sends a click to the row instead — whose select opens the picker, so it
+   cannot open twice. */
 .context-menu__swatch {
   position: relative;
-  flex: none;
+  display: block;
   width: 14px;
   height: 14px;
   border: 1px solid var(--border-default);

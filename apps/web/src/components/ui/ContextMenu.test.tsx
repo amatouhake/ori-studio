@@ -346,7 +346,9 @@ describe('ContextMenu', () => {
       renderColor();
       const [row] = menuItems();
       expect(row?.textContent).toContain('Front colour');
-      const swatch = row?.querySelector<HTMLElement>('.context-menu__swatch');
+      // In the leading slot, where a sibling's icon or check sits, so the
+      // label starts in the same column as every other row's.
+      const swatch = row?.querySelector<HTMLElement>('.context-menu__icon .context-menu__swatch');
       expect(swatch?.style.background).toBe('rgb(255, 255, 50)');
       expect(colorInput().value).toBe('#ffff32');
     });
