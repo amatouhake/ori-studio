@@ -1,3 +1,5 @@
+import { poseFigure } from './posePublication';
+import { PROPOSAL_KEY, PROPOSALS_KEY, type PortableProposal } from './proposals';
 import { flattenDocumentTexts, normalizeDocumentTexts } from '../cp-workspace/annotations/textInterchange';
 import { createNativeCreasePatternProjectFile, createNativeProjectFile, serializeNativeProjectFile } from '../lib/nativeProjectFile';
 import { emptyOristudioCpSelection, DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS } from '../lib/creasePatternViewport';
@@ -23,7 +25,8 @@ export async function captureFoldedForms(data: Extract<DesignData, { kind: 'crea
   data.foldedFormFrames = (file.file_frames ?? []).filter(frame => 'oristudio:folded3d' in frame);
 }
 
-export async function exportDesign(data: DesignData, title: string, format: string, base?: CpExperimentBase, output?: AnalysisOutput, allowLoss = false): Promise<Record<string, unknown>> {
+export async function exportDesign(data: DesignData, title: string, format: string, base?: CpExperimentBase, output?: AnalysisOutput, allowLoss = false, proposal?: PortableProposal): Promise<Record<string, unknown>> {
+  if (output?.pose && output.proposedData) data = output.proposedData;
   // OBJ is a simulation mesh here, not the application's crease interchange OBJ.
   const policyLosses = data.kind === 'crease_pattern' && ['cp', 'ori', 'fold', 'svg', 'png'].includes(format)
     ? collectExportLossWarnings(format as ExportFormat, {
@@ -57,9 +60,12 @@ export async function exportDesign(data: DesignData, title: string, format: stri
     content = format === 'png' ? await png(svg) : svg;
     mimeType = format === 'png' ? 'image/png' : 'image/svg+xml'; encoding = format === 'png' ? 'base64' : 'utf8';
   } else if (format === 'fold') {
-    if (data.kind === 'crease_pattern') {
+    if (output?.pose) {
+      content = JSON.stringify({ ...output.pose.fold, 'oristudio:agent-proposal': proposal });
+    } else if (data.kind === 'crease_pattern') {
       const file = JSON.parse(await withCp(data, (api, h) => api.exportFoldFile(h, texts, []))) as FoldDocument;
       if (data.foldedFormFrames) file.file_frames = [...(file.file_frames ?? []), ...data.foldedFormFrames];
+      if (proposal) file['oristudio:agent-proposal'] = proposal;
       content = JSON.stringify(file);
     } else content = JSON.stringify(await exportFold(data));
     mimeType = 'application/json';
@@ -68,19 +74,28 @@ export async function exportDesign(data: DesignData, title: string, format: stri
     mimeType = 'application/vnd.oristudio.project+json';
     if (data.kind === 'crease_pattern') {
       const normalized = normalizeDocumentTexts(data.document, base?.annotations);
-      content = serializeNativeProjectFile(createNativeCreasePatternProjectFile({
+      const figure = poseFigure(data, output, title);
+      const cpInput = {
         title, filename: 'design.osf', path: null, appVersion: APP_VERSION,
-        document: normalized.document, source: null, foldProjection: null, foldArtifacts: null, creaseColorMode: 'mvf',
+        document: { ...normalized.document, metadata: { ...normalized.document.metadata, ...(proposal ? { [PROPOSAL_KEY]: proposal } : {}) } }, source: null, foldProjection: null, foldArtifacts: null, creaseColorMode: 'mvf' as const,
         selection: emptyOristudioCpSelection(), viewport: DEFAULT_ORISTUDIO_CP_VIEWPORT_OPTIONS,
-        foldedFigures: base?.figures ?? [], activeFoldedFigureId: null, lineage: importedCpLineage(),
+        foldedFigures: [...(base?.figures ?? []), ...(figure ? [figure] : [])], activeFoldedFigureId: figure?.id ?? null, lineage: importedCpLineage(),
         images: base?.annotations.filter(isImageAnnotation), textAnnotations: normalized.annotations.filter(isTextAnnotation),
         suppressionRegions: base?.annotations.filter(isSuppressionRegionAnnotation), inlineSimulations: base?.simulations,
         extensions: base?.extensions,
-      }));
+      };
+      const source = proposal?.source;
+      content = serializeNativeProjectFile(source ? createNativeProjectFile({
+        workspaceTitle: title, filename: 'design.osf', path: null, appVersion: APP_VERSION,
+        designs: [{ id: 'agent-source', kind: source.data.kind === 'treemaker' ? 'treemaker' : 'box-pleat',
+          title: source.title, text: source.data.text, format: source.data.kind === 'treemaker' ? 'tmd5' : 'bps',
+          viewState: source.data.kind === 'box_pleat' ? source.data.viewState : undefined }],
+        activeDesignId: 'agent-source', creasePattern: cpInput,
+      }) : createNativeCreasePatternProjectFile(cpInput));
     } else {
       const kind = data.kind === 'treemaker' ? 'treemaker' : 'box-pleat';
       content = serializeNativeProjectFile(createNativeProjectFile({ workspaceTitle: title, filename: 'design.osf', path: null,
-        appVersion: APP_VERSION, designs: [{ id: 'agent-design', title, kind, text: data.text, format: kind === 'treemaker' ? 'tmd5' : 'bps', viewState: data.kind === 'box_pleat' ? data.viewState : undefined }], activeDesignId: 'agent-design' }));
+        appVersion: APP_VERSION, designs: [{ id: 'agent-design', title, kind, text: data.text, format: kind === 'treemaker' ? 'tmd5' : 'bps', viewState: data.kind === 'box_pleat' ? data.viewState : undefined }], activeDesignId: 'agent-design', extensions: proposal ? { [PROPOSALS_KEY]: { 'agent-design': proposal } } : undefined }));
     }
   } else if (data.kind === 'crease_pattern' && (format === 'cp' || format === 'ori')) {
     content = await withCp(data, (api, h) => format === 'cp' ? api.exportCp(h) : api.exportOri(h, texts));

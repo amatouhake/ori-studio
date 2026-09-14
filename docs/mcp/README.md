@@ -75,7 +75,7 @@ server instructions):
 | --- | --- | --- |
 | prompt `origami-workflow` | One page of operating rules and the default tool loop | [`agent-prompt.md`](agent-prompt.md) |
 | resource `ori-studio://guide/diagnostics` | Check / fold / simulation / TreeMaker / BP result → meaning → action tables | [`diagnostics.md`](diagnostics.md) |
-| resource `ori-studio://guide/recipes` | Step-by-step workflows R1–R7 | [`recipes.md`](recipes.md) |
+| resource `ori-studio://guide/recipes` | Step-by-step workflows R1–R8 | [`recipes.md`](recipes.md) |
 | resource `ori-studio://guide/knowledge` | The source-backed knowledge base the two above are derived from | [`../origami-design-knowledge.md`](../origami-design-knowledge.md) |
 
 The text is compiled into the desktop binary (`apps/tauri/src-tauri/src/mcp/guidance.rs`)
@@ -90,13 +90,23 @@ points at the same material.
 | Discover and begin | `workspace`, `begin_design` | Live summaries and an isolated draft ID/revision |
 | Inspect | `inspect_design`, `preview_construction` | Geometry, IDs, assignments, topology, candidate folds |
 | Author | `edit_creases`, `edit_tree`, `edit_box_pleat` | Atomic semantic batches, operation reports, new revision |
-| Recover | `checkpoint_design`, `rollback_design`, `discard_design` | Named recovery points and experiment cleanup |
-| Analyze | `analyze_design` | Oriedita checks/layer search, TreeMaker optimizers/CP build, BP packing |
+| Continue and review | `fork_design`, `retain_design`, `checkpoint_design`, `rollback_design`, `discard_design` | Independent variants, session retention, named recovery points and cleanup |
+| Analyze | `analyze_design` | Paper audit, Oriedita checks/layer search, TreeMaker optimizers/CP build/layout alternatives, BP packing |
+| Pose | `pose_design` | Static placement at existing crease angles, adoptable through a fork |
 | Simulate | `simulate_design` | Actual Origami Simulator relaxation, strain and convergence |
 | Monitor | `job_status`, `cancel_job` | Bounded asynchronous work, cancellation and revision-bound results |
 | Convert | `derive_crease_pattern` | A new editable CP from a TreeMaker build or BP design |
 | See and export | `render_view`, `export_design` | MCP PNG images and editable/artifact file content |
-| Publish | `commit_design`, `workspace_history` | One undoable CP replacement, or a new TreeMaker/BP design tab |
+| Publish | `commit_design`, `workspace_history` | One undoable CP replacement with a supported pose, optional atomic captured-source tab, or a new TreeMaker/BP design tab |
+
+When proposals exist, **Agent drafts** opens an isolated review beside **Live**.
+Compare current geometry or named steps, inspect evaluation/diagnostic views,
+keep or reject proposals, continue variants, save OSF, or apply the selected
+result. **Take over in Live** cancels that proposal's app job and revokes agent
+writes before attempting publication; it does not stop the external process.
+Kept proposals last only for the enabled session. Export before closing it.
+See [the design-loop contract](design-loop.md) for briefs, constraints,
+provenance, ownership, related publication and validation scope.
 
 CP operations include crease insertion/deletion, assignment and fold-angle
 changes, transforms/copies, vertex insertion, standard bases, geometric
@@ -159,7 +169,9 @@ resuming. Export useful checkpoints before disabling access or closing the app.
 `render_view` returns standard MCP image content and structured view metadata.
 CP views use the application's SVG export renderer, folded views use actual
 layer-solver render geometry, and simulation views use actual simulated meshes.
-Simulation has isometric, top, front and side cameras. These are model views,
+Static pose and simulation support isometric, top, front and side cameras.
+Evaluation views omit diagnostic labels; diagnostic CP/pose views can connect
+the image to source geometry. These are model views,
 not screenshots of application chrome. A vision-capable agent can inspect the
 returned PNG directly.
 
@@ -175,9 +187,11 @@ OSF exports a design, not every unrelated live tab. An active CP clone's OSF
 also preserves its captured annotations, images, suppression regions, folded
 figures, inline simulations and document extensions through the normal project
 serializer. New/imported drafts do not copy another design's companion objects.
-Session pins are not an OSF file-format addition. Simulation and layer-search
-results are separate artifacts; this interface does not insert them as new
-canvas objects on commit. Reopen exported OSF using the application's normal
+Session pins are not an OSF file-format addition. A supported adopted static
+pose is saved and published as a restartable folded figure with its CP.
+Simulation trajectories and layer-search results remain separate artifacts.
+OSF also saves the proposal brief, captured source and historical evidence;
+restoring them never certifies fresh validation. Reopen OSF using the normal
 Open flow. MCP import accepts CP/ORI/FOLD/TMD5/BPS content, not OSF/ORH or paths.
 
 Local checks are not a global folding proof. A solved layer order is a flat
@@ -199,8 +213,8 @@ node scripts/mcp/desktop-demo.mjs
 ```
 
 This uses the binary's bundled production frontend. Without a display it needs
-`dbus-run-session` and `xvfb-run`; it also needs Playwright Chromium for image feedback. It runs all four
-probes below, then stops the desktop and removes its temporary app data. It keeps
+`dbus-run-session` and `xvfb-run`; it also needs Playwright Chromium for image feedback. It runs all
+seven probes, then stops the desktop and removes its temporary app data. It keeps
 reports and exported designs. `ORI_DESKTOP_BINARY` can select a different built
 binary. The isolated launcher is Linux-specific; the individual MCP clients also
 work with a desktop launched normally on macOS or Windows.
@@ -215,6 +229,7 @@ export ORI_MCP_TOKEN='<the token supplied to the desktop process>'
 node scripts/mcp/security.mjs
 node scripts/mcp/acceptance.mjs
 node scripts/mcp/design-engines.mjs
+node scripts/mcp/design-loop.mjs
 ```
 
 The demonstrations publish designs to the open application. Run them in a
@@ -223,8 +238,9 @@ neither invokes a store function nor drives app controls. The Miura demonstratio
 uses Playwright only to decode returned images and measure colored ink. It is a
 deterministic autonomous client, not an evaluation of an LLM's origami knowledge.
 
-Outputs go to ignored `artifacts/mcp-acceptance/` and
-`artifacts/mcp-design-engines/`; set `ORI_MCP_ARTIFACTS` to override either.
+Outputs go to ignored `artifacts/mcp-acceptance/`,
+`artifacts/mcp-design-engines/` and `artifacts/mcp-design-loop-native/`;
+set `ORI_MCP_ARTIFACTS` to override a probe's location.
 They include transcripts, assertions, reports, PNG views and editable files.
 `scripts/mcp/call.mjs` reads a single `{ "name": "workspace", "arguments": {} }`
 tool call from stdin for additional probes (or lists tools when given no name;

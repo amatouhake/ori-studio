@@ -1,5 +1,7 @@
+import { AgentWorkspace } from '../automation/review/AgentWorkspace';
+import { isAgentReviewOpen, subscribeReviewSession } from '../automation/reviewSession';
 import { selectDesignMethod } from '../store/workspaceStore/designTabs';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -304,6 +306,7 @@ function DesignWorkspaceFooter() {
  * element) and drives which layout Dockview shows via `activeWorkspace`.
  */
 export function WorkspaceShell() {
+  const reviewing = useSyncExternalStore(subscribeReviewSession, isAgentReviewOpen);
   const setDockviewApi = useLayoutStore((state) => state.setDockviewApi);
   const loadLayout = useLayoutStore((state) => state.loadLayout);
   const saveLayout = useLayoutStore((state) => state.saveLayout);
@@ -404,15 +407,15 @@ export function WorkspaceShell() {
   return (
     <div className="app-layout">
       <ErrorBoundary surface="shell:toolbar" variant="strip">
-        <Toolbar />
+        <div className="agent-live-chrome" inert={reviewing}><Toolbar /></div>
       </ErrorBoundary>
       <div className="workspace-shell">
         <ErrorBoundary surface="shell:rail" variant="mini">
-          <WorkspaceRail />
+          <div className="agent-live-chrome" inert={reviewing}><WorkspaceRail /></div>
         </ErrorBoundary>
-        <div className="workspace-shell__canvas file-drop-region" {...dropTargetProps}>
+        <div className="workspace-shell__canvas file-drop-region" {...(reviewing ? {} : dropTargetProps)}>
           <ErrorBoundary surface="shell:design-tabs" variant="strip">
-            <DesignWorkspaceTabs />
+            <div className="agent-live-chrome" inert={reviewing}><DesignWorkspaceTabs /></div>
           </ErrorBoundary>
           {/*
             The wrapper is load-bearing: it, not dockview's own element, is the
@@ -421,7 +424,7 @@ export function WorkspaceShell() {
             targets one level too deep — see the note in App.css.
           */}
           <div className="workspace-shell__dock">
-            <ErrorBoundary surface="shell:dockview" variant="pane">
+            <AgentWorkspace><ErrorBoundary surface="shell:dockview" variant="pane">
               <DockviewReact
                 components={panelComponents}
                 defaultTabComponent={FixedDockTab}
@@ -430,7 +433,7 @@ export function WorkspaceShell() {
                 disableDnd={coarsePointer}
                 disableFloatingGroups
               />
-            </ErrorBoundary>
+            </ErrorBoundary></AgentWorkspace>
           </div>
           <DesignWorkspaceFooter />
           {/*
@@ -440,7 +443,7 @@ export function WorkspaceShell() {
             order here is what puts undo/redo left of both.
           */}
           <ErrorBoundary surface="shell:canvas-pills" variant="mini">
-            <CanvasPillLane>
+            <CanvasPillLane inert={reviewing}>
               <CanvasHistoryPills />
               <DesignPaneSwitcher />
               <CpToolsTrigger />

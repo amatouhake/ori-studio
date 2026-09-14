@@ -16,8 +16,9 @@ without adding origami knowledge that is not here; anything they need that is
 missing belongs in §7 first.
 
 Source keys are resolved in [§6](#6-source-index). Repository paths are
-relative to the repo root and were read at
-`integration/audit-remediation` = `85c67a0f`.
+relative to the repo root. The original theory/port audit was at
+`integration/audit-remediation` = `85c67a0f`; §0.1 and §8 describe the design-loop
+implementation on `feat/mcp-agent-design-loop` (2026-09-14).
 
 ---
 
@@ -33,19 +34,33 @@ never by themselves license an agent to do anything.
 | --- | --- | --- |
 | **[T]** theorem | A mathematical statement with a primary-source proof or statement. | Rely on it, within its hypotheses. |
 | **[F]** upstream-documented fact | What the upstream's documentation, UI text, or source states about its own behaviour or limits (e.g. BP Studio's flat-foldability disclaimer). | Know it. It prescribes nothing. |
-| **[U]** upstream-prescribed operation | What the upstream tool's own documentation or failure message tells the user to *do*. | Do it as the first response; it does not change the design's intent. |
+| **[U]** upstream-prescribed operation | What the upstream tool's own documentation or failure message tells the user to *do*. | Use it within the task scope; a prescribed remedy still cannot override an explicit constraint. |
 | **[I]** Ori Studio implementation behaviour | What the port or the MCP actually does, with a code pointer. | Plan around it; do not assume upstream behaviour where [I] says otherwise. |
-| **[H]** agent heuristic / semantic fallback | Design lore from tutorials, or a fallback that changes the design (lengths, flap count, conditions) or depends on something not ported. | Only with the user's consent, and never presented as required. |
+| **[H]** agent heuristic / semantic fallback | Design lore from tutorials, or a fallback that changes the design (lengths, flap count, conditions) or depends on something not ported. | Try within delegated creative scope in an isolated draft; otherwise obtain agreement. Label it as a hypothesis, never a theorem or required remedy. |
 
 ### 0.1 Action boundary
 
-The derived guides (`docs/mcp/*.md`, the skill) may turn a **[U]** row into
-a default step and an **[H]** row into a consent-gated fallback. They may
-not derive an executable step from a **[T]**, **[F]** or **[I]** statement
-alone: a theorem says what must hold, an implementation fact says what the
-kernel reports — neither says which of the user's creases, nodes or flaps
-should change. This subsection fixes the boundary so the guides do not have
-to guess it.
+Knowledge certainty and authority are separate. **[T]/[F]/[I]** explain what
+is known; **[U]/[H]** describe operations or hypotheses. None overrides the
+user's explicit constraints. An **[H]** label does not require a fresh question
+when the user has already delegated that design decision.
+
+For a **broad creative task** ("design a fox", "explore a deer base"), the agent
+may choose and test methods, tree structure, proportions, initial layouts,
+symmetry strategies, additional creases and alternative proposals inside an
+isolated draft. Checkpoint or fork, try the hypothesis, inspect the outcome,
+revalidate, keep or reject it. State assumptions and uncertainty. Explicit
+constraints such as fixed flap lengths, a required paper shape/count, or
+preserved creases remain binding. Ask only when changing those constraints or
+resolving a materially different product/design objective.
+
+For a **narrow repair or transcription task**, preserve the supplied design.
+"Pack these flaps" delegates placement, not changing specified flap sizes;
+"fix the assignments" delegates assignments, not moving specified vertices.
+The table below lists choices to discuss when outside the delegated scope.
+It is not a ban on creative experiments within a broadly delegated draft.
+Publication to Live is a separate, explicit operation; isolated experimentation
+never grants permission to overwrite concurrent human edits.
 
 **Always allowed (no consent):**
 
@@ -64,8 +79,7 @@ to guess it.
   theorems in §1.2 (e.g. which reassignments of a fan would satisfy Maekawa
   and big-little-big) without applying them.
 
-**Consent-gated [H] — the target state is a design choice the theorem or
-fact does not determine:**
+**Design choices [H] — obtain agreement when outside the delegated scope:**
 
 | Action | Why it is [H] | KB |
 | --- | --- | --- |
@@ -90,49 +104,15 @@ like is transcription and needs no consent. The same operations become
 **[H]** the moment the agent supplies a value or structure the user did
 not: an invented length, an extra node or leaf, a condition, a flap size.
 
-**Scoped delegation.** A user's request defines which design decisions are
-delegated to the agent for that task: "pack these flaps" delegates flap
-*positions* (`move_flap`) but not sizes; "fix the assignments so it folds
-flat" delegates `assign_creases` on the creases that fail, but not moving
-vertices; "design a base for this stick figure" delegates the TreeMaker
-workflow steps (optimize, build, derive, validate, export) on the tree as
-given, but not lengthening the user's edges, adding nodes, or adding
-conditions; "design this by box pleating" likewise delegates placement,
-packing and derivation, not flap dimensions or river lengths. An [H] action inside
-the delegated scope needs no per-step consent; one outside it does. When
-the scope is unclear, the agent asks before applying, and applies nothing
-[H] "to see what happens": proposals are computed from `inspect_design`
-data, not by editing the draft.
+**Scoped delegation.** Interpret the task as a whole. A supplied stick figure
+with explicit lengths is a constraint; a request to invent a recognizable
+animal usually delegates choosing its initial tree and proportions. Broad
+creative delegation need not name each operation. Creative experiments are
+allowed in the isolated workspace, including failed attempts; describe their
+results as hypotheses tested, not established origami facts. When a requested
+method cannot satisfy the constraints, report that limit rather than silently
+changing the paper, flap inventory, or target delivery stage.
 
-**Blanket authorization** ("do whatever it takes") is consent for the
-listed [H] classes the user names, and still requires the agent to report
-every design change it made before `commit_design`.
-
-Three facts shape everything below:
-
-1. **[T] Local conditions decide whether an isometric flat folding exists;
-   they do not decide the layer order.** A crease pattern with each crease
-   marked folded/unfolded has an isometric flat folding iff every vertex,
-   restricted to folded creases, satisfies the Kawasaki–Justin condition
-   [ADK24 §2]. Whether the faces can then be stacked without
-   self-intersection is a separate problem: NP-hard in general [BH96],
-   [LD06 §2.2], and characterised for convex-face patterns by a finite
-   facewise constraint set [ADK24 §3]. Every "check" in Ori Studio is either
-   a per-vertex test or a layer-order search; a completed search proves a flat
-   *state*, not a folding *motion* (`docs/mcp/README.md`).
-2. **[T] TreeMaker's universal-molecule crease pattern satisfies Kawasaki by
-   design** [LD06 §3.1, verbatim: "Our crease pattern satisfies Kawasaki's
-   Theorem by design"] — in exact arithmetic; **[I] measured, the optimized
-   vertex positions carry residuals of 1.7e-6°–4.8e-5°, above Oriedita's
-   1e-6° bar, so a derived TreeMaker CP does report `Angles`** (§4, G16).
-   **[F] No such guarantee exists for Box Pleating Studio's exported CP** —
-   its manual says CP export "is not intended to generate flat-foldable CPs"
-   [BPS-manual]. A CP derived from either tool must be validated like any
-   hand-drawn CP (§3, §4).
-3. **[I] The MCP returns the kernel's diagnostics under the kernel's names.**
-   Interpreting them is the agent's job — §1.3 and §2.2 are the dictionaries.
-
----
 
 ## 1. Crease patterns (Oriedita lineage)
 
@@ -528,7 +508,7 @@ All **[I]** unless noted.
 | G13 | `issue_count` / `conclusion` count `info` and `warning` entries (`SpatialUndecided`, `SpatialUnknowable`, `SpatialInteriorBorder`). | `analysis.ts:47-49` | `issues_found` is not "errors found"; read `severity`. |
 | G14 | The flat-foldability check runs `Refined` arithmetic; `OrieditaExact` exists only for oracle parity. | `checks.rs:23-53`; `PORTING.md:237-243` | A vertex Oriedita flags (or passes) at the 1e-6° bar may differ from Ori Studio near that bar; the port's verdict is the orientation-invariant one. |
 | G15 | BP Studio's exported CP is not intended to be flat-foldable ([BPS-manual]); stretch selection has no documented criterion; some valid layouts have no pattern. | [BPS-manual]; `stretch.vue`; `patternNotFound` | Always validate the derived CP; enumerate configurations/patterns without a preference rule (§7). |
-| G16 | **Fresh, unedited `has_full_cp` TreeMaker derivations** (measured on two fixtures, §4) report `CheckCamv` `Angles` at the 1e-6° bar with residuals of order 1e-6°–1e-4°, plus `Check3` markers at the same points; `repair: snap` cannot help because TreeMaker angles are not on the 22.5° or box-pleat families; and Oriedita's fold estimate returns `NotAttempted` (Step2) or `Contradiction` (Step3) regardless of `starting_face`, while the Flat-Folder port finds exactly one valid state with the same assignment. The kernel's own doc notes the bar "rejects ~42%" of real-pattern vertices "which is the status quo … those same patterns fail CAMV in Oriedita today" (`lib.rs:3557-3563`). | §4 measurement; `lib.rs:3557-3574` | **Operational rule (scope: a derivation the agent has not edited, whose `checks` output contains only `Angles` entries and `Check3` markers — no `NumberOfFolds`, `Maekawa`, `BigLittleBig`, `Check1`, `Check2` or `Spatial*` entries):** treat those `Angles` entries as numerical residue of the optimizer, not as a design error; do not move vertices or reassign to silence them; run `flat_fold` once with the default `starting_face` and, if it returns `NotAttempted` or `Contradiction`, report that Oriedita's estimator could not validate the layer order for this derivation and that the TreeMaker construction itself guarantees an assignment [LD06] (cross-solver confirmation is not reachable through the MCP, G6); export the design (TMD5 / FOLD / OSF) rather than "repairing" it. The MCP `Angles` entry carries no residual value, so the rule keys on the diagnostic *set* and on the CP being unedited. **The rule does not apply** once the agent has edited the derived CP, to `Angles` entries accompanied by any other rule, or to CPs from any other source (including BP, §3): those are judged as in §1.3. |
+| G16 | **Fresh, unedited `has_full_cp` TreeMaker derivations** (measured on two fixtures, §4) report `CheckCamv` `Angles` at the 1e-6° bar with residuals of order 1e-6°–1e-4°, plus `Check3` markers at the same points; `repair: snap` cannot help because TreeMaker angles are not on the 22.5° or box-pleat families; and Oriedita's fold estimate returns `NotAttempted` (Step2) or `Contradiction` (Step3) regardless of `starting_face`, while the Flat-Folder port finds exactly one valid state with the same assignment. The kernel's own doc notes the bar "rejects ~42%" of real-pattern vertices "which is the status quo … those same patterns fail CAMV in Oriedita today" (`lib.rs:3557-3563`). | §4 measurement; `lib.rs:3557-3574` | **Operational rule (scope: a derivation the agent has not edited, whose `checks` output contains only `Angles` entries and `Check3` markers — no `NumberOfFolds`, `Maekawa`, `BigLittleBig`, `Check1`, `Check2` or `Spatial*` entries):** consider optimizer residue as a hypothesis supported by those two measured fixtures, not a guarantee for other designs; do not move vertices or reassign to silence them; run `flat_fold` once with the default `starting_face` and, if it returns `NotAttempted` or `Contradiction`, report that Oriedita's estimator could not validate the layer order for this derivation without extending TreeMaker’s theoretical construction guarantee [LD06] to the numerical exported CP or dismissing a contradictory solver result (cross-solver confirmation is not reachable through the MCP, G6); export the design (TMD5 / FOLD / OSF) rather than "repairing" it. The MCP `Angles` entry carries no residual value, so the rule keys on the diagnostic *set* and on the CP being unedited. **The rule does not apply** once the agent has edited the derived CP, to `Angles` entries accompanied by any other rule, or to CPs from any other source (including BP, §3): those are judged as in §1.3. |
 
 ---
 
@@ -587,3 +567,54 @@ be carried into the recipes as an explicit "no rule; enumerate and validate".
 | U6 | **Orihime/Meguro identity** (§1 header). | A source naming Orihime's author in full. |
 | U7 | **Resolved** — see §1.4 `angular_flat_foldability` (candidate generation, colour solve, nearest-pick selection, destination rule). Residual: the Oriedita handler was read through the port's ported function (`odd_vertex_foldable_candidates`, documented as `VERTEX_MAKE_ANGULARLY_FLAT_FOLDABLE_38`), not the Java file itself. | — |
 | U8 | **Resolved** — see §1.5: `starting_face` is the fixed reference face; all other faces are placed by reflecting across the BFS spanning-tree creases back to it. Residual: read from the port (`fold_graph.rs`), which documents itself as `WireFrame_Worker.getFacePositions()`; the Java was not opened. | — |
+
+## 8. Agent design loop: product semantics and implementation [I]
+
+Product context: [MCP next design — review draft](https://www.notion.so/3dbc12ab5b2d81968c09d2c7596a6c92)
+and [MCP dogfood closure](https://www.notion.so/3dbc12ab5b2d81e998b5d4ab55a5a61a).
+These inform product intent, not engine guarantees. Earlier dogfood examples
+show limited fish/deer/fox success; they do not isolate model capability from
+environment limitations. Current code is authoritative for available operations.
+
+- Paper shape/count belong to the brief. Square single-sheet paper is a useful
+  prior for some complex representational tasks, not a universal rule.
+  New CP drafts currently start with the app's square; replace its boundary when
+  the task calls for something else. `paper` analysis audits closed boundary
+  loops; cuts, holes, multiple sheets and intersections remain unsupported or
+  separately reviewed (`automation/paper.ts`). A specified paper contract gates
+  publication; free-text constraints still need human/agent review.
+- Final-form symmetry differs from packing/CP symmetry. Symmetric initial
+  layouts are hypotheses, not a universal quality score. `layout_search`
+  varies unconditioned node positions for a fixed TreeMaker tree, paper and
+  conditions, using existing ALM optimize/build; it ranks mechanical full-CP,
+  feasibility and scale only (`automation/layoutSearch.ts`). Structural ideas
+  are authored separately in a fork.
+- Drafts inherit a brief and capture their derivation source by value. A parent
+  may be changed or discarded without losing the source tree of a CP. Kept
+  drafts survive idle expiry within the current access session. OSF captures
+  source + CP + adopted static pose and scoped evidence; saved reports are
+  historical, never current verification (`automation/proposals.ts`,
+  `proposalRestore.ts`, `export.ts`).
+- `pose_design` tests angle targets on existing creases in a private worker.
+  It does not add creases or change the draft; a job fork explicitly adopts
+  those angles. Refusal is meaningful. All-classic flat angles use `flat_fold`;
+  undecided creases must be resolved explicitly. Static placement, layer-order
+  verdict, local checks, simulation target attainment and continuous-motion
+  reachability are distinct (`automation/pose.ts`, `analysis.ts`).
+- Evaluation renders have no diagnostic labels. Pose diagnostic renders map
+  visible face IDs to source CP line IDs at the exact revision; CP diagnostics
+  may include exact TreeMaker leaf anchors. These are structural relations,
+  not semantic recognition of ears/legs/faces. Use a visual problem to choose
+  a mapped region, inspect its lines/source, test a correction, then evaluate
+  unlabelled views again (`poseRender.ts`, `sourceProvenance.ts`).
+- A clean CP or a placed pose cannot establish recognizability, aesthetic
+  success, or that the design is finished. Review multiple views against the
+  brief. A base, a posed exploration and a finished-looking shaped model are
+  different deliverables; report the actual stage.
+- The review UI exposes Live versus isolated drafts, checkpoints, variants,
+  retention, rejection, OSF save and explicit publication. Taking over revokes
+  subsequent agent writes to that draft and cancels its app job. It does not
+  stop the external process, and other proposals remain independent. A source
+  tab, derived CP and adopted pose publish in one store transition, retaining
+  the existing live conflict fence and CP undo (`automation/review/`,
+  `store/workspaceStore/slices/automationSlice.ts`).

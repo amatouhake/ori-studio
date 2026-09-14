@@ -1,7 +1,7 @@
 import { filterBpTreeSymmetryPairs } from '../lib/bpTreeSymmetry';
 import { connectEngine } from '../engines/engineHost';
 import type { OristudioCpLineSegment, OristudioCpLineColor, OristudioCpCommandPayload } from '../engine/oristudioCpTypes';
-import type { TreeEdit, FoldDocument } from '../engine/types';
+import type { TreeEdit, FoldDocument, TreeSnapshot } from '../engine/types';
 import type { OristudioBpRawProject } from '../engine/oristudioBpTypes';
 import type { Point } from '../lib/geometry';
 import { createStarterOristudioCpDocument } from '../lib/oristudioCpStarterDocument';
@@ -208,15 +208,17 @@ export async function inspect(data: DesignData, offset = 0, limit = 500): Promis
 
 export async function exportFold(data: DesignData): Promise<FoldDocument> {
   let text: string;
+  let tree: TreeSnapshot | undefined;
   if (data.kind === 'crease_pattern') text = await withCp(data, (api, h) => api.exportFold(h));
   else if (data.kind === 'treemaker') {
     const api = await connectEngine('treemaker'); const h = await api.loadTmd(data.text);
-    try { text = await api.exportFold(h); } finally { await api.freeTree(h); }
+    try { text = await api.exportFold(h); tree = await api.snapshot(h); } finally { await api.freeTree(h); }
   } else {
     const api = await connectEngine('oristudio-bp'); const h = await api.loadProject(data.text);
     try { text = await api.exportFold(h, false, true); } finally { await api.freeProject(h); }
   }
   const fold = JSON.parse(text) as FoldDocument;
+  if (tree) fold['oristudio:tree-source'] = { paper: tree.paper, nodes: tree.nodes, vertices: tree.vertices };
   if (!fold.vertices_coords?.length || fold.vertices_coords.some(p => !p.every(Number.isFinite))) throw new AutomationError('invalid_geometry', 'No finite crease pattern is available; build the source design first');
   return fold;
 }

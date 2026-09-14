@@ -24,7 +24,7 @@ import { useLayoutStore, viewPanelFor } from '../store/layoutStore';
  * Order in the row is DOM order, so it is `WorkspaceShell` that decides what
  * sits left of what.
  */
-export function CanvasPillLane({ children }: { children: ReactNode }) {
+export function CanvasPillLane({ children, inert = false }: { children: ReactNode; inert?: boolean }) {
   const coarsePointer = useIsCoarsePointerSurface();
   const activeWorkspace = useLayoutStore((state) => state.activeWorkspace);
 
@@ -42,7 +42,7 @@ export function CanvasPillLane({ children }: { children: ReactNode }) {
   const viewPanel = viewPanelFor(activeWorkspace);
 
   return (
-    <div className="canvas-pill-lane" data-view-panel={viewPanel?.id}>
+    <div className="canvas-pill-lane" data-view-panel={viewPanel?.id} inert={inert} hidden={inert}>
       <div className="canvas-pill-lane__row">{children}</div>
     </div>
   );

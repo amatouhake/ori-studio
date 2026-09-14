@@ -5,6 +5,8 @@ import type { DesignData } from './contracts';
 import { AutomationError } from './contracts';
 import type { AnalysisOutput } from './analysis';
 import { exportFold } from './engines';
+import { designSvg } from './diagnosticRender';
+import { poseView } from './poseRender';
 
 export function base64(bytes: Uint8Array): string {
   let binary = '';
@@ -16,6 +18,8 @@ export async function creaseSvg(data: DesignData): Promise<string> {
   return serializeCreasePatternSvg(fold, segmentFoldDocument(fold), DEFAULT_CREASE_EXPORT_OPTIONS);
 }
 export async function renderSvg(data: DesignData, view: string, output?: AnalysisOutput, camera = 'isometric'): Promise<string> {
+  if (view === 'design' && data.kind !== 'crease_pattern') return designSvg(data, false);
+  if (view === 'pose' && output) return poseView(output, camera, false).svg;
   if (view === 'crease_pattern') return creaseSvg(data);
   if (view === 'simulation') {
     const svg = output?.views?.[camera];

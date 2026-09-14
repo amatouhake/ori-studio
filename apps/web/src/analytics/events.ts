@@ -382,6 +382,7 @@ export type AnalyticsErrorDomain =
  * these constants cover the Phase-4 domain events call sites reference by name.
  */
 export const ANALYTICS_EVENTS = {
+  agentProposalReviewed: 'agent proposal reviewed',
   agentToolCompleted: 'agent tool completed',
   agentAccessChanged: 'agent access changed',
   appOpened: 'app opened',

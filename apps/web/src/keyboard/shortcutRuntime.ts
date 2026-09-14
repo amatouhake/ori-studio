@@ -1,3 +1,4 @@
+import { isAgentReviewOpen } from '../automation/reviewSession';
 import type { MenuActionId } from '../commands/menuActions';
 import type { DocumentMode } from '../lib/sampleProject';
 import type { EditingContext } from '../workspaces/editingContext';
@@ -130,6 +131,7 @@ export function handleShortcutRuntimeKeyDown(
   event: KeyboardEvent,
   options: ShortcutRuntimeOptions
 ): boolean {
+  if (isAgentReviewOpen()) return false;
   const executors: ShortcutExecutors = {
     menu: options.menu,
     viewport: viewportExecutors[resolvedViewportSurface(options.context)],

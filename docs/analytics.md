@@ -46,8 +46,11 @@ distinguishes them.
 
 Desktop MCP follows the same contract. `agent tool completed` records only the
 tool-name enum and `success`/`error`; `agent access changed` records only
-`enabled`/`disabled`. Neither event includes arguments, experiment IDs, tokens,
-geometry, file/image content, titles or diagnostic messages. Both are no-ops
+`enabled`/`disabled`. `agent proposal reviewed` records a review-action enum
+(`keep`, `reject`, `checkpoint`, `fork`, `save`, `apply`, `apply_related`,
+`take_over`, `cancel_job`) and `success`/`error`. These events include no
+arguments, experiment IDs, tokens, geometry, file/image content, titles or
+diagnostic messages. The proposal review excludes autocapture. All are no-ops
 when analytics is disabled. See [MCP architecture](mcp/architecture.md).
 
 This is the hard line. None of the following is ever sent, by any event or by

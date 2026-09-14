@@ -1,3 +1,9 @@
+import { searchLayouts, type LayoutCandidate } from './layoutSearch';
+import { inspectPaper } from './paper';
+import { staticPose, type PoseAngle } from './pose';
+import type { OristudioCpWorkerApi } from '../workers/oristudioCpWorker';
+import type { OristudioCpFolded3dRenderModel, OristudioCpFolded3dSnapshot } from '../engine/oristudioCpTypes';
+import type { FoldDocument } from '../engine/types';
 import { invoke } from '@tauri-apps/api/core';
 import { isDesktopRuntime } from '../platform/runtime';
 import type { OristudioCpFoldedFigureSnapshot } from '../engine/oristudioCpTypes';
@@ -14,6 +20,9 @@ import { exportFold, withCp } from './engines';
 
 export interface AnalysisOutput {
   result: Record<string, unknown>;
+  candidates?: LayoutCandidate[];
+  proposedData?: DesignData;
+  pose?: { render: OristudioCpFolded3dRenderModel; snapshot: OristudioCpFolded3dSnapshot; fold: FoldDocument; face_line_ids: number[][] };
   data?: DesignData;
   folded?: OristudioCpFoldedRenderSnapshot;
   views?: Record<string, string>;
@@ -38,6 +47,7 @@ async function isolatedWorker<T, R>(worker: Worker, signal: AbortSignal, run: (a
 }
 
 export async function analyze(data: DesignData, analysis: string, args: Record<string, unknown>, signal: AbortSignal): Promise<AnalysisOutput> {
+  if (analysis === 'paper') return { result: inspectPaper(await exportFold(data)) };
   if (data.kind === 'crease_pattern' && analysis === 'checks') {
     return withCp(data, async (api, h) => {
       const checks = [];
@@ -84,11 +94,13 @@ export async function analyze(data: DesignData, analysis: string, args: Record<s
     try { return { result: { packing: await api.packingValidation(h), layout: await api.layoutSnapshot(h) } }; }
     finally { await api.freeProject(h); }
   }
-  if (data.kind === 'treemaker' && ['optimize_scale', 'optimize_edges', 'optimize_strain', 'build_cp', 'checks'].includes(analysis)) {
+  if (data.kind === 'treemaker' && ['optimize_scale', 'optimize_edges', 'optimize_strain', 'build_cp', 'checks', 'layout_search'].includes(analysis)) {
     // Separate worker from the user's engine: cancelling an optimizer must not
     // destroy live design handles or leave a mutation running after cancellation.
     const worker = new Worker(new URL('../workers/treemakerWorker.ts', import.meta.url), { type: 'module' });
     return isolatedWorker<TreemakerWorkerApi, AnalysisOutput>(worker, signal, async api => {
+      if (analysis === 'layout_search') return searchLayouts(api, data.text,
+        { trials: Number(args.trials ?? 4), keep: Number(args.keep ?? 3), seed: Number(args.seed ?? 1) }, signal);
       const h = await api.loadTmd(data.text);
       const report = analysis === 'optimize_scale' ? await api.optimizeScale(h)
         : analysis === 'optimize_edges' ? await api.optimizeEdges(h)
@@ -134,4 +146,9 @@ export async function simulate(data: DesignData, amount: number, maxSteps: numbe
       scope: 'Numerical physical relaxation, not a collision-free or global foldability proof.' }, views,
       obj: foldedObj({ positions, triangles: new Uint32Array(mesh.triangles), foldPercent: mesh.foldPercent }) };
   });
+}
+
+export async function pose(data: DesignData, angles: PoseAngle[], startingFace: number, signal: AbortSignal): Promise<AnalysisOutput> {
+  const worker = new Worker(new URL('../workers/oristudioCpWorker.ts', import.meta.url), { type: 'module' });
+  return isolatedWorker<OristudioCpWorkerApi, AnalysisOutput>(worker, signal, api => staticPose(api, data, angles, startingFace, signal));
 }

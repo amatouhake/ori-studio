@@ -4,14 +4,12 @@ Task-oriented procedures for an agent driving Ori Studio through the desktop
 MCP. Each step names the tool and arguments it uses; the reasoning behind a
 step is in `docs/origami-design-knowledge.md` (the KB), cited by section, and
 the runtime dictionary for diagnostics is `docs/mcp/diagnostics.md`. The
-recipes turn the KB's **[U]** rows into default steps and its **[H]** rows
-into steps that need the user's consent or a delegation that covers them
-(KB §0.1: "pack these flaps" delegates flap placement, "fix the assignments"
-delegates reassignment, "design a base for this figure" delegates the
-TreeMaker workflow — never edge lengths, flap sizes, vertex moves or crease
-deletions unless named). They add no origami knowledge of their own. Every
-step that changes the design is marked **[H]**; unmarked steps are read-only,
-housekeeping, or **[U]**.
+recipes distinguish evidence from authority (KB §0.1). **[H]** means a design
+hypothesis: a broadly delegated creative task permits trying it in an isolated
+draft. A narrow repair preserves the supplied design; changes outside that
+scope require agreement. Explicit constraints remain binding in both cases.
+R1–R3 cover repair; R4–R5 explain engine workflows; R8 connects them into a
+creative loop. No heuristic here is an established mathematical fact.
 
 Conventions used below:
 
@@ -112,34 +110,23 @@ to the user.
 
 1. `workspace`; `begin_design {source: "new", kind: "treemaker", title}` (or
    `source: "import", format: "tmd5", content`).
-2. Transcribe the tree the user described with `edit_tree` (KB §2.3) —
-   **user-supplied structure and values only**: `add_node` for each flap
-   the user named (first node has no `connect_to`; then `connect_to` an
-   existing ID with `edge_length`); `inspect_design` after each batch to
-   learn the new 1-based IDs; `update_edge {id, length}` with the lengths
-   the user gave; `set_symmetry` + `add_condition` (`nodes_paired`,
-   `node_symmetric`, `node_on_corner`, …) only for symmetry or placement
-   the user stated. Branch-node positions do not matter; conditions on
-   branch nodes are ignored [F]; avoid redundant conditions [U].
-   **[H]** Anything the user did not specify — a flap length, an extra
-   node or edge, a symmetry line, any condition — is a design choice the
-   agent must not invent: ask for the value, or proceed only under a
-   delegation that names that class ("choose the lengths yourself"). A
-   broad "design a base for this stick figure" delegates running steps
-   3–7 on the tree *as given*, not inventing lengths or constraints (KB
-   §0.1).
+2. **[H]** Author a tree with `edit_tree`: `add_node`, `add_edge`,
+   `update_edge` and optional `add_condition` / `set_symmetry`. Preserve any
+   supplied structure and explicit lengths. Under a broad design delegation,
+   choose provisional proportions and topology, label them as hypotheses,
+   and use variants to compare them. Do not treat symmetric packing as a
+   requirement for a symmetric final model.
 3. `analyze_design {analysis: "optimize_scale"}` → `job_status`. Read
    `result.report`: `converged`, `is_feasible`, `new_scale`. If
    `is_feasible: false`, report it; **[H]** changing the initial layout
    (`move_node` on leaf nodes) or the conditions is a design choice — propose
    (e.g. "a different starting layout may give a larger scale",
-   KB §2.1) and re-run only with agreement. If conditions over-constrain the
+   KB §2.1) and test it within delegation; ask when it would change explicit constraints. If conditions over-constrain the
    tree (the optimizer reports no solution), the upstream step is
    `analyze_design {analysis: "optimize_strain"}` [U]; it strains edges
    (their effective lengths change), so say so before running it. **[H]**
    The `edges_same_strain` pairing the tutorial adds first is a new
-   condition: add it only for pairs the user's stated symmetry implies, or
-   with agreement. When the report shows unpinned parts, `analyze_design
+   condition: test it as a hypothesis within delegation; otherwise obtain agreement. When the report shows unpinned parts, `analyze_design
    {analysis: "optimize_edges"}` lengthens them (Scale Selection) [U].
 4. `analyze_design {analysis: "build_cp"}` → `job_status` →
    `result.report.cp_status_report.status`. Follow `diagnostics.md §7`:
@@ -147,16 +134,15 @@ to the user.
    `move_node` per the message) without asking; **[H]** fallbacks
    (`relieve_all_strain`, lengthening edges, adding nodes/edges,
    `path_active` / `path_angle_quant` conditions, `make_root`) only after the
-   user agrees, because they change the design.
+   user agrees when outside delegation; explicit constraints remain binding.
 5. On `has_full_cp`: `derive_crease_pattern` → a **new** CP draft (`draft_id`
    B); the tree draft A stays intact.
-6. On draft B: `analyze_design {analysis: "checks"}`. Expected on a fresh
-   derivation: `CheckCamv` `Angles` entries plus `Check3` markers only →
-   **G16 applies** (`diagnostics.md §4`): do not edit; run
+6. On draft B: `analyze_design {analysis: "checks"}`. A fresh, unedited
+   derivation with only `CheckCamv` `Angles` entries plus `Check3` markers
+   may reflect optimizer residue (G16, `diagnostics.md §4`); run
    `analyze_design {analysis: "flat_fold"}` once; whatever it returns,
-   report it as the estimator's verdict, not the design's.
-   Any other rule on a fresh derivation is unexpected — report it to the
-   user; do not repair.
+   report the actual result and investigate contradictions. Other diagnostics
+   require normal analysis. Do not distort a CP merely to silence markers.
 7. Export: `export_design {format: "tmd5"}` on A; `{format: "fold"}` and/or
    `"osf"` on B (`svg`/`png` for a picture). Publish with `commit_design` on
    A (new TreeMaker tab) and/or on B (CP canvas, R7). `discard_design` what
@@ -166,37 +152,28 @@ to the user.
 
 1. `workspace`; `begin_design {source: "new", kind: "box_pleat", title}` (or
    `format: "bps"` import).
-2. Transcribe the tree and sheet the user described with `edit_box_pleat`
-   — **user-supplied structure and values only**: `initialize_tree {root,
-   leaves: [{loc, length}, …]}` (root ID 0, leaves 1..n), then `add_leaf
-   {parent, length}` and `edge_length {node1, node2, length}` with the
-   flaps and river lengths the user gave; `sheet {grid, width, height}`
-   (integers) with the sheet the user asked for; `resize_flap {id, width,
-   height}` only to the dimensions the user specified. Flap placement
-   (`move_flap`) is what a packing request delegates (step 3).
-   **[H]** Any length, flap size, sheet size or extra leaf the user did not
-   specify is a design choice: ask, or proceed only under a delegation
-   naming it. A broad "design this by box pleating" delegates flap
-   placement, packing and derivation on the tree *as given*, not inventing
-   dimensions (KB §0.1).
+2. **[H]** Author the tree and sheet with `edit_box_pleat`:
+   `initialize_tree {root, leaves: [{loc, length}, …]}` (root ID 0),
+   `add_leaf`, `edge_length`, `sheet` and `resize_flap`. Preserve explicit
+   dimensions. Broad creative delegation permits choosing provisional flap
+   sizes and river lengths; a request to pack specified flaps does not.
 3. `analyze_design {analysis: "packing"}` → `job_status` →
    `result.packing.valid`. If `false`, act on `packing.errors[0]` (only the
    first violation is reported, `diagnostics.md §8`): **[H, delegated by the
    packing request]** `move_flap` the named flaps apart until `dx² + dy² ≥
    d²`; re-run until `valid: true`. **`resize_flap` is never a packing
    shortcut** — flap dimensions are the design; propose and apply only with
-   explicit consent.
+   agreement outside a delegated creative scope.
 4. `inspect_design` → `layout.stretches[]`, `layout.invalidJunctions[]`,
    `layout.patternNotFound`. If `patternNotFound: true` or a stretch has
    `patternFound: false`, the layout has a valid overlap BP Studio cannot
    pattern [F]; the only remedy is a different flap layout — tell the user.
 5. For each stretch, `complete_stretch {id}` if needed. **There is no
    documented preference among configurations/patterns** (KB U1). Keep the
-   defaults. **[H]** Stepping `stretch_config {id, delta: ±1}` /
-   `stretch_pattern {id, delta: ±1}` is a design choice: do it only when the
-   user asks for alternatives, or agrees to try them after the derived CP
-   fails validation; judge each alternative only by step 6 and present the
-   outcomes without ranking them.
+   defaults as one candidate. **[H]** Stepping `stretch_config {id, delta: ±1}` /
+   `stretch_pattern {id, delta: ±1}` is a design choice: is permitted within a broad creative delegation, or when the user
+   requests alternatives. Compare validation and unlabelled visual views
+   separately; do not invent an upstream preference or automatic quality score.
 6. `derive_crease_pattern` → new CP draft; on it `analyze_design {analysis:
    "checks"}` and, if clean, `flat_fold`. **A BP-derived CP is not guaranteed
    flat-foldable [F]**; treat its diagnostics as real (R1–R3), never as
@@ -250,21 +227,59 @@ the user instead of guessing which lines they mean.
 
 ---
 
-## Consent-requiring fallbacks (never silent)
+## R8 — Creative proposals, visual feedback and human continuation
 
-All **[H]** rows of the KB that a recipe may reach (KB §0.1): moving CP
-vertices or redrawing creases (`Angles`); deleting creases (stray endpoints,
-leftover overlaps); reassigning creases (`Maekawa`, `BigLittleBig`);
-deciding `unassigned` creases (`SpatialUndecided`); changing non-180°
-angles (`SpatialClosure`); reassigning interior `Black0` lines; choosing the
-wedge for `angular_flat_foldability`; `relieve_strain` /
-`relieve_all_strain` (bakes strain into desired lengths — explicit consent);
-lengthening or shortening tree edges; adding nodes/edges or `split_edge` to
-break polygons; `path_active` / `path_angle_quant` / other new conditions;
-`make_root`; re-running `optimize_scale` from a different layout; BP
-`resize_flap`, river length or tree changes; stepping BP stretch
-configurations/patterns; BP `move_flap` outside a packing request. Each
-changes the design the user asked for: state what changes and get agreement
-first, or act only inside a delegation the user gave ("pack these flaps",
-"fix the assignments"). Computing and presenting a proposal from
-`inspect_design` data never needs consent.
+1. `workspace`; establish the goal and explicit constraints in `brief` on
+   `begin_design`. State provisional choices. Ask only when an unresolved
+   choice materially changes the task. Paper need not be square or single-sheet;
+   explicit paper contracts are checked within the implementation's supported
+   scope (`analyze_design {analysis: "paper"}`). Unsupported is not a pass.
+2. **[H]** Make initial hypotheses using CP, TreeMaker (R4) or BP (R5). Use
+   `checkpoint_design` for milestones and `fork_design {title}` for variants.
+   For a fixed TreeMaker tree, `analyze_design {analysis: "layout_search",
+   trials: 4, keep: 3, seed: 17}` runs bounded ALM layout trials. Read candidate
+   build/feasibility reports; `fork_design {job_id, candidate_index, title}`
+   adopts one without changing the parent. No aesthetic winner is implied.
+3. `derive_crease_pattern` captures its source. Validate the resulting paper
+   and CP; read each solver's scope (R6). A rejected candidate can remain as
+   evidence of a failed hypothesis; do not weaken constraints to obtain a pass.
+4. **[H]** For shaping with existing structure, `pose_design {angles:
+   [{line_id, assignment: "valley", angle: 70}]}` computes a private static pose.
+   Poll the job and read its placed/refused result and kernel verdict. It does
+   not mutate the CP. All-classic flat angles use `flat_fold`; unassigned
+   creases must be resolved explicitly. A refusal is useful feedback.
+5. `render_view {view: "pose", job_id, purpose: "evaluation", cameras:
+   ["front", "side", "top", "isometric"]}`. Describe visible problems against
+   the brief without diagnostic labels. Then request `purpose: "diagnostic"`:
+   regions map projected face bounds to CP line IDs (1024×1024 viewBox, not pixel
+   visibility masks). `inspect_design` those lines;
+   diagnostic CP views also expose exact mapped TreeMaker leaf anchors where
+   available. This is provenance, not automatic recognition of animal parts.
+6. **[H]** Change angle targets to test pose corrections, or fork from the pose
+   job to adopt them. Structural changes use `edit_creases` or
+   `fork_design {from_source: true, title}` followed by source editing and a
+   new derivation. Recheck changed geometry, then evaluate unlabelled views.
+   Distinguish target-stage success from a useful base or unfinished study.
+7. `retain_design {keep: true}` preserves promising drafts within this access
+   session. Users can inspect latest or saved steps, continue a variant, reject,
+   save OSF, or take over in Live. Takeover revokes this draft's agent writes
+   and cancels its app job; the external process may continue. Respect ownership
+   errors; do not keep retrying writes to a human-owned proposal.
+8. Fork a selected pose job before publication. `commit_design {include_source:
+   true, label}` publishes the captured source tab, derived CP and adopted pose
+   in one store transition. A normal CP commit remains one undo entry; source
+   tabs use normal tab close. A concurrent Live change still causes `conflict`.
+   OSF preserves the related editable state and scoped evidence; reopened reports
+   are historical and need new checks. Simulation meshes export separately as
+   OBJ; OSF does not resume an arbitrary simulation trajectory.
+
+## Choices outside the delegation
+
+For a narrow repair, changes to intended creases, assignments, angles, tree
+lengths, root, flap sizes, paper or conditions need agreement unless the task
+already delegates them (KB §0.1). For a broad creative design, those same
+operations are hypotheses to test in isolated variants, while explicit
+constraints remain binding. `relieve_all_strain` changes desired lengths:
+consent is required if those lengths were fixed by the user. Never describe a
+heuristic, numerical residual diagnosis, static pose or aesthetic judgment as
+a theorem, a folding-motion proof, or objectively finished origami.

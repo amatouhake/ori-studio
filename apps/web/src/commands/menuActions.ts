@@ -1,3 +1,4 @@
+import { isAgentReviewOpen } from '../automation/reviewSession';
 import { activeDesignTab } from '../store/workspaceStore/designTabs';
 import { designKindForContext } from '../designKinds';
 import type { DesignTab } from '../store/workspaceStore/designTabs';
@@ -794,6 +795,7 @@ function analyticsCommandGroup(id: string): string {
 }
 
 export function handleMenuAction(id: string): Promise<boolean> {
+  if (isAgentReviewOpen() && id !== 'file.settings') return Promise.resolve(false);
   // The chokepoint for menu bar / command palette / keyboard-mapped actions.
   // Capturing intent here covers most of the app with one event. Only recognized
   // ids are recorded, so stray dispatches don't create phantom commands.

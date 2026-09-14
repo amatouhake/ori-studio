@@ -166,10 +166,15 @@ engine algorithms in their existing modules with their upstream parity rules.
 New asynchronous work must own its cancellation/lifetime and return artifacts
 bound to a revision. Add a real client probe for any new tool family.
 
-No vendored code or kernel algorithm was changed for MCP. The three excluded
-issues are deliberately isolated: all-negative-y FOLD and zero-height FOLD inputs
-are refused with the issue numbers; ORH import is not exposed. CP/ORI interchange
-provides a workaround without silently rewriting upstream import semantics.
+No vendored code or kernel algorithm is changed for MCP. Earlier versions of
+this document described all-negative-y and zero-height FOLD inputs as
+quarantined. Current importer regression tests accept those corrected cases;
+only malformed or nonfinite referenced geometry is refused. ORH remains outside
+the MCP import catalog.
+
+The additive design-loop contract, source/pose publication and review UI are
+documented in [design-loop.md](design-loop.md). Kept or human-owned proposals are
+exempt from idle expiry, within the same session/resource limits.
 
 ## Review hardening
 

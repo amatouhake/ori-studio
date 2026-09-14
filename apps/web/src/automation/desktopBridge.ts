@@ -1,3 +1,4 @@
+import { bindReviewSession } from './reviewSession';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { createAutomationService } from './service';
@@ -10,16 +11,18 @@ interface Request { id: string; generation: string; name: string; arguments: unk
 export async function initializeDesktopMcp(): Promise<() => void> {
   const generation = crypto.randomUUID();
   let service = createAutomationService();
+  let unbind = bindReviewSession(service);
   const unlisten = await listen<Request>('mcp-request', async ({ payload }) => {
     if (payload.generation !== generation) return;
     const result = await service.call(payload.name, payload.arguments).catch(failure);
     await invoke('mcp_reply', { reply: { id: payload.id, generation, result } }).catch(() => undefined);
   });
   const stopDisabled = await listen('mcp-disabled', () => {
-    service.dispose();
+    unbind(); service.dispose();
     // A fresh grant starts a fresh experiment/receipt namespace. The disabled
     // native gate cannot dispatch into this service before access is re-enabled.
     service = createAutomationService();
+    unbind = bindReviewSession(service);
   });
   try { await invoke('mcp_ready', { tools: TOOLS, generation }); }
   catch (error) {
@@ -30,5 +33,5 @@ export async function initializeDesktopMcp(): Promise<() => void> {
     console.error('[mcp] startup auto-enable failed; bridge retained for manual enable', error);
     throw error;
   }
-  return () => { unlisten(); stopDisabled(); service.dispose(); };
+  return () => { unlisten(); stopDisabled(); unbind(); service.dispose(); };
 }

@@ -15,7 +15,16 @@ const address = d => ({ draft_id: d.draft_id, revision: d.revision });
 const discard = d => mutate('discard_design', address(d));
 async function activeNative() {
   const d = await mutate('begin_design', { source: 'active', kind: 'crease_pattern' });
-  try { return JSON.parse((await call('export_design', { ...address(d), format: 'osf' })).content).workspace.creasePattern.creasePattern; }
+  try {
+    const cp = JSON.parse((await call('export_design', { ...address(d), format: 'osf' })).content).workspace.creasePattern.creasePattern;
+    // Each export identifies its new isolated clone. Exclude only that
+    // envelope when comparing live document undo/redo, not other metadata.
+    const proposal = cp.document.metadata['oristudio:agent-proposal'];
+    assert.equal(proposal.version, 1);
+    assert.equal(proposal.summary.draft_id, d.draft_id);
+    delete cp.document.metadata['oristudio:agent-proposal'];
+    return cp;
+  }
   finally { await discard(d); }
 }
 async function history(direction) {

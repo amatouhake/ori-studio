@@ -52,7 +52,7 @@ try {
     if (oldToken === undefined) delete process.env.ORI_MCP_TOKEN; else process.env.ORI_MCP_TOKEN = oldToken;
   }
   if (!ready) throw new Error('Desktop MCP did not become ready; see artifacts/mcp-desktop-demo/desktop.log');
-  for (const script of ['security.mjs', 'native-state.mjs', 'hardening.mjs', 'acceptance.mjs', 'design-engines.mjs', 'text-publication.mjs']) {
+  for (const script of ['security.mjs', 'native-state.mjs', 'hardening.mjs', 'acceptance.mjs', 'design-engines.mjs', 'text-publication.mjs', 'design-loop.mjs']) {
     await new Promise((done, reject) => {
       const child = spawn(process.execPath, [resolve(root, 'scripts/mcp', script)], { cwd: root, env: clientEnv, stdio: 'inherit' });
       child.on('error', reject); child.on('exit', code => code === 0 ? done() : reject(new Error(`${script} failed (${code})`)));

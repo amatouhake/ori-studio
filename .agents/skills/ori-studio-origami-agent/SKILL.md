@@ -10,15 +10,16 @@ file is served by the server itself and mirrored in the repo:
 
 | Need | Where |
 | --- | --- |
-| Operating rules (8 rules, one page) | MCP prompt `origami-workflow` — `docs/mcp/agent-prompt.md` |
+| Operating rules and creative-design loop | MCP prompt `origami-workflow` — `docs/mcp/agent-prompt.md` |
 | Diagnostic → meaning → action tables | resource `ori-studio://guide/diagnostics` — `docs/mcp/diagnostics.md` |
-| Step-by-step workflows (R1–R7) | resource `ori-studio://guide/recipes` — `docs/mcp/recipes.md` |
+| Step-by-step workflows (R1–R8) | resource `ori-studio://guide/recipes` — `docs/mcp/recipes.md` |
 | Why (theorems, upstream facts, implementation facts, gaps) | resource `ori-studio://guide/knowledge` — `docs/origami-design-knowledge.md` |
 | Transport, retries, limits, export loss policy | `docs/mcp/README.md` |
 
 Read the prompt first, the diagnostics resource before your first `checks`
 result, and the recipe for the task at hand. Do not add origami knowledge of
-your own: if the guides do not say it, it is not a rule.
+your own as an established rule. Hypotheses are allowed within delegated creative
+scope; label uncertainty and test them in isolated variants (KB §0.1, §8).
 
 ## Connect
 
@@ -54,6 +55,7 @@ edit → `analyze_design` (`checks`, then `flat_fold`) → `job_status` →
 | Design by box pleating | R5, diagnostics §8 |
 | "Does it fold?", "show me folded", simulation | R6, diagnostics §5–§6 |
 | Work on what the user has open | R7 |
+| Explore creative variants, pose and visually improve a design | R8 |
 
 ## Five things agents get wrong
 
@@ -73,22 +75,34 @@ edit → `analyze_design` (`checks`, then `flat_fold`) → `job_status` →
    crease to an odd-degree fan; it is not a Kawasaki repair.
 4. **Fresh TreeMaker derivation (G16).** After `build_cp` = `has_full_cp` →
    `derive_crease_pattern`, an *unedited* CP that reports only `Angles` +
-   `Check3` is showing the optimizer's numerical residue: do not touch it,
-   run `flat_fold` once, report the outcome as the estimator's verdict, export.
+   `Check3` may reflect optimizer residue: do not distort it to silence markers;
+   run `flat_fold`, report its actual verdict and investigate contradictions.
    The moment you edit that CP, any other rule appears, or the CP comes from
    Box Pleating, this exception is gone — validate normally. A BP-derived CP
    is never assumed flat-foldable.
-5. **Consent before changing the design (KB §0.1).** Moving or deleting
-   creases, reassigning or deciding creases, changing fold angles, relieving
-   strain, changing edge lengths, adding nodes/conditions, `make_root`,
-   re-optimizing from a new layout, `resize_flap`, or stepping BP stretch
-   configurations (no documented preference exists) all change what the user
-   asked for: propose from `inspect_design`, apply after agreement or under
-   a delegation that names the class ("pack these flaps" → `move_flap` only;
-   "fix the assignments" → `assign_creases` only). Default actions are only
-   the tools' own prescriptions: `repair: overlaps`/`intersections`/
-   `merge_vertices`, `snap` on 22.5°/box-pleat, and TreeMaker's
-   failure-message remedies (diagnostics §7).
+5. **Creative delegation differs from certainty (KB §0.1, §8).** Broad
+   requests such as "design a fox" authorize testing tree structures,
+   proportions, layouts, symmetry strategies and added creases in isolated
+   drafts. Fork/checkpoint, test, inspect and revalidate. Explicit constraints
+   remain binding. A narrow "pack these flaps" request preserves specified
+   flap dimensions; "fix assignments" preserves specified geometry. Ask only
+   for changes outside the task scope, not every heuristic experiment.
+
+Use `retain_design` for session retention, `fork_design` for variants or saved
+steps, `layout_search` for fixed-tree numerical layout trials, and `pose_design`
+for static angle hypotheses on existing creases. Evaluation views stay
+unlabelled; diagnostic pose regions map visible faces to CP line IDs. Capture
+visual shortcomings, inspect that provenance, test a correction and evaluate
+again. A structural edit is separate from an angle-only pose.
+
+Paper shape/count are task choices or constraints, not universal square/single-
+sheet rules. Final-form symmetry is separate from packing symmetry. Machine
+checks cannot establish aesthetic success or objectively finished origami.
+Takeover revokes writes to one draft and cancels its app job; it does not stop
+the external agent process. Save OSF before access disable/restart. Adopt a pose
+with a job fork; `commit_design {include_source: true}` publishes captured
+source + CP + adopted pose atomically, subject to the existing Live conflict
+fence. Read R8 for portable evidence and simulation limitations.
 
 ## What you cannot do
 
@@ -101,6 +115,8 @@ edit → `analyze_design` (`checks`, then `flat_fold`) → `job_status` →
 
 ## When the guides are silent
 
-Stop and ask the user, or record the gap: the knowledge base's §7 lists what
-is deliberately undecided (BP stretch choice, crimp tie handling, …). Do not
-fill it from general origami knowledge.
+Record the gap and distinguish unsupported operations from open design choices.
+For a design choice within delegated creative scope, test a labelled hypothesis;
+for an unsupported operation, report the limitation. Ask the user only when an
+unresolved choice changes the task or its explicit constraints. Never invent
+engine guarantees or present an uncertain technique as established knowledge.

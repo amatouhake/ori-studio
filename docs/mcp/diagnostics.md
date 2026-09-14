@@ -8,7 +8,9 @@ operation (default action, no consent needed), **[I]** Ori Studio
 implementation behaviour, **[H]** design change (needs the user's consent or
 a delegation that covers it — KB §0.1). Only [U] and [H] describe actions;
 every action below carries one of the two tags. "Propose" means: compute
-from `inspect_design` data, tell the user, apply only after agreement.
+from `inspect_design` data and test within delegated creative scope; for a narrow
+repair, apply changes outside its scope only after agreement. [H] is uncertainty,
+not an automatic per-operation consent gate (KB §0.1, §8).
 
 ## 0. Before reading any diagnostic
 
@@ -82,13 +84,13 @@ Applies **only** when all of the following hold:
    `Check3` markers — no `NumberOfFolds`, `Maekawa`, `BigLittleBig`, `Check1`,
    `Check2` or `Spatial*` entries.
 
-Then: treat the `Angles` entries as numerical residue of TreeMaker's optimizer
-(measured 1.7e-6°–4.8e-5° against a 1e-6° bar); do **not** move vertices,
+Then: investigate optimizer residue as a hypothesis supported by the two
+measured fixtures (1.7e-6°–4.8e-5° against a 1e-6° bar), not a guarantee; do **not** move vertices,
 reassign, or `snap` to silence them; run `flat_fold` once with the default
 `starting_face`; if it returns `outcome` `NotAttempted` or `Contradiction`,
 report that Oriedita's estimator could not validate the layer order for this
-derivation while the TreeMaker construction guarantees an assignment [T,
-LD06], and export (`tmd5` from the tree draft; `fold` / `osf` from the CP
+derivation. Do not extend the theoretical TreeMaker guarantee [T, LD06]
+to a numerical exported CP or dismiss contradictions. Keep/export (`tmd5` from the tree draft; `fold` / `osf` from the CP
 draft). Changing `starting_face` does not change the outcome in the measured
 cases.
 
@@ -153,3 +155,23 @@ propose, apply with agreement (KB §2.2, §0.1).
 
 A Box Pleating-derived CP is **not** guaranteed flat-foldable [F, BPS-manual]; always
 validate it (§1–§5 above), and never apply the G16 residual rule to it.
+
+## 9. Paper, layout and static-pose evidence [I] (KB §8)
+
+| Request | Read | Scope / next action |
+| --- | --- | --- |
+| `analyze_design {analysis: "paper"}` | `status`, `shape`, `sheets`, `contract_met` | Closed boundary loops only. Unsupported cuts/joins/multiple loops do not establish paper count or satisfy an explicit contract. This is not a general CP integrity proof. |
+| `analyze_design {analysis: "layout_search"}` | `outcome`, `candidates`, `failures`, `trials`, `seed` | Fixed-tree initial-layout trials. Full CP, feasibility and scale order candidates mechanically; [H] choose by task and visual review. Fork a candidate to adopt it. |
+| `pose_design` | `status: placed` / `refused`, `snapshot.verdict`, `refusal` | Static kernel geometry/layer ordering at requested angles. A job completes even when placement is refused. No reachable motion is established. |
+| error code `fold_is_flat` | Classic flat angles | Use `flat_fold`; the 3D kernel requires at least one nonclassic angle. |
+| error code `unassigned_pose` | Undecided source crease | [H] Explicitly decide remaining angles within delegation, then retry; they are never silently omitted. |
+| error code `paper_constraint_unmet` | Paper report | Publication refused. Keep/export for review; do not change an explicit constraint silently. |
+| error code `human_owned` | Ownership changed | Read/export or work on another independent proposal; stop writes to the taken-over draft. |
+| `status: failed` with `job_timeout` | Budget exhausted | No positive or negative foldability verdict follows. Reduce scope or explicitly allocate another bounded attempt. |
+
+Evaluation views omit labels. Diagnostic pose views return projected face bounds
+in a 1024×1024 viewBox with revision-bound CP line IDs, not pixel visibility
+masks; CP views can highlight those lines and exact
+source leaf anchors. Inspect provenance before correcting geometry. Formal
+checks, static pose, simulation endpoint attainment and visual recognizability
+are separate judgments. Historical or stale evidence is not current validation.

@@ -91,8 +91,11 @@ try {
   }
   evidence.push({ full_fold_roundtrip: { generations: 2, frame_only_import: true, metadata_and_embedded_frames_preserved: true } });
   // All-negative-y and single-axis geometry are normalized by the importer (#366, #367).
-  for (const ys of [[-2, -1, -1, -2], [1, 1, 1, 1]]) {
-    const normalized = { ...original, file_frames: [{ ...frame, vertices_coords: frame.vertices_coords.map((p, i) => [p[0], ys[i]]) }] };
+  for (const ys of [[-2, -2, -1, -1], [1, 1, 1, 1]]) {
+    // Keep every edge nonzero. Flattening the square's y values while keeping
+    // repeated x values accidentally tests degenerate edges, not axis scaling.
+    const horizontal = ys.every(y => y === ys[0]);
+    const normalized = { ...original, file_frames: [{ ...frame, vertices_coords: frame.vertices_coords.map((p, i) => [horizontal ? i * 10 : p[0], ys[i]]) }] };
     draft = await mutate('begin_design', { source: 'import', kind: 'crease_pattern', format: 'fold', content: JSON.stringify(normalized) });
     const imported = await call('inspect_design', addr());
     assert(imported.lines.every(l => [l.a.x, l.a.y, l.b.x, l.b.y].every(Number.isFinite)));

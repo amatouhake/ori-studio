@@ -367,3 +367,28 @@ export function isFoldedFigureStale(
   if (!isFoldedFromCurrentCpSourceKind(figure.sourceKind)) return false;
   return currentSourceFingerprint(document, figure.sourceBounds) !== figure.sourceFingerprint;
 }
+
+export function foldedSourceProvenance(
+  document: OristudioCpDocumentSnapshot,
+  lineIds: readonly number[],
+  scopedLineIds: readonly number[] = lineIds
+): Pick<
+  OristudioCpFoldedFigureEntry,
+  'sourceBounds' | 'sourceFingerprint' | 'sourceLineIds' | 'sourceScopedLineIds'
+> {
+  const lines = cpLinesByIds(document, lineIds);
+  const bounds = foldedSourceBounds(lines);
+  // Fingerprint the *reselected* set, not the folded one: they can differ when
+  // a crease merely crosses the region, and staleness compares against a
+  // reselect, so seeding from anything else would report stale immediately.
+  const reselected = cpLinesByIds(document, reselectFoldableLineIds(document, bounds));
+  return {
+    sourceBounds: bounds,
+    sourceFingerprint: bounds ? foldedSourceFingerprint(reselected) : null,
+    sourceLineIds: [...lineIds],
+    // Both lists, because neither is derivable from the other and the two
+    // answer different questions: the kernel indexes into the filtered one,
+    // and a region is matched only by the unfiltered one.
+    sourceScopedLineIds: [...scopedLineIds],
+  };
+}

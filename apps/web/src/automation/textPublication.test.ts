@@ -11,6 +11,8 @@ import { createTextAnnotation, textDocFromPlainText } from '../cp-workspace/anno
 import { flattenTextAnnotations } from '../cp-workspace/annotations/annotation';
 import type { FileService } from '../platform/fileService';
 import type { ToolResult } from './contracts';
+import type { Remote } from 'comlink';
+import { staticPose } from './pose';
 
 const transport = vi.hoisted(() => ({ api: null as unknown as OristudioCpWorkerApi }));
 vi.mock('comlink', async original => ({ ...await original<typeof import('comlink')>(), expose: (api: OristudioCpWorkerApi) => { transport.api = api; } }));
@@ -106,4 +108,29 @@ it('requires CP acknowledgement for imported text and active annotations, and de
   const exported = await call('export_design', { ...address(overlap), format: 'ori', allow_loss: true });
   expect(exported.losses).toEqual(losses);
   expect(JSON.parse(exported.content as string).texts).toEqual([{ x: 12, y: 34, text: content }]);
+});
+
+it('adopts and publishes a pose with normal undo/redo, then resumes its brief without treating saved reports as new checks', async () => {
+  service.dispose();
+  service = createAutomationService({ pose: (data, angles, face, signal) => staticPose(transport.api as Remote<OristudioCpWorkerApi>, data, angles, face, signal) });
+  const content = JSON.stringify({ vertices_coords: [[0, 0], [1, 0], [1, 1], [0, 1]], edges_vertices: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]], edges_assignment: ['B', 'B', 'B', 'B', 'V'], edges_foldAngle: [0, 0, 0, 0, 90] });
+  const brief = { goal: 'Hinge pose', paper: { shape: 'square', sheets: 1 } };
+  const d = await mutate('begin_design', { kind: 'crease_pattern', source: 'import', format: 'fold', content, brief });
+  const job = await mutate('pose_design', { ...address(d), angles: [{ line_id: 5, assignment: 'valley', angle: 70 }] });
+  for (let n = 0; n < 100 && (await call('job_status', { job_id: job.job_id })).status === 'running'; n++) await new Promise(resolve => setTimeout(resolve, 0));
+  expect((await call('job_status', { job_id: job.job_id })).status).toBe('completed');
+  const adopted = await mutate('fork_design', { ...address(d), job_id: job.job_id, title: 'Adopted hinge' });
+  const file = JSON.parse(String((await call('export_design', { ...address(adopted), format: 'osf' })).content));
+  expect(file.workspace.creasePattern.viewState.foldedFigures).toHaveLength(1);
+  await mutate('commit_design', { ...address(adopted), label: 'Apply pose' });
+  const figure = useWorkspaceStore.getState().oristudioCpFoldedFigures[0];
+  expect(figure).toMatchObject({ sourceKind: 'generated-3d', handle: null, status: 'ready', sourceCpRevision: 1 });
+  const resumed = await mutate('begin_design', { source: 'active', kind: 'crease_pattern' });
+  expect(resumed.brief).toEqual(brief);
+  expect(resumed.prior_evidence).toMatchObject({ runs: [{ analysis: 'static_pose', status: 'completed' }] });
+  expect(resumed.evidence).toMatchObject({ runs: [], not_run: expect.arrayContaining(['static_pose', 'checks']) });
+  await useWorkspaceStore.getState().undo('crease-pattern');
+  expect(useWorkspaceStore.getState().oristudioCpFoldedFigures).toHaveLength(0);
+  await useWorkspaceStore.getState().redo('crease-pattern');
+  expect(useWorkspaceStore.getState().oristudioCpFoldedFigures).toEqual([figure]);
 });

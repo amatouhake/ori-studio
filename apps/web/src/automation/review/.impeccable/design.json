@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-14T13:19:46.986836+00:00",
+  "title": "Design System: Ori Studio agent proposal review",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "shared-button-focus",
+        "value": "0 0 0 2px var(--accent-primary)",
+        "purpose": "Shared Button keyboard-focus ring; review panes add no elevation shadows."
+      }
+    ],
+    "motion": [
+      {
+        "name": "shared-button-state",
+        "value": "background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease",
+        "purpose": "Existing shared Button state transitions; no review-specific animation."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "inspector-below",
+        "value": "1100px"
+      },
+      {
+        "name": "stacked-review",
+        "value": "650px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Publication button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Shared small Button variant used in the proposal footer; inherited focus, disabled, and pointer behavior.",
+      "html": "<button type=\"button\" class=\"ds-button ds-control--rounded ds-control--sm ds-button--primary\">Apply CP</button>",
+      "css": ".ds-button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  border: 1px solid transparent;\n  font-family: inherit;\n  font-weight: 600;\n  line-height: 1;\n  letter-spacing: 0;\n  white-space: nowrap;\n  \n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background-color 0.15s ease,\n    border-color 0.15s ease,\n    color 0.15s ease,\n    opacity 0.15s ease;\n}\n.ds-button:focus {\n  outline: none;\n}\n.ds-button:focus-visible {\n  box-shadow: 0 0 0 2px var(--accent-primary);\n}\n.ds-button:disabled {\n  background: var(--bg-secondary);\n  border-color: var(--border-default);\n  color: var(--text-muted);\n  cursor: not-allowed;\n  opacity: 0.68;\n}\n.ds-control--rounded {\n  border-radius: var(--radius-lg);\n}\n.ds-control--sm {\n  height: 28px;\n  padding: 0 10px;\n  font-size: 0.75rem;\n}\n.ds-button--primary {\n  background: var(--accent-primary);\n  border-color: var(--accent-primary);\n  color: var(--text-inverse);\n}\n.ds-button--primary:hover:not(:disabled) {\n  background: var(--accent-hover);\n  border-color: var(--accent-hover);\n}\n.ds-button--secondary {\n  background: var(--bg-elevated);\n  border-color: var(--border-default);\n  color: var(--text-primary);\n}\n.ds-button--secondary:hover:not(:disabled) {\n  background: var(--bg-surface);\n}\n.ds-button--secondary[data-active] {\n  background: color-mix(in srgb, var(--accent-primary) 17%, var(--bg-elevated));\n  border-color: var(--accent-primary);\n}\n.ds-button--danger {\n  background: var(--status-danger);\n  border-color: var(--status-danger);\n  color: var(--text-inverse);\n}\n.ds-button { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; }\n@media (pointer: coarse) { .ds-control--sm { min-height: var(--touch-target); } }"
+    },
+    {
+      "name": "Secondary action",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Shared small Button variant used in the proposal footer; inherited focus, disabled, and pointer behavior.",
+      "html": "<button type=\"button\" class=\"ds-button ds-control--rounded ds-control--sm ds-button--secondary\">Save step</button>",
+      "css": ".ds-button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  border: 1px solid transparent;\n  font-family: inherit;\n  font-weight: 600;\n  line-height: 1;\n  letter-spacing: 0;\n  white-space: nowrap;\n  \n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background-color 0.15s ease,\n    border-color 0.15s ease,\n    color 0.15s ease,\n    opacity 0.15s ease;\n}\n.ds-button:focus {\n  outline: none;\n}\n.ds-button:focus-visible {\n  box-shadow: 0 0 0 2px var(--accent-primary);\n}\n.ds-button:disabled {\n  background: var(--bg-secondary);\n  border-color: var(--border-default);\n  color: var(--text-muted);\n  cursor: not-allowed;\n  opacity: 0.68;\n}\n.ds-control--rounded {\n  border-radius: var(--radius-lg);\n}\n.ds-control--sm {\n  height: 28px;\n  padding: 0 10px;\n  font-size: 0.75rem;\n}\n.ds-button--primary {\n  background: var(--accent-primary);\n  border-color: var(--accent-primary);\n  color: var(--text-inverse);\n}\n.ds-button--primary:hover:not(:disabled) {\n  background: var(--accent-hover);\n  border-color: var(--accent-hover);\n}\n.ds-button--secondary {\n  background: var(--bg-elevated);\n  border-color: var(--border-default);\n  color: var(--text-primary);\n}\n.ds-button--secondary:hover:not(:disabled) {\n  background: var(--bg-surface);\n}\n.ds-button--secondary[data-active] {\n  background: color-mix(in srgb, var(--accent-primary) 17%, var(--bg-elevated));\n  border-color: var(--accent-primary);\n}\n.ds-button--danger {\n  background: var(--status-danger);\n  border-color: var(--status-danger);\n  color: var(--text-inverse);\n}\n.ds-button { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; }\n@media (pointer: coarse) { .ds-control--sm { min-height: var(--touch-target); } }"
+    },
+    {
+      "name": "Reject button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Shared small Button variant used in the proposal footer; inherited focus, disabled, and pointer behavior.",
+      "html": "<button type=\"button\" class=\"ds-button ds-control--rounded ds-control--sm ds-button--danger\">Reject</button>",
+      "css": ".ds-button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  border: 1px solid transparent;\n  font-family: inherit;\n  font-weight: 600;\n  line-height: 1;\n  letter-spacing: 0;\n  white-space: nowrap;\n  \n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background-color 0.15s ease,\n    border-color 0.15s ease,\n    color 0.15s ease,\n    opacity 0.15s ease;\n}\n.ds-button:focus {\n  outline: none;\n}\n.ds-button:focus-visible {\n  box-shadow: 0 0 0 2px var(--accent-primary);\n}\n.ds-button:disabled {\n  background: var(--bg-secondary);\n  border-color: var(--border-default);\n  color: var(--text-muted);\n  cursor: not-allowed;\n  opacity: 0.68;\n}\n.ds-control--rounded {\n  border-radius: var(--radius-lg);\n}\n.ds-control--sm {\n  height: 28px;\n  padding: 0 10px;\n  font-size: 0.75rem;\n}\n.ds-button--primary {\n  background: var(--accent-primary);\n  border-color: var(--accent-primary);\n  color: var(--text-inverse);\n}\n.ds-button--primary:hover:not(:disabled) {\n  background: var(--accent-hover);\n  border-color: var(--accent-hover);\n}\n.ds-button--secondary {\n  background: var(--bg-elevated);\n  border-color: var(--border-default);\n  color: var(--text-primary);\n}\n.ds-button--secondary:hover:not(:disabled) {\n  background: var(--bg-surface);\n}\n.ds-button--secondary[data-active] {\n  background: color-mix(in srgb, var(--accent-primary) 17%, var(--bg-elevated));\n  border-color: var(--accent-primary);\n}\n.ds-button--danger {\n  background: var(--status-danger);\n  border-color: var(--status-danger);\n  color: var(--text-inverse);\n}\n.ds-button { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; }\n@media (pointer: coarse) { .ds-control--sm { min-height: var(--touch-target); } }"
+    },
+    {
+      "name": "Workspace switch",
+      "kind": "nav",
+      "refersTo": "button-secondary",
+      "description": "Explicit Live and Agent drafts states; the active shared button uses an accent border and mixed surface.",
+      "html": "<div class=\"ds-review-switch\" role=\"group\" aria-label=\"Workspace view\"><button type=\"button\" class=\"ds-button ds-control--rounded ds-control--sm ds-button--secondary\">Live</button><button type=\"button\" class=\"ds-button ds-control--rounded ds-control--sm ds-button--secondary\" data-active aria-pressed=\"true\">Agent drafts (5)</button></div>",
+      "css": ".ds-button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  border: 1px solid transparent;\n  font-family: inherit;\n  font-weight: 600;\n  line-height: 1;\n  letter-spacing: 0;\n  white-space: nowrap;\n  \n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background-color 0.15s ease,\n    border-color 0.15s ease,\n    color 0.15s ease,\n    opacity 0.15s ease;\n}\n.ds-button:focus {\n  outline: none;\n}\n.ds-button:focus-visible {\n  box-shadow: 0 0 0 2px var(--accent-primary);\n}\n.ds-button:disabled {\n  background: var(--bg-secondary);\n  border-color: var(--border-default);\n  color: var(--text-muted);\n  cursor: not-allowed;\n  opacity: 0.68;\n}\n.ds-control--rounded {\n  border-radius: var(--radius-lg);\n}\n.ds-control--sm {\n  height: 28px;\n  padding: 0 10px;\n  font-size: 0.75rem;\n}\n.ds-button--primary {\n  background: var(--accent-primary);\n  border-color: var(--accent-primary);\n  color: var(--text-inverse);\n}\n.ds-button--primary:hover:not(:disabled) {\n  background: var(--accent-hover);\n  border-color: var(--accent-hover);\n}\n.ds-button--secondary {\n  background: var(--bg-elevated);\n  border-color: var(--border-default);\n  color: var(--text-primary);\n}\n.ds-button--secondary:hover:not(:disabled) {\n  background: var(--bg-surface);\n}\n.ds-button--secondary[data-active] {\n  background: color-mix(in srgb, var(--accent-primary) 17%, var(--bg-elevated));\n  border-color: var(--accent-primary);\n}\n.ds-button--danger {\n  background: var(--status-danger);\n  border-color: var(--status-danger);\n  color: var(--text-inverse);\n}\n.ds-button { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; }\n@media (pointer: coarse) { .ds-control--sm { min-height: var(--touch-target); } }\n.ds-review-switch { display: flex; gap: var(--space-1); }"
+    },
+    {
+      "name": "Selected proposal",
+      "kind": "custom",
+      "refersTo": "proposal-row-selected",
+      "description": "Full-width list button showing title, source, revision, and session retention. The browser provides native keyboard focus styling.",
+      "html": "<button type=\"button\" class=\"ds-proposal-row\" aria-current=\"true\" aria-pressed=\"true\"><strong>Fold-angle study</strong><span>Crease pattern</span><span>Revision 0 · Kept</span></button>",
+      "css": ".ds-proposal-row { display: flex; flex-direction: column; text-align: left; width: 100%; gap: var(--space-1); margin-top: var(--space-2); padding: var(--space-2); border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text-primary); background: transparent; overflow-wrap: anywhere; cursor: pointer; }\n.ds-proposal-row:hover { background: var(--bg-tertiary); }\n.ds-proposal-row[aria-pressed=\"true\"] { background: var(--bg-tertiary); border-color: var(--accent-primary); }\n.ds-proposal-row span { color: var(--text-secondary); }\n.ds-proposal-row { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; font-size: 12px; }"
+    },
+    {
+      "name": "Preview step select",
+      "kind": "input",
+      "refersTo": "review-select",
+      "description": "Native labeled select, preserving native interaction and focus states. Its options represent latest or saved steps.",
+      "html": "<label class=\"ds-review-select-label\">Step<select class=\"ds-review-select\"><option>Follow latest</option><option>Review step 0</option></select></label>",
+      "css": ".ds-review-select-label { display: flex; gap: var(--space-1); flex-direction: column; }\n.ds-review-select { max-width: 180px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: var(--space-1); font: inherit; }\n.ds-review-select-label { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; font-size: 12px; color: var(--text-primary); }"
+    },
+    {
+      "name": "Scoped evidence",
+      "kind": "custom",
+      "description": "Execution, placement, and kernel verdict remain distinct readable lines. Detailed output is disclosed below them.",
+      "html": "<div class=\"ds-evidence-row\"><strong>Static pose</strong><span>Run: completed</span><span>Placement: computed at requested angles</span><span>Kernel verdict: static layer order found</span><details><summary>Report details</summary><pre>{ \"status\": \"placed\" }</pre></details></div>",
+      "css": ".ds-evidence-row { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-default); }\n.ds-evidence-row span { color: var(--text-secondary); }\n.ds-evidence-row summary { cursor: pointer; line-height: 1.6; }\n.ds-evidence-row pre { font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }\n.ds-evidence-row { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; font-size: 12px; color: var(--text-primary); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Ori Studio's compact, quiet panes",
+    "overview": "This document applies only to `apps/web/src/automation/review/`. The built\nsurface extends the existing editor with a proposal list, isolated preview,\nand evidence inspector. Its shared controls and restrained hierarchy keep the\ndrawing prominent while making the current draft and available actions clear.\n\nThis is an extracted local reference, not product-wide visual authority. Sources\nare [the review styles](agentReview.css), [workspace composition](AgentWorkspace.tsx),\n[proposal list](ProposalList.tsx), [shared controls and tokens](../../styles/theme.css),\nand [base typography](../../index.css). Reference images are\n[desktop](../../../../../artifacts/mcp-design-loop/review-desktop.png) and\n[narrow](../../../../../artifacts/mcp-design-loop/review-narrow.png).",
+    "keyCharacteristics": [
+      "Explicit Live and Agent drafts states.",
+      "Flat panes, compact controls, and independently readable evidence.",
+      "Evaluation images with optional diagnostic labels."
+    ],
+    "rules": [
+      {
+        "name": "The Explicit State Rule",
+        "body": "Selection has a visible border and pressed state;\nrun status and verdicts remain readable text, rather than being encoded only in\ncolor.",
+        "section": "colors"
+      },
+      {
+        "name": "The Separate Evidence Rule",
+        "body": "Appearance is judged from the images. Scoped\nchecks do not establish a finished design or a reachable folding motion.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "**Do** keep publication explicit and name what will enter Live.",
+      "**Do** preserve complete labels, wrapping actions, and visible selected rows.",
+      "**Do** show run execution, placement, and kernel verdict as separate evidence.",
+      "**Do** inherit shared theme tokens and button states."
+    ],
+    "donts": [
+      "**Don't** turn validation results into an appearance score or a claim of reachable motion.",
+      "**Don't** describe takeover as stopping the external agent process.",
+      "**Don't** move the workspace when revealing a selected proposal.",
+      "**Don't** promote this local pane composition into a global design system."
+    ]
+  }
+}
