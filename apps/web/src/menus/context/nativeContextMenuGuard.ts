@@ -54,13 +54,16 @@
  *    a mouse, and for any engine that reports the id faithfully.
  * 2. Otherwise — the id is unknown, contradicts the type (the pen quirk), or
  *    the event is a plain `MouseEvent` with neither — the owner is the one
- *    pointer that could *plausibly* still be owed a menu: it holds a live
- *    claim, or its current press has not been served yet. The event's type,
- *    when it has one, narrows the candidates to pointers of that type or of
- *    unknown type.
+ *    pointer that could have generated the event. Served presses
+ *    remain candidates: without an identity, a duplicate of A's event is
+ *    indistinguishable from B's first event. The event's type, when it has one,
+ *    narrows the candidates to pointers of that type or of unknown type.
  * 3. If that leaves more than one candidate, nobody owns the event: it is left
  *    native and marks nothing. A duplicate native menu is the lesser harm
  *    beside swallowing another pointer's, or serving the wrong press.
+ *    This includes historical served pointers, even after release: there is
+ *    no safe time cutoff for a delayed duplicate. Multiple pens, or multiple
+ *    devices with untyped MouseEvents, may therefore require an exact id.
  *
  * A keyboard-raised menu (Shift+F10, the Menu key) carries `button` -1 in
  * Chromium 148 and touches no pointer's state at all.
@@ -79,11 +82,18 @@
  *    never dispatches the event, say): the next right-click on a text field
  *    with that mouse starts a new press and keeps its Cut/Copy/Paste.
  *
- * Nothing else ends a claim, and nothing global can: another pointer's
- * press, a key press and a menu the claim's pointer did not raise are all
- * somebody else's business. A `pointerId` is the identity of a pointer's
- * active lifetime, not of a device, so a press that reports a different type
- * for an id on record retypes that record. The listeners are on the global
+ * 4. `pointercancel` ends that pointer's press; window blur abandons all
+ *    outstanding presses. A canceled record cannot be claimed again until a
+ *    new secondary press. An unserved canceled press no longer obstructs
+ *    another pointer's fallback; evidence of an event already generated is
+ *    retained through cancellation, blur and retyping to recognize ambiguity
+ *    from a delayed duplicate.
+ *
+ * Another pointer's press, a key press and a menu the claim's pointer did not
+ * raise are all somebody else's business. A `pointerId` is the identity of a
+ * pointer's active lifetime, not of a device: a new pointerdown reporting a
+ * different type retires the previous lifetime even if the new button is not
+ * secondary. The listeners are on the global
  * `document` because the event may target `<html>` or a portaled layer
  * rather than the surface; there is no timer and no platform test.
  */
@@ -92,12 +102,16 @@ const SECONDARY_BUTTON = 2;
 const SECONDARY_BUTTONS_BIT = 2;
 
 interface PointerRecord {
-  /** `mouse`, `pen`, …; `null` for a claim made before any press was seen. */
+  /** `mouse`, `pen`, …; `null` when the observed press omitted its type. */
   pointerType: string | null;
   /** Counts this pointer's secondary-button presses; the current one is the latest. */
   generation: number;
   /** The generation whose native `contextmenu` has been seen; -1 means none. */
   dispatchedGeneration: number;
+  /** Cancellation/retyping ended this press; late requests cannot revive it. */
+  cancelled: boolean;
+  /** Types of this id's observed native events, including earlier lifetimes. */
+  servedTypes: Set<string | null>;
   /** Identity of the request holding this pointer's claim; `null` when none. */
   claim: object | null;
 }
@@ -108,7 +122,14 @@ let installed = false;
 function record(pointerId: number, pointerType: string | null): PointerRecord {
   let entry = pointers.get(pointerId);
   if (!entry) {
-    entry = { pointerType, generation: 0, dispatchedGeneration: -1, claim: null };
+    entry = {
+      pointerType,
+      generation: 0,
+      dispatchedGeneration: -1,
+      cancelled: false,
+      servedTypes: new Set(),
+      claim: null,
+    };
     pointers.set(pointerId, entry);
   } else if (pointerType !== null) {
     // An id reused by a different device, or first typed now.
@@ -121,11 +142,17 @@ function record(pointerId: number, pointerType: string | null): PointerRecord {
 function beginSecondaryPress(event: PointerEvent): void {
   const entry = record(event.pointerId, event.pointerType || null);
   entry.generation += 1;
+  entry.cancelled = false;
   // Whatever the previous press of this pointer still owed, it will not come now.
   entry.claim = null;
 }
 
 function onPointerDownCapture(event: PointerEvent): void {
+  const previous = pointers.get(event.pointerId);
+  if (previous && event.pointerType && previous.pointerType !== event.pointerType) {
+    cancelPress(previous);
+    previous.pointerType = event.pointerType;
+  }
   if (event.button === SECONDARY_BUTTON) beginSecondaryPress(event);
 }
 
@@ -138,13 +165,22 @@ function onPointerMoveCapture(event: PointerEvent): void {
   beginSecondaryPress(event);
 }
 
-/** Whether `entry` could still be owed a native menu — see the header. */
-function plausible(entry: PointerRecord): boolean {
-  return entry.claim !== null || entry.dispatchedGeneration !== entry.generation;
+function cancelPress(entry: PointerRecord): void {
+  entry.cancelled = true;
+  entry.claim = null;
 }
 
-function typesAgree(entry: PointerRecord, pointerType: string): boolean {
-  return !pointerType || entry.pointerType === null || entry.pointerType === pointerType;
+function onPointerCancelCapture(event: PointerEvent): void {
+  const entry = pointers.get(event.pointerId);
+  if (entry) cancelPress(entry);
+}
+
+function onWindowBlur(): void {
+  for (const entry of pointers.values()) cancelPress(entry);
+}
+
+function typesAgree(recordType: string | null, eventType: string): boolean {
+  return !eventType || recordType === null || recordType === eventType;
 }
 
 /** The pointer a native `contextmenu` belongs to, by the rule in the header; `null` if none can be told. */
@@ -152,11 +188,18 @@ function ownerOf(event: MouseEvent): PointerRecord | null {
   const pointerType = 'pointerType' in event ? (event as PointerEvent).pointerType : '';
   if ('pointerId' in event) {
     const exact = pointers.get((event as PointerEvent).pointerId);
-    if (exact && typesAgree(exact, pointerType)) return exact;
+    if (exact && typesAgree(exact.pointerType, pointerType)) return exact;
   }
   let candidate: PointerRecord | null = null;
   for (const entry of pointers.values()) {
-    if (!plausible(entry) || !typesAgree(entry, pointerType)) continue;
+    const currentMatches = !entry.cancelled && typesAgree(entry.pointerType, pointerType);
+    // A retired lifetime can still explain this event as a duplicate, but must
+    // never receive it as a new dispatch or disappear from the ambiguity test.
+    const hasOtherSource = [...entry.servedTypes].some(
+      (type) => typesAgree(type, pointerType) && (!currentMatches || type !== entry.pointerType)
+    );
+    if (hasOtherSource) return null;
+    if (!currentMatches) continue;
     if (candidate !== null) return null;
     candidate = entry;
   }
@@ -166,8 +209,9 @@ function ownerOf(event: MouseEvent): PointerRecord | null {
 function onContextMenuCapture(event: MouseEvent): void {
   if (event.button !== SECONDARY_BUTTON) return;
   const owner = ownerOf(event);
-  if (!owner) return;
+  if (!owner || owner.cancelled) return;
   owner.dispatchedGeneration = owner.generation;
+  owner.servedTypes.add(owner.pointerType);
   if (owner.claim === null) return;
   owner.claim = null;
   event.preventDefault();
@@ -175,15 +219,17 @@ function onContextMenuCapture(event: MouseEvent): void {
 
 /**
  * Put the capture listeners on `document`. Idempotent; the controller calls
- * it on mount so the guard predates any gesture, and
- * {@link claimNativeContextMenu} calls it too so a claim never depends on that
- * having happened.
+ * it on mount so the guard predates any gesture. {@link claimNativeContextMenu}
+ * also installs it for callers outside React, but cannot claim a press that
+ * happened before installation.
  */
 export function installNativeContextMenuGuard(): void {
   if (installed) return;
   document.addEventListener('contextmenu', onContextMenuCapture, true);
   document.addEventListener('pointerdown', onPointerDownCapture, true);
   document.addEventListener('pointermove', onPointerMoveCapture, true);
+  document.addEventListener('pointercancel', onPointerCancelCapture, true);
+  window.addEventListener('blur', onWindowBlur);
   installed = true;
 }
 
@@ -194,13 +240,13 @@ export function installNativeContextMenuGuard(): void {
  *
  * Returns the release for *this* claim. Releasing a claim that a newer request
  * has since replaced is a no-op, so a stale close cannot drop a live claim.
- * When the press's native menu has already gone by there is nothing to
- * claim, and the release is a no-op from the start.
+ * An unobserved or canceled press cannot be claimed, nor can one whose native
+ * menu has already gone by. Those releases are no-ops from the start.
  */
 export function claimNativeContextMenu(pointerId: number): () => void {
   installNativeContextMenuGuard();
-  const entry = record(pointerId, null);
-  if (entry.dispatchedGeneration === entry.generation) return () => {};
+  const entry = pointers.get(pointerId);
+  if (!entry || entry.cancelled || entry.dispatchedGeneration === entry.generation) return () => {};
   const token = {};
   entry.claim = token;
   return () => {
@@ -221,5 +267,7 @@ export function resetNativeContextMenuGuardForTests(): void {
   document.removeEventListener('contextmenu', onContextMenuCapture, true);
   document.removeEventListener('pointerdown', onPointerDownCapture, true);
   document.removeEventListener('pointermove', onPointerMoveCapture, true);
+  document.removeEventListener('pointercancel', onPointerCancelCapture, true);
+  window.removeEventListener('blur', onWindowBlur);
   installed = false;
 }

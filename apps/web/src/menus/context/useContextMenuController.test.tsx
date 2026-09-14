@@ -396,6 +396,60 @@ describe('native context menu ownership', () => {
     expect(isNativeContextMenuClaimed()).toBe(false);
   });
 
+  describe.each(['keyboard', 'overlay', 'pen'] as const)('replacement by %s', (replacement) => {
+    it.each(['close', 'onOpenChange', 'unmount'] as const)('releases displaced claims on %s', (end) => {
+      press(MOUSE);
+      release(MOUSE);
+      act(() => controller?.request(request(pending(MOUSE))));
+      if (replacement === 'pen') {
+        press(PEN);
+        release(PEN);
+      }
+      act(() => controller?.request(request(
+        replacement === 'pen'
+          ? pending(PEN)
+          : { source: replacement === 'keyboard' ? 'keyboard' : 'pointer' }
+      )));
+      expect(isNativeContextMenuClaimed(MOUSE.pointerId)).toBe(true);
+      act(() => {
+        if (end === 'unmount') {
+          root?.unmount();
+          root = null;
+        } else if (end === 'close') controller?.close();
+        else controller?.onOpenChange(false);
+      });
+      expect(isNativeContextMenuClaimed()).toBe(false);
+      expect(nativeMenuPrevented()).toBe(false);
+      expect(nativeMenuPrevented(document.documentElement, 'pen')).toBe(false);
+    });
+  });
+
+  it('does not release a replacement claim owned by a different controller', () => {
+    const other = document.createElement('div');
+    document.body.append(other);
+    const otherRoot = createRoot(other);
+    let second: ContextMenuController | null = null;
+    function SecondProbe() {
+      const value = useContextMenuController('tree');
+      useEffect(() => {
+        second = value;
+      });
+      return null;
+    }
+    act(() => otherRoot.render(<SecondProbe />));
+    press();
+    release();
+    act(() => controller?.request(request(pending())));
+    act(() => controller?.request(request({ source: 'keyboard' })));
+    act(() => second?.request(request(pending())));
+    act(() => controller?.close());
+    expect(isNativeContextMenuClaimed()).toBe(true);
+    act(() => otherRoot.unmount());
+    other.remove();
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    expect(nativeMenuPrevented()).toBe(false);
+  });
+
   it('claims for the second right press of a chord, after the first was served', () => {
     // right-down, left-down, right-up, right-down, left-up, right-up on the
     // canvas, under release-time ordering. Chorded transitions are

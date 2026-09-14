@@ -140,16 +140,16 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
   const { t } = useTranslation();
   const [state, setState] = useState<ContextMenuState | null>(null);
   const deferFocusRef = useRef(false);
-  // The release for the open menu's native-menu claim, if it made one. A ref
+  // Releases for this controller's native-menu claims, keyed by pointer. A ref
   // rather than state: it is armed synchronously inside the surface's
-  // `pointerup` and must not wait for a render. Released when the menu it
-  // belongs to closes; a claim a newer request displaced is left to expire by
-  // its own pointer's rules, so which request rendered last never decides
-  // whose native menu gets suppressed.
-  const releaseNativeClaimRef = useRef<(() => void) | null>(null);
+  // `pointerup` and must not wait for a render. A displaced request retains
+  // its claim until its event arrives, but close/unmount must release *all*
+  // claims owned here. One callback per pointer bounds repeated replacements;
+  // the guard's tokens keep these releases from touching another controller.
+  const nativeClaimReleasesRef = useRef(new Map<number, () => void>());
   const releaseNativeClaim = useCallback(() => {
-    releaseNativeClaimRef.current?.();
-    releaseNativeClaimRef.current = null;
+    for (const release of nativeClaimReleasesRef.current.values()) release();
+    nativeClaimReleasesRef.current.clear();
   }, []);
   useEffect(() => {
     // Installed here, ahead of any gesture, rather than lazily at the first
@@ -185,9 +185,11 @@ export function useContextMenuController(surface: ContextMenuSurface): ContextMe
       // Own the native context menu still owed to the pointer that raised
       // this, when the surface says there may be one. See the field's doc and
       // `nativeContextMenuGuard`.
-      releaseNativeClaimRef.current = open.nativeContextMenu
-        ? claimNativeContextMenu(open.nativeContextMenu.pointerId)
-        : null;
+      if (open.nativeContextMenu) {
+        const { pointerId } = open.nativeContextMenu;
+        nativeClaimReleasesRef.current.get(pointerId)?.();
+        nativeClaimReleasesRef.current.set(pointerId, claimNativeContextMenu(pointerId));
+      }
       setState({ x: open.clientX, y: open.clientY, items });
       track(ANALYTICS_EVENTS.contextMenuOpened, {
         surface,

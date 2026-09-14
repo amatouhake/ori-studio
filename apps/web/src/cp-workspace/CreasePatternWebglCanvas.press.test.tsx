@@ -453,6 +453,56 @@ describe('the right button', () => {
     expect(requests).toEqual([]);
     expect(erased).toHaveLength(1);
   });
+
+  it.each(['pointerup', 'pointercancel'])(
+    'keeps a held pen gesture through a foreign mouse move and %s',
+    (terminal) => {
+      const requests: unknown[] = [];
+      const erased: unknown[] = [];
+      const canvas = mountRight({
+        onRequestContextMenu: (request) => requests.push(request),
+        onEraseBox: (points) => erased.push(points),
+      });
+      const field = document.createElement('input');
+      document.body.append(field);
+      const at = clientOf(50, 30);
+      const pen = { pointerId: 2, pointerType: 'pen', button: 2, ...at };
+      act(() => {
+        canvas.dispatchEvent(new PointerEvent('pointerdown', { ...pen, buttons: 2 }));
+        field.dispatchEvent(new PointerEvent('pointerdown', {
+          pointerId: 1,
+          pointerType: 'mouse',
+          button: 0,
+          buttons: 1,
+        }));
+        canvas.dispatchEvent(new PointerEvent('pointermove', {
+          pointerId: 1,
+          pointerType: 'mouse',
+          button: -1,
+          buttons: 1,
+          ...clientOf(210, 120),
+        }));
+        canvas.dispatchEvent(new PointerEvent(terminal, {
+          pointerId: 1,
+          pointerType: 'mouse',
+          button: 0,
+          buttons: 0,
+          ...at,
+        }));
+      });
+      expect(requests).toEqual([]);
+      expect(erased).toEqual([]);
+      act(() => canvas.dispatchEvent(new PointerEvent('pointerup', { ...pen, buttons: 0 })));
+      expect(requests).toEqual([
+        expect.objectContaining({
+          pointerId: 2,
+          target: { kind: 'blank', modelPoint: { x: 50, y: 30 } },
+        }),
+      ]);
+      expect(erased).toEqual([]);
+      field.remove();
+    }
+  );
 });
 
 describe('pan against a focused folded figure', () => {

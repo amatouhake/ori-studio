@@ -36,7 +36,7 @@ type Pointer = typeof MOUSE | typeof PEN | typeof PEN_B;
 
 function pointer(
   who: Pointer,
-  type: 'pointerdown' | 'pointermove' | 'pointerup',
+  type: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel',
   button: number,
   buttons: number,
   target: EventTarget = document.body
@@ -332,6 +332,19 @@ describe('nativeContextMenuGuard', () => {
   });
 
   describe('two pointers of the same type', () => {
+    it('recognizes an exact duplicate without falling back to the other pen', () => {
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(exactContextMenuPrevented(PEN)).toBe(true);
+      rightDown(PEN_B);
+      rightUp(PEN_B);
+      claimNativeContextMenu(PEN_B.pointerId);
+      expect(exactContextMenuPrevented(PEN, input())).toBe(false);
+      expect(isNativeContextMenuClaimed(PEN_B.pointerId)).toBe(true);
+      expect(exactContextMenuPrevented(PEN_B)).toBe(true);
+    });
+
     it("consumes A's claim on A's exactly-identified menu, leaving B alone", () => {
       rightDown(PEN);
       rightUp(PEN);
@@ -374,28 +387,32 @@ describe('nativeContextMenuGuard', () => {
       expect(isNativeContextMenuClaimed(PEN_B.pointerId)).toBe(true);
     });
 
-    it('uses the type fallback once the other pen has been served', () => {
+    it('does not consume a live claim with a served pen\'s duplicate fallback event', () => {
       rightDown(PEN_B);
       expect(contextMenuPrevented(PEN)).toBe(false);
       rightUp(PEN_B);
       rightDown(PEN);
       rightUp(PEN);
       claimNativeContextMenu(PEN.pointerId);
-      // Only A can be owed a menu now: the quirk shape resolves to A.
-      expect(contextMenuPrevented(PEN)).toBe(true);
+      // This can be B's delayed duplicate. Serving B does not prove A owns it.
+      const field = input();
+      expect(contextMenuPrevented(PEN_B, field)).toBe(false);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(true);
+      expect(exactContextMenuPrevented(PEN)).toBe(true);
       expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
     });
 
-    it('does not let a served historical press keep the fallback ambiguous', () => {
+    it('does not mark another held pen served on a delayed duplicate', () => {
       rightDown(PEN_B);
       contextMenuPrevented(PEN);
       rightUp(PEN_B);
-      // Much later: A alone is pressed. B's old press is history.
+      // A alone is pressed, but B can still be the source of a duplicate.
       rightDown(PEN);
       expect(contextMenuPrevented(PEN)).toBe(false);
       rightUp(PEN);
       claimNativeContextMenu(PEN.pointerId);
-      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(true);
+      expect(exactContextMenuPrevented(PEN)).toBe(true);
     });
   });
 
@@ -440,7 +457,7 @@ describe('nativeContextMenuGuard', () => {
       expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(true);
     });
 
-    it('resolves to the one pointer left once the other is served', () => {
+    it('leaves untyped duplicates native without consuming another device\'s claim', () => {
       rightDown(MOUSE);
       rightUp(MOUSE);
       claimNativeContextMenu(MOUSE.pointerId);
@@ -448,12 +465,125 @@ describe('nativeContextMenuGuard', () => {
       rightUp(PEN);
       claimNativeContextMenu(PEN.pointerId);
       expect(exactContextMenuPrevented(PEN)).toBe(true);
-      expect(untypedContextMenuPrevented()).toBe(true);
+      expect(untypedContextMenuPrevented(input())).toBe(false);
+      expect(isNativeContextMenuClaimed(MOUSE.pointerId)).toBe(true);
+      expect(exactContextMenuPrevented(MOUSE)).toBe(true);
       expect(isNativeContextMenuClaimed()).toBe(false);
+    });
+
+    it('does not serve a held pen on an untyped duplicate mouse menu', () => {
+      rightDown(MOUSE);
+      exactContextMenuPrevented(MOUSE);
+      rightUp(MOUSE);
+      rightDown(PEN);
+      expect(untypedContextMenuPrevented(input())).toBe(false);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(true);
+      expect(exactContextMenuPrevented(PEN)).toBe(true);
+    });
+  });
+
+  describe('cancellation and abandonment', () => {
+    it.each(['cancel', 'blur', 'retype'] as const)(
+      'keeps served-event evidence through %s so a duplicate cannot consume another pen',
+      (end) => {
+        rightDown(PEN);
+        exactContextMenuPrevented(PEN);
+        rightUp(PEN);
+        if (end === 'cancel') pointer(PEN, 'pointercancel', -1, 0);
+        else if (end === 'blur') window.dispatchEvent(new Event('blur'));
+        else {
+          document.body.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true,
+            pointerId: PEN.pointerId,
+            pointerType: 'mouse',
+            button: 0,
+            buttons: 1,
+          }));
+        }
+        rightDown(PEN_B);
+        rightUp(PEN_B);
+        claimNativeContextMenu(PEN_B.pointerId);
+        expect(contextMenuPrevented(PEN, input())).toBe(false);
+        expect(untypedContextMenuPrevented(input())).toBe(false);
+        expect(isNativeContextMenuClaimed(PEN_B.pointerId)).toBe(true);
+        expect(exactContextMenuPrevented(PEN_B)).toBe(true);
+      }
+    );
+
+    it('retires a canceled pen instead of blocking every subsequent pen fallback', () => {
+      rightDown(PEN);
+      pointer(PEN, 'pointercancel', -1, 0);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+      // A late exactly-identified event cannot revive the canceled press.
+      expect(exactContextMenuPrevented(PEN)).toBe(false);
+      for (let i = 0; i < 3; i += 1) {
+        rightDown(PEN_B);
+        rightUp(PEN_B);
+        claimNativeContextMenu(PEN_B.pointerId);
+        expect(contextMenuPrevented(PEN_B)).toBe(true);
+      }
+    });
+
+    it('cancels only that pointer\'s claim and lets a fresh press reuse its id', () => {
+      rightDown(MOUSE);
+      rightUp(MOUSE);
+      claimNativeContextMenu(MOUSE.pointerId);
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      pointer(PEN, 'pointercancel', -1, 0);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+      expect(isNativeContextMenuClaimed(MOUSE.pointerId)).toBe(true);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(isNativeContextMenuClaimed(PEN.pointerId)).toBe(false);
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(contextMenuPrevented(PEN)).toBe(true);
+      expect(contextMenuPrevented(MOUSE)).toBe(true);
+    });
+
+    it('abandons presses on window blur, but not on an input losing focus', () => {
+      rightDown(MOUSE);
+      rightUp(MOUSE);
+      claimNativeContextMenu(MOUSE.pointerId);
+      input().dispatchEvent(new FocusEvent('blur'));
+      expect(isNativeContextMenuClaimed(MOUSE.pointerId)).toBe(true);
+      window.dispatchEvent(new Event('blur'));
+      expect(isNativeContextMenuClaimed()).toBe(false);
+      claimNativeContextMenu(MOUSE.pointerId);
+      expect(isNativeContextMenuClaimed()).toBe(false);
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(untypedContextMenuPrevented()).toBe(true);
     });
   });
 
   describe('a pointer id reused by another device', () => {
+    it('retires the old claim even when the new device starts with its primary button', () => {
+      rightDown(PEN);
+      rightUp(PEN);
+      claimNativeContextMenu(PEN.pointerId);
+      document.body.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+        pointerId: PEN.pointerId,
+        pointerType: 'mouse',
+        button: 0,
+        buttons: 1,
+      }));
+      expect(isNativeContextMenuClaimed()).toBe(false);
+      claimNativeContextMenu(PEN.pointerId);
+      expect(isNativeContextMenuClaimed()).toBe(false);
+      rightDown(PEN_B);
+      rightUp(PEN_B);
+      claimNativeContextMenu(PEN_B.pointerId);
+      expect(contextMenuPrevented(PEN_B)).toBe(true);
+    });
+
     it('retypes the record, so the old type no longer matches it', () => {
       // Id 2 was a pen; its next press reports a mouse. The id is a lifetime,
       // not a device, so the record follows the press.
@@ -466,6 +596,9 @@ describe('nativeContextMenuGuard', () => {
       claimNativeContextMenu(2);
       // A pen-typed quirk event with no plausible pen must not take it …
       expect(contextMenuPrevented(PEN)).toBe(false);
+      expect(isNativeContextMenuClaimed(2)).toBe(true);
+      // With no type, it could still be the previous pen lifetime's duplicate.
+      expect(untypedContextMenuPrevented()).toBe(false);
       expect(isNativeContextMenuClaimed(2)).toBe(true);
       // … and a mouse-typed one with no mouse on record resolves to it.
       expect(contextMenuPrevented(MOUSE)).toBe(true);
@@ -559,13 +692,14 @@ describe('nativeContextMenuGuard', () => {
     expect(contextMenuPrevented()).toBe(false);
   });
 
-  it('claims with the listener already in place, without installing it first', () => {
-    // The guard never saw the press; the claim stands in for it, and matches
-    // the menu of whatever device raises it.
+  it('installs lazily but refuses an unobserved press instead of inventing an untyped owner', () => {
     resetNativeContextMenuGuardForTests();
     claimNativeContextMenu(MOUSE.pointerId);
-    expect(contextMenuPrevented(MOUSE)).toBe(true);
-    resetNativeContextMenuGuardForTests();
+    expect(isNativeContextMenuClaimed()).toBe(false);
+    expect(contextMenuPrevented(PEN)).toBe(false);
+    expect(untypedContextMenuPrevented()).toBe(false);
+    rightDown(MOUSE);
+    rightUp(MOUSE);
     claimNativeContextMenu(MOUSE.pointerId);
     expect(untypedContextMenuPrevented()).toBe(true);
   });

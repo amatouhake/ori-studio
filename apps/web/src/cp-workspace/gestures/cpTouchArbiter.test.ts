@@ -293,6 +293,20 @@ describe('events with no press behind them', () => {
     arbiter.up(pen(1, 50, 50));
     expect(arbiter.move(pen(1, 60, 50)).action).toBe('forward');
   });
+
+  it.each([mouse, pen, finger])('rejects an unregistered pointer beside a held pen (%#)', (foreign) => {
+    const arbiter = createCpTouchArbiter();
+    const owner = pen(2, 50, 50);
+    arbiter.down(owner);
+    // Its press happened in a field, outside the CP surface. Hover, dragging,
+    // release and cancellation must not alter the held pen's gesture.
+    expect(arbiter.move(foreign(3, 200, 200)).action).toBe('ignore');
+    expect(arbiter.up(foreign(3, 200, 200)).action).toBe('ignore');
+    expect(arbiter.contactCount()).toBe(1);
+    expect(arbiter.move(owner).action).toBe('forward');
+    expect(arbiter.up(owner).action).toBe('forward');
+    expect(arbiter.move(foreign(3, 200, 200)).action).toBe('forward');
+  });
 });
 
 describe('a precision pointer owns the surface', () => {
