@@ -67,7 +67,7 @@ const KNOWN_RESULT_FIELDS = new Set([
   'facets_not_valid', 'not_local_root_connectable', 'connect_to', 'edge_length', 'sym_loc', 'sym_angle',
   'has_symmetry', 'rotate_degrees', 'read_first', 'undo_label', 'design_id', 'checkpoint_id', 'settled_at_target',
   'moving_at_target', 'settled_without_target_attainment', 'step_limit_without_target_attainment',
-  'simulation_diverged', 'export_loss_blocked', 'x_fixed', 'y_fixed', 'quant_offset', 'file_frames',
+  'simulation_diverged', 'fold_disconnected', 'export_loss_blocked', 'x_fixed', 'y_fixed', 'quant_offset', 'file_frames',
   'vertices_coords', 'edges_vertices', 'frame_classes', 'node1', 'node2', 'edge1', 'edge2', 'flap_ids',
   'box_pleat', 'crease_pattern',
 ]);
@@ -94,6 +94,15 @@ describe('agent guides name only real tools, operations and labels', () => {
   it('diagnostics cover every repair and every analysis the catalog offers', () => {
     for (const repair of Object.keys(REPAIRS)) expect(diagnostics).toContain(`\`${repair}\``);
     for (const analysis of analyses) expect(diagnostics + recipes).toContain(`"${analysis}"`);
+  });
+
+  it('diagnostics name fold errors by the code the engine surfaces, not the kernel variant', () => {
+    // `CpSession` maps `FoldGraphError::DisconnectedFaces` to the code
+    // `fold_disconnected`, and that code is all an agent ever sees in
+    // `job_status`. The desktop crate's guidance tests pin this row against the
+    // real mapping (`mcp/guidance.rs`); this keeps the web side from drifting.
+    expect(diagnostics).toMatch(/\| error code `fold_disconnected` \|/);
+    expect(diagnostics).not.toMatch(/error `DisconnectedFaces`/);
   });
 
   it('diagnostics cover every CheckCamv rule and colour label the kernel emits', () => {

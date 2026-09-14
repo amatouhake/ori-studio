@@ -179,6 +179,36 @@ mod tests {
         }
     }
 
+    /// The diagnostics guide names fold failures by the code an agent reads
+    /// off `job_status`, which is what `CpSession` puts on the wire — not the
+    /// kernel's own variant name. Built from the real mapping rather than a
+    /// second copy of the string, so renaming the code on either side turns
+    /// this red instead of misrouting agents.
+    #[test]
+    fn diagnostics_name_the_disconnected_fold_by_its_engine_code() {
+        use oristudio_cp::FoldGraphError;
+        use oristudio_cp::folding::{FoldSetupError, FoldingEstimateError};
+        use oristudio_cp::session::EngineError;
+
+        let surfaced = EngineError::from(FoldingEstimateError::Setup(FoldSetupError::FoldGraph(
+            FoldGraphError::DisconnectedFaces {
+                reached: 1,
+                unreached: 1,
+            },
+        )));
+        let diagnostics = read_text("ori-studio://guide/diagnostics");
+        let row = format!("| error code `{}` |", surfaced.code);
+        assert!(
+            diagnostics.contains(&row),
+            "diagnostics must carry the surfaced code {:?} in its error row",
+            surfaced.code
+        );
+        assert!(
+            !diagnostics.contains("error `DisconnectedFaces`"),
+            "the kernel variant name is not what agents see"
+        );
+    }
+
     fn read_text(uri: &str) -> String {
         match read_resource(uri).expect("resource").contents.remove(0) {
             ResourceContents::TextResourceContents { text, .. } => text,

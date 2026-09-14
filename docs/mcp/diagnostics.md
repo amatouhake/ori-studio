@@ -105,7 +105,7 @@ appears, or for CPs from any other source (including Box Pleating). KB §4,
 | `Contradiction` (`contradiction.upper_face/lower_face`, `contradiction_faces` polygons) | The initial M/V hierarchy already forces two faces above each other (Step3). | Inspect the creases bounding those polygons; on a fresh TreeMaker derivation see §4. | §1.5, G16 |
 | `NotAttempted` with `estimation_step` `Step2` | The folded wireframe gave no usable subface graph (degenerate / near-coincident folded geometry). | On a fresh TreeMaker derivation see §4; otherwise look for overlapping or near-duplicate creases (`Check1`). | §1.5 |
 | `NotAttempted` with `Step1` | Faces could not be built (disconnected or degenerate pattern). | Run `checks`; fix `Check1`/`Check2` first. | §1.5 |
-| error `DisconnectedFaces` | Not every face is reachable from `starting_face`. | The pattern has separate components; fix the geometry. | §1.5 |
+| error code `fold_disconnected` | Not every face is reachable from `starting_face` (kernel `FoldGraphError::DisconnectedFaces`). | The pattern has separate components; fix the geometry. | §1.5 |
 
 Prerequisite [U]: "Crease pattern must be flat foldable before folding
 calculation" — run `checks` to a clean state (or the G16 state) first.

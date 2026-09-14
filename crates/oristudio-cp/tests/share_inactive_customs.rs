@@ -8,7 +8,9 @@
 //! losslessly-carried document into a forced RAW fallback.
 
 use oristudio_cp::CreasePatternDocument;
-use oristudio_cp::geometry::{LineColor, LineSegment, Point, RgbColor};
+use oristudio_cp::geometry::{
+    FoldDirection, FoldMagnitude, LineColor, LineSegment, Point, RgbColor,
+};
 use oristudio_cp::model::CreasePatternModel;
 use oristudio_cp::share::{ShareOptions, decode_share, encode_share_reported};
 
@@ -55,22 +57,31 @@ fn stray_inactive_document() -> CreasePatternDocument {
 
 /// Transported semantics for an inactive crease: endpoints, colour, magnitude,
 /// hint — never the uncarried RGB.
-fn transported_key(s: &LineSegment) -> (u64, u64, u64, u64, i32) {
+type TransportedKey = (u64, u64, u64, u64, i32, Option<FoldMagnitude>, Option<u8>);
+
+fn transported_key(s: &LineSegment) -> TransportedKey {
     let (a, b) = if (s.a.x, s.a.y) <= (s.b.x, s.b.y) {
         (s.a, s.b)
     } else {
         (s.b, s.a)
     };
+    // `FoldDirection` is not `Ord`; its two values sort by discriminant here.
+    let hint = s.fold_direction_hint.map(|hint| match hint {
+        FoldDirection::Mountain => 0,
+        FoldDirection::Valley => 1,
+    });
     (
         a.x.to_bits(),
         a.y.to_bits(),
         b.x.to_bits(),
         b.y.to_bits(),
         s.color.number(),
+        s.fold_magnitude,
+        hint,
     )
 }
 
-fn transported_geometry(model: &CreasePatternModel) -> Vec<(u64, u64, u64, u64, i32)> {
+fn transported_geometry(model: &CreasePatternModel) -> Vec<TransportedKey> {
     let mut keys: Vec<_> = model.line_segments.iter().map(transported_key).collect();
     keys.sort_unstable();
     keys

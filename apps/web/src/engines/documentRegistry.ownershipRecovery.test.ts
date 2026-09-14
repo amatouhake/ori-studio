@@ -339,12 +339,13 @@ describe('serialize ownership vs engine liveness', () => {
     const h = await registry.acquire(documentA);
     // The handle dies behind the registry's back (no loss event): the next
     // read is an engine error, not "not registered".
-    kind.codec.free(h);
-    await drain();
+    await kind.codec.free(h);
     const reading = track(registry.serialize(documentA));
     await drain();
     expect(reading.outcome).toBe('rejected');
-    expect(String((reading.failure as Error | undefined)?.message)).not.toMatch(/not registered/);
+    // The engine's own error, verbatim — not a registry "not registered", and
+    // not some other throw that happens to reject.
+    expect(String((reading.failure as Error | undefined)?.message)).toMatch(/read on dead handle/);
     registry.dispose();
   });
 

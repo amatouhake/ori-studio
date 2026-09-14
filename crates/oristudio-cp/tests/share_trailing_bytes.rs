@@ -155,8 +155,14 @@ fn raw_body_with_trailing_bytes_is_rejected() {
         "honest raw body decodes"
     );
     body.extend_from_slice(&[0x01, 0x02, 0x03]);
+    // Framing, not content: the decoder checks the body length before it
+    // looks at the bytes, so this is `MalformedExtension`, never `BadUtf8`.
+    let err = match oristudio_cp::share::v1::decode(&body) {
+        Ok(_) => panic!("trailing bytes after a raw body must be rejected"),
+        Err(err) => err,
+    };
     assert!(
-        oristudio_cp::share::v1::decode(&body).is_err(),
-        "trailing bytes after a raw body must be rejected"
+        matches!(err, ShareError::MalformedExtension { tag: 0, .. }),
+        "trailing raw-body bytes are a framing error, got: {err}"
     );
 }

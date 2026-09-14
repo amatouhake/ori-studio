@@ -36,6 +36,30 @@ fn zero_first_path_nodes(text: &str) -> String {
     out
 }
 
+/// Rewrite the `nodes` array of the first v5 `path` block so both endpoints
+/// are the same node — the right count, no distinct endpoints.
+fn collapse_first_path_endpoints(text: &str) -> String {
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    let tag = lines
+        .iter()
+        .position(|line| line == "path")
+        .expect("v5 text has a path block");
+    let count_at = tag + 14 + 1;
+    let n: usize = lines[count_at]
+        .trim()
+        .parse()
+        .expect("path nodes count line");
+    assert!(n >= 2, "base path must be non-degenerate, found {n} nodes");
+    let first = lines[count_at + 1].clone();
+    lines[count_at] = "2".to_string();
+    lines.splice(count_at + 1..count_at + 1 + n, [first.clone(), first]);
+    let mut out = lines.join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 /// Truncate `ring_paths` of the `poly_pos`-th v5 `poly` block (0-based in
 /// serialization order) so it no longer corresponds to `ring_nodes`.
 ///
@@ -147,6 +171,23 @@ fn f003_empty_path_text_is_rejected_at_parse() {
     assert!(
         result.is_err(),
         "empty path nodes must be rejected at parse, never admitted"
+    );
+}
+
+/// The readers check only the node count; a path whose two endpoints are the
+/// same node passes them and is caught by `validate()`, which every
+/// `from_tmd_str` version runs before returning. Pinned here so the reader
+/// message's "distinct" stays true at the API boundary whichever layer
+/// enforces it.
+#[test]
+fn same_endpoint_path_text_is_rejected_at_parse() {
+    let mutated = collapse_first_path_endpoints(&canonical_v5(SEED_V4));
+    let result = Tree::from_tmd_str(&mutated);
+    let message =
+        result.expect_err("a path whose endpoints are one node must be rejected at parse");
+    assert!(
+        message.to_string().contains("distinct endpoint"),
+        "rejected for the endpoint rule, not incidental damage: {message}"
     );
 }
 
