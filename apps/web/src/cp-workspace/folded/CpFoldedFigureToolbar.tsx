@@ -74,6 +74,13 @@ function NoticeChip({ action }: { action: FoldedFigureNoteAction }) {
  * The rows are the same descriptors the right-click menu renders, through the
  * same renderer, so the Style menu here and the Style submenu there are one
  * definition — a colour row or a check row is written once.
+ *
+ * Non-modal, unlike the right-click menu. A modal menu blocks pointer events
+ * everywhere outside it, so the press that dismisses it never reaches the
+ * canvas — and a press on the canvas away from the figure is how the figure is
+ * deselected. This menu floats over a selection; a press elsewhere should
+ * dismiss it *and* do what it would have done, which is what the viewport
+ * bar's own dropdown always did.
  */
 function ToolbarMenu({
   label,
@@ -87,7 +94,7 @@ function ToolbarMenu({
   items: ContextMenuItem[];
 }) {
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root modal={false}>
       <MenuIconButton label={label} icon={icon} disabled={disabled} />
       <DropdownMenu.Portal>
         <DropdownMenu.Content

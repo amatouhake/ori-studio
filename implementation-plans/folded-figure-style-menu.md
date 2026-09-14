@@ -532,6 +532,13 @@ wrong in use:
   same reason.
 - **The Style menu is the only path to colours**; there is no inline swatch on
   the bar. That is the width argument from the earlier plan, kept.
+- **The toolbar's menus are non-modal.** Radix's default modal menu blocks
+  pointer events outside it, so the press that dismissed the Style menu never
+  reached the canvas and the figure stayed selected — caught in the browser
+  pass. Non-modal, the press dismisses the menu and then does what it would
+  have done (deselect, or select something else), which is how the viewport
+  bar's hand-rolled dropdown always behaved. The right-click menu stays modal:
+  a context menu's outside click only dismisses, everywhere.
 
 ### 4. Browser pass so far (Chromium, dev server, 2026-09-14)
 

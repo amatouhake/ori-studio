@@ -314,6 +314,28 @@ describe('CpFoldedFigureToolbar', () => {
       expect(shadow?.getAttribute('title')).toBe('Shadows are not drawn for a 3D folded model yet');
     });
 
+    // A modal menu puts `pointer-events: none` on everything outside it, so
+    // the press that dismisses it never reaches the canvas — which is what
+    // would deselect the figure. The menu must leave the canvas pressable.
+    it('leaves the canvas pressable while open, and closes on a press outside', async () => {
+      render(makeFigure());
+      openMenu('Style');
+      expect(document.querySelector('[role="menu"]')).not.toBeNull();
+      expect(document.body.style.pointerEvents).toBe('');
+      // Radix attaches its outside-press listener a tick after opening.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      const outside = document.createElement('div');
+      container.appendChild(outside);
+      act(() => {
+        outside.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })
+        );
+      });
+      expect(document.querySelector('[role="menu"]')).toBeNull();
+    });
+
     it('still lists the export formats behind their own trigger', () => {
       render(makeFigure(), makeDeps({ exportAs: vi.fn() }));
       openMenu('Export…');
