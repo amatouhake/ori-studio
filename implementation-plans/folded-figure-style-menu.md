@@ -533,7 +533,20 @@ wrong in use:
 - **The Style menu is the only path to colours**; there is no inline swatch on
   the bar. That is the width argument from the earlier plan, kept.
 
-### 4. Remaining gates before Phase 4
+### 4. Browser pass so far (Chromium, dev server, 2026-09-14)
+
+On a four-crease quarter fold (flat): the paintbrush opens the Style menu with
+Render as ▸, Side ▸, three swatches painted from the model and a Shadow row;
+Shadow toggles through the model binding (one entry, "Change folded model")
+with the menu still open; a colour row focuses its input and `showPicker()`
+returns, a four-step synthetic drag recolours the figure live, and **Escape
+lands it as exactly one entry** ("Change folded model color") through the
+unmount commit; ⌘Z restores the colour. Right-click ▸ Style ▸ Render as ▸
+Wireframe, walked from the keyboard, re-renders the figure as wireframe and
+closes the menu. Not driven here: a real picker window, a 3D figure, and the
+desktop shell — those are the gates below.
+
+### 5. Remaining gates before Phase 4
 
 - [ ] Desktop app (WKWebView): open a swatch from the Style menu, pick in
       `NSColorPanel`, close the panel — menu still open, figure recoloured, one
